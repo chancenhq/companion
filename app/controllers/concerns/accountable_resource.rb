@@ -35,6 +35,11 @@ module AccountableResource
   end
 
   def create
+    if account_params_error?
+      render :new, status: :unprocessable_entity
+      return
+    end
+
     opening_balance_date = begin
       account_params[:opening_balance_date].presence&.to_date
     rescue Date::Error
@@ -52,6 +57,11 @@ module AccountableResource
   end
 
   def update
+    if account_params_error?
+      render :edit, status: :unprocessable_entity
+      return
+    end
+
     # Handle balance update if the value actually changed
     if account_params[:balance].present? && account_params[:balance].to_d != @account.balance
       result = @account.set_current_balance(account_params[:balance].to_d)
@@ -77,6 +87,10 @@ module AccountableResource
   end
 
   private
+    def account_params_error?
+      @error_message.present?
+    end
+
     def set_link_options
       account_type_name = accountable_type.name
 
@@ -101,11 +115,33 @@ module AccountableResource
     end
 
     def account_params
-      params.require(:account).permit(
+      permitted = params.require(:account).permit(
         :name, :balance, :subtype, :currency, :accountable_type, :return_to,
         :opening_balance_date,
-        :institution_name, :institution_domain, :notes,
+        :institution_name, :institution_domain, :notes, :metadata,
         accountable_attributes: self.class.permitted_accountable_attributes
       )
+
+      normalize_metadata_param!(permitted)
+      permitted
+    end
+
+    def normalize_metadata_param!(permitted)
+      return unless permitted.key?(:metadata)
+
+      value = permitted[:metadata]
+      return if value.is_a?(Hash)
+
+      if value.is_a?(String)
+        stripped = value.strip
+        permitted[:metadata] = stripped.present? ? JSON.parse(stripped) : {}
+      elsif value.nil?
+        permitted[:metadata] = {}
+      else
+        permitted[:metadata] = value
+      end
+    rescue JSON::ParserError
+      permitted.delete(:metadata)
+      @error_message = I18n.t("accounts.form.invalid_metadata_json")
     end
 end

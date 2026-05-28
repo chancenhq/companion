@@ -4,7 +4,8 @@ class Api::V1::AccountsController < Api::V1::BaseController
   include Pagy::Backend
 
   # Ensure proper scope authorization for read access
-  before_action :ensure_read_scope
+  before_action :ensure_read_scope, only: %i[index show]
+  before_action :ensure_write_scope, only: :update
 
   def index
     @per_page = safe_per_page_param
@@ -53,6 +54,41 @@ class Api::V1::AccountsController < Api::V1::BaseController
     }, status: :internal_server_error
   end
 
+
+  def update
+    unless valid_uuid?(params[:id])
+      render json: {
+        error: "not_found",
+        message: "Account not found"
+      }, status: :not_found
+      return
+    end
+
+    @account = accounts_scope.find(params[:id])
+
+    if @account.update(account_update_params)
+      render :show
+    else
+      render json: {
+        error: "validation_error",
+        message: @account.errors.full_messages.join(", ")
+      }, status: :unprocessable_entity
+    end
+  rescue ActiveRecord::RecordNotFound
+    render json: {
+      error: "not_found",
+      message: "Account not found"
+    }, status: :not_found
+  rescue => e
+    Rails.logger.error "AccountsController#update error: #{e.message}"
+    Rails.logger.error e.backtrace.join("\n")
+
+    render json: {
+      error: "internal_server_error",
+      message: "An unexpected error occurred"
+    }, status: :internal_server_error
+  end
+
   private
 
     def ensure_read_scope
@@ -68,5 +104,15 @@ class Api::V1::AccountsController < Api::V1::BaseController
 
     def include_disabled_accounts?
       ActiveModel::Type::Boolean.new.cast(params[:include_disabled])
+    end
+
+    def ensure_write_scope
+      authorize_scope!(:write)
+    end
+
+    def account_update_params
+      params.require(:account).permit(metadata: {}).tap do |permitted|
+        permitted[:metadata] = {} if permitted[:metadata].nil?
+      end
     end
 end

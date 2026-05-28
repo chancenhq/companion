@@ -115,6 +115,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_12_211200) do
     t.string "institution_domain"
     t.text "notes"
     t.uuid "owner_id"
+    t.jsonb "metadata", default: {}, null: false
     t.index ["accountable_id", "accountable_type"], name: "index_accounts_on_accountable_id_and_accountable_type"
     t.index ["accountable_type"], name: "index_accounts_on_accountable_type"
     t.index ["currency"], name: "index_accounts_on_currency"
