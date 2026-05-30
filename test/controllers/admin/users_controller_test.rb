@@ -2,6 +2,7 @@ require "test_helper"
 
 class Admin::UsersControllerTest < ActionDispatch::IntegrationTest
   setup do
+    ensure_tailwind_build
     sign_in users(:sure_support_staff)
   end
 
@@ -46,4 +47,65 @@ class Admin::UsersControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_match(/No subscription/, response.body, "Page should show 'No subscription' for families without one")
   end
+
+  test "index sorts family users by role priority then first name" do
+    family = users(:family_admin).family
+
+    zach = create_admin_user(family:, first_name: "Zach", role: "super_admin")
+    amy = create_admin_user(family:, first_name: "Amy", role: "super_admin")
+    charlie = create_admin_user(family:, first_name: "Charlie", role: "admin")
+    betty = create_admin_user(family:, first_name: "Betty", role: "member")
+    aaron = create_admin_user(family:, first_name: "Aaron", role: "guest")
+
+    get admin_users_url
+    assert_response :success
+
+    document = Nokogiri::HTML(response.body)
+    section_emails = document.css("[data-admin-role-section]").flat_map do |section|
+      section.css("[data-admin-user-email]").map { |row| row["data-admin-user-email"] }
+    end
+
+    expected_order = [ amy, zach, users(:family_admin), charlie, betty, users(:family_member), aaron ].map(&:email)
+    assert_equal expected_order, section_emails & expected_order
+  end
+
+  test "index sorts pending invitations by role priority then email" do
+    family = users(:family_admin).family
+    member_invite = invitations(:one)
+    admin_invite = invitations(:two)
+    guest_invite = create_invitation(family:, email: "guest-sort@example.com", role: "guest")
+    earlier_admin_invite = create_invitation(family:, email: "aaa-admin-sort@example.com", role: "admin")
+
+    get admin_users_url
+    assert_response :success
+
+    document = Nokogiri::HTML(response.body)
+    invitation_emails = document.css("[data-admin-invitation-role-section]").flat_map do |section|
+      section.css("[data-admin-invitation-email]").map { |row| row["data-admin-invitation-email"] }
+    end
+
+    expected_order = [ earlier_admin_invite, admin_invite, member_invite, guest_invite ].map(&:email)
+    assert_equal expected_order, invitation_emails & expected_order
+  end
+
+  private
+    def create_admin_user(family:, first_name:, role:)
+      family.users.create!(
+        first_name: first_name,
+        last_name: "Sort",
+        email: "#{first_name.downcase}-#{role}-sort@example.com",
+        password: user_password_test,
+        role: role,
+        onboarded_at: Time.current,
+        ui_layout: "dashboard"
+      )
+    end
+
+    def create_invitation(family:, email:, role:)
+      family.invitations.create!(
+        email: email,
+        role: role,
+        inviter: users(:family_admin)
+      )
+    end
 end

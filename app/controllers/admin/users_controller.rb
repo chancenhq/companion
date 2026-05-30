@@ -2,7 +2,10 @@
 
 module Admin
   class UsersController < Admin::BaseController
+    ROLE_ORDER = %w[super_admin admin member guest].freeze
+
     before_action :set_user, only: %i[update]
+    helper_method :admin_user_role_order
 
     def index
       authorize User
@@ -21,7 +24,11 @@ module Admin
           "ELSE 2 END, " \
           "subscriptions.trial_ends_at ASC NULLS LAST, users.email ASC"
         )
-      )
+      ).to_a
+
+      users_by_family = users.group_by(&:family).transform_values do |family_users|
+        family_users.sort_by { |user| user_sort_key(user) }
+      end
 
       family_ids = users.map(&:family_id).uniq
       @accounts_count_by_family = Account.where(family_id: family_ids).group(:family_id).count
@@ -31,13 +38,15 @@ module Admin
       @last_login_by_user = Session.where(user_id: user_ids).group(:user_id).maximum(:created_at)
       @sessions_count_by_user = Session.where(user_id: user_ids).group(:user_id).count
 
-      @families_with_users = users.group_by(&:family).sort_by do |family, _users|
+      @families_with_users = users_by_family.sort_by do |family, _users|
         -(@entries_count_by_family[family.id] || 0)
       end
 
       @invitations_by_family = Invitation.pending
         .where(family_id: family_ids)
+        .to_a
         .group_by(&:family_id)
+        .transform_values { |invitations| invitations.sort_by { |invitation| invitation_sort_key(invitation) } }
 
       @trials_expiring_in_7_days = Subscription
         .where(status: :trialing)
@@ -69,6 +78,26 @@ module Admin
 
       def user_params
         params.require(:user).permit(:role)
+      end
+
+      def admin_user_role_order
+        ROLE_ORDER
+      end
+
+      def user_sort_key(user)
+        [
+          ROLE_ORDER.index(user.role) || ROLE_ORDER.length,
+          (user.first_name.presence || user.display_name).to_s.downcase,
+          user.last_name.to_s.downcase,
+          user.email.to_s.downcase
+        ]
+      end
+
+      def invitation_sort_key(invitation)
+        [
+          ROLE_ORDER.index(invitation.role) || ROLE_ORDER.length,
+          invitation.email.to_s.downcase
+        ]
       end
 
       def apply_trial_filter(scope)
