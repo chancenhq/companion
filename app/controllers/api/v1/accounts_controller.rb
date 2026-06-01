@@ -111,8 +111,12 @@ class Api::V1::AccountsController < Api::V1::BaseController
     end
 
     def account_update_params
-      params.require(:account).permit(metadata: {}).tap do |permitted|
-        permitted[:metadata] = {} if permitted[:metadata].nil?
-      end
+      account_params = params.require(:account)
+      return {} unless account_params.key?(:metadata)
+
+      metadata = account_params[:metadata]
+      metadata = metadata.to_unsafe_h if metadata.respond_to?(:to_unsafe_h)
+
+      { metadata: metadata }
     end
 end

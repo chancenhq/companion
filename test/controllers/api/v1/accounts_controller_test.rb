@@ -309,7 +309,7 @@ class Api::V1::AccountsControllerTest < ActionDispatch::IntegrationTest
       user: @user,
       name: "Write Key",
       scopes: [ "read_write" ],
-      source: "web",
+      source: "mobile",
       display_key: "write_#{SecureRandom.hex(8)}"
     )
 
@@ -337,13 +337,35 @@ class Api::V1::AccountsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "insufficient_scope", response_body["error"]
   end
 
+
+  test "should reject non-object account metadata via API update" do
+    account = accounts(:depository)
+    write_key = ApiKey.create!(
+      user: @user,
+      name: "Write Key Invalid Metadata",
+      scopes: [ "read_write" ],
+      source: "mobile",
+      display_key: "write_invalid_metadata_#{SecureRandom.hex(8)}"
+    )
+
+    patch "/api/v1/accounts/#{account.id}",
+          params: { account: { metadata: [ "not", "an", "object" ] } },
+          headers: api_headers(write_key),
+          as: :json
+
+    assert_response :unprocessable_entity
+    response_body = JSON.parse(response.body)
+    assert_equal "validation_error", response_body["error"]
+    assert_includes response_body["message"], "Metadata must be a JSON object"
+  end
+
   test "should not update non-metadata attributes via API update" do
     account = accounts(:depository)
     write_key = ApiKey.create!(
       user: @user,
       name: "Write Key Limited",
       scopes: [ "read_write" ],
-      source: "web",
+      source: "mobile",
       display_key: "write_limited_#{SecureRandom.hex(8)}"
     )
 
@@ -373,5 +395,4 @@ class Api::V1::AccountsControllerTest < ActionDispatch::IntegrationTest
     def assert_nullable_equal(expected, actual)
       expected.nil? ? assert_nil(actual) : assert_equal(expected, actual)
     end
-
 end

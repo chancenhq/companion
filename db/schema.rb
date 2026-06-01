@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_05_12_211200) do
+ActiveRecord::Schema[7.2].define(version: 2026_05_27_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -76,15 +76,15 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_12_211200) do
     t.index ["family_id"], name: "index_account_statements_on_family_id"
     t.index ["suggested_account_id", "review_status"], name: "index_account_statements_on_suggested_account_review"
     t.index ["suggested_account_id"], name: "index_account_statements_on_suggested_account_id"
-    t.check_constraint "byte_size <= 26214400", name: "chk_account_statements_byte_size_max"
-    t.check_constraint "byte_size > 0", name: "chk_account_statements_byte_size_positive"
     t.check_constraint "account_last4_hint IS NULL OR char_length(account_last4_hint::text) <= 4", name: "chk_account_statements_account_last4_hint_length"
     t.check_constraint "account_name_hint IS NULL OR char_length(account_name_hint::text) <= 200", name: "chk_account_statements_account_name_hint_length"
+    t.check_constraint "byte_size <= 26214400", name: "chk_account_statements_byte_size_max"
+    t.check_constraint "byte_size > 0", name: "chk_account_statements_byte_size_positive"
     t.check_constraint "char_length(checksum::text) <= 64", name: "chk_account_statements_checksum_length"
     t.check_constraint "char_length(content_type::text) <= 100", name: "chk_account_statements_content_type_length"
+    t.check_constraint "char_length(filename::text) <= 255", name: "chk_account_statements_filename_length"
     t.check_constraint "content_sha256 IS NULL OR content_sha256::text ~ '^[0-9a-f]{64}$'::text", name: "chk_account_statements_content_sha256"
     t.check_constraint "currency IS NULL OR char_length(currency::text) <= 3", name: "chk_account_statements_currency_length"
-    t.check_constraint "char_length(filename::text) <= 255", name: "chk_account_statements_filename_length"
     t.check_constraint "institution_name_hint IS NULL OR char_length(institution_name_hint::text) <= 200", name: "chk_account_statements_institution_hint_length"
     t.check_constraint "match_confidence IS NULL OR match_confidence >= 0::numeric AND match_confidence <= 1::numeric", name: "chk_account_statements_match_confidence"
     t.check_constraint "parser_confidence IS NULL OR parser_confidence >= 0::numeric AND parser_confidence <= 1::numeric", name: "chk_account_statements_parser_confidence"

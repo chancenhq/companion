@@ -35,36 +35,38 @@ module AccountableResource
   end
 
   def create
-    if account_params_error?
+    permitted_account_params = account_params
+    if @error_message.present?
       render :new, status: :unprocessable_entity
       return
     end
 
     opening_balance_date = begin
-      account_params[:opening_balance_date].presence&.to_date
+      permitted_account_params[:opening_balance_date].presence&.to_date
     rescue Date::Error
       nil
     end || (Time.zone.today - 2.years)
     Account.transaction do
       @account = Current.family.accounts.create_and_sync(
-        account_params.except(:return_to, :opening_balance_date).merge(owner: Current.user),
+        permitted_account_params.except(:return_to, :opening_balance_date).merge(owner: Current.user),
         opening_balance_date: opening_balance_date
       )
       @account.lock_saved_attributes!
     end
 
-    redirect_to account_params[:return_to].presence || @account, notice: t("accounts.create.success", type: accountable_type.name.underscore.humanize)
+    redirect_to permitted_account_params[:return_to].presence || @account, notice: t("accounts.create.success", type: accountable_type.name.underscore.humanize)
   end
 
   def update
-    if account_params_error?
+    permitted_account_params = account_params
+    if @error_message.present?
       render :edit, status: :unprocessable_entity
       return
     end
 
     # Handle balance update if the value actually changed
-    if account_params[:balance].present? && account_params[:balance].to_d != @account.balance
-      result = @account.set_current_balance(account_params[:balance].to_d)
+    if permitted_account_params[:balance].present? && permitted_account_params[:balance].to_d != @account.balance
+      result = @account.set_current_balance(permitted_account_params[:balance].to_d)
       unless result.success?
         @error_message = result.error_message
         render :edit, status: :unprocessable_entity
@@ -75,7 +77,7 @@ module AccountableResource
     # Update remaining account attributes. Note: currency is intentionally allowed
     # here so all account types (depositories, credit cards, loans, etc.) can
     # have their currency changed via this shared update path.
-    update_params = account_params.except(:return_to, :balance, :opening_balance_date)
+    update_params = permitted_account_params.except(:return_to, :balance, :opening_balance_date)
     unless @account.update(update_params)
       @error_message = @account.errors.full_messages.join(", ")
       render :edit, status: :unprocessable_entity
@@ -87,10 +89,6 @@ module AccountableResource
   end
 
   private
-    def account_params_error?
-      @error_message.present?
-    end
-
     def set_link_options
       account_type_name = accountable_type.name
 
@@ -123,23 +121,29 @@ module AccountableResource
       )
 
       normalize_metadata_param!(permitted)
-      permitted
+      permitted.to_unsafe_h
     end
 
     def normalize_metadata_param!(permitted)
       return unless permitted.key?(:metadata)
 
       value = permitted[:metadata]
-      return if value.is_a?(Hash)
-
-      if value.is_a?(String)
+      metadata = if value.is_a?(String)
         stripped = value.strip
-        permitted[:metadata] = stripped.present? ? JSON.parse(stripped) : {}
+        stripped.present? ? JSON.parse(stripped) : {}
       elsif value.nil?
-        permitted[:metadata] = {}
+        {}
       else
-        permitted[:metadata] = value
+        value
       end
+
+      unless metadata.is_a?(Hash)
+        permitted.delete(:metadata)
+        @error_message = I18n.t("accounts.form.invalid_metadata_json")
+        return
+      end
+
+      permitted[:metadata] = metadata
     rescue JSON::ParserError
       permitted.delete(:metadata)
       @error_message = I18n.t("accounts.form.invalid_metadata_json")
