@@ -122,14 +122,14 @@ an [AGPLv3 license](https://github.com/we-promise/sure/blob/main/LICENSE).
 ![Alt](https://repobeats.axiom.co/api/embed/3a9753cff07501fba8a6749d0ebd567ff63848c8.svg "Repobeats analytics image")
 
 <!-- MOBILE_DOWNLOADS_START -->
-## Latest Mobile Release: v0.7.1-alpha.7.3
+## Latest Mobile Release: v0.7.1-alpha.7.4
 
-**Release page**: [mobile-v0.7.1-alpha.7.3](https://github.com/chancenhq/companion/releases/tag/mobile-v0.7.1-alpha.7.3)
+**Release page**: [mobile-v0.7.1-alpha.7.4](https://github.com/chancenhq/companion/releases/tag/mobile-v0.7.1-alpha.7.4)
 
 ### Direct Downloads
 
-- **Android APK**: [sure-v0.7.1-alpha.7.3.apk](https://github.com/chancenhq/companion/releases/download/mobile-v0.7.1-alpha.7.3/sure-v0.7.1-alpha.7.3.apk)
-- **iOS Build (unsigned)**: [sure-v0.7.1-alpha.7.3-ios-unsigned.zip](https://github.com/chancenhq/companion/releases/download/mobile-v0.7.1-alpha.7.3/sure-v0.7.1-alpha.7.3-ios-unsigned.zip)
+- **Android APK**: [sure-v0.7.1-alpha.7.4.apk](https://github.com/chancenhq/companion/releases/download/mobile-v0.7.1-alpha.7.4/sure-v0.7.1-alpha.7.4.apk)
+- **iOS Build (unsigned)**: [sure-v0.7.1-alpha.7.4-ios-unsigned.zip](https://github.com/chancenhq/companion/releases/download/mobile-v0.7.1-alpha.7.4/sure-v0.7.1-alpha.7.4-ios-unsigned.zip)
 
 > **Note**: These are builds intended for testing purposes. For production use, please build from source with proper signing credentials.
 <!-- MOBILE_DOWNLOADS_END -->
