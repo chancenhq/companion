@@ -11,6 +11,20 @@ en:
       title: Terms of Service
       heading: Terms of Service
       placeholder: Terms of service content will be displayed here.
+    purdue_gpa:
+      title: "Purdue Mean Earned GPA"
+      subtitle: "Undergraduate grade-point average trend, 2010–present (West Lafayette)"
+      latest_label: "Latest (%{year})"
+      change_label: "Change since %{from}"
+      period_label: "Period"
+      sources_title: "Data sources"
+      source_purdue: "Primary:"
+      source_anchor: "Historical anchor values:"
+      source_anchor_suffix: "(2003 baseline)"
+      source_exponent: "Reported figures:"
+      source_exponent_suffix: "(\"nearly 3.1\" as of 2016-17)"
+      estimate_note: "Values for years not directly reported are linearly interpolated between anchor points and adjusted for the documented COVID-era grade-inflation step (~+0.13, per EDM 2024 cross-university study). Plug in official Data Digest figures to replace estimates."
+      peers_title: "Peer registrars that publish grade distributions"
     dashboard:
       welcome: "Welcome back, %{name}"
       subtitle: "Here's what's happening with your finances"

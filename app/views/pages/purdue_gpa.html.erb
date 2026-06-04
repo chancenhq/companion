@@ -1,0 +1,138 @@
+<% content_for :page_header do %>
+  <div class="space-y-1 mb-6">
+    <h1 class="text-xl lg:text-3xl font-medium text-primary">
+      <%= t("pages.purdue_gpa.title") %>
+    </h1>
+    <p class="text-sm lg:text-base text-secondary">
+      <%= t("pages.purdue_gpa.subtitle") %>
+    </p>
+  </div>
+<% end %>
+
+<%
+  gpa_data = {
+    values: [
+      { year: "2010-11", gpa: 2.96 },
+      { year: "2011-12", gpa: 2.97 },
+      { year: "2012-13", gpa: 2.99 },
+      { year: "2013-14", gpa: 3.00 },
+      { year: "2014-15", gpa: 3.03 },
+      { year: "2015-16", gpa: 3.06 },
+      { year: "2016-17", gpa: 3.09 },
+      { year: "2017-18", gpa: 3.11 },
+      { year: "2018-19", gpa: 3.14 },
+      { year: "2019-20", gpa: 3.16 },
+      { year: "2020-21", gpa: 3.29 },
+      { year: "2021-22", gpa: 3.31 },
+      { year: "2022-23", gpa: 3.30 },
+      { year: "2023-24", gpa: 3.29 }
+    ]
+  }
+  latest = gpa_data[:values].last
+  earliest = gpa_data[:values].first
+  delta = (latest[:gpa] - earliest[:gpa]).round(2)
+%>
+
+<div class="space-y-6 pb-12">
+  <div class="bg-container rounded-xl shadow-border-xs p-6 space-y-6">
+
+    <%# Headline stats %>
+    <div class="flex flex-wrap items-end gap-6">
+      <div class="space-y-1">
+        <p class="text-xs text-secondary uppercase font-medium tracking-wide">
+          <%= t("pages.purdue_gpa.latest_label", year: latest[:year]) %>
+        </p>
+        <p class="text-4xl font-medium text-primary">
+          <%= format("%.2f", latest[:gpa]) %>
+        </p>
+      </div>
+
+      <div class="space-y-1">
+        <p class="text-xs text-secondary uppercase font-medium tracking-wide">
+          <%= t("pages.purdue_gpa.change_label", from: earliest[:year]) %>
+        </p>
+        <p class="text-xl font-medium" style="color: <%= delta >= 0 ? "var(--color-success)" : "var(--color-error)" %>">
+          <%= delta >= 0 ? "+" : "" %><%= format("%.2f", delta) %>
+        </p>
+      </div>
+
+      <div class="space-y-1">
+        <p class="text-xs text-secondary uppercase font-medium tracking-wide">
+          <%= t("pages.purdue_gpa.period_label") %>
+        </p>
+        <p class="text-xl font-medium text-primary">
+          <%= earliest[:year] %> – <%= latest[:year] %>
+        </p>
+      </div>
+    </div>
+
+    <%# Chart %>
+    <div
+      id="purdue-gpa-chart"
+      class="relative w-full h-80"
+      data-controller="gpa-trend-chart"
+      data-gpa-trend-chart-data-value="<%= gpa_data.to_json %>">
+    </div>
+
+  </div>
+
+  <%# Source note %>
+  <div class="bg-container rounded-xl shadow-border-xs p-4 space-y-3">
+    <h2 class="text-sm font-medium text-primary">
+      <%= t("pages.purdue_gpa.sources_title") %>
+    </h2>
+    <ul class="text-sm text-secondary space-y-2 list-disc list-inside">
+      <li>
+        <%= t("pages.purdue_gpa.source_purdue") %>
+        <a href="https://www.purdue.edu/datadigest/" target="_blank" rel="noopener" class="text-primary underline underline-offset-2">
+          Purdue Data Digest → Students → Student Achievement
+        </a>
+      </li>
+      <li>
+        <%= t("pages.purdue_gpa.source_anchor") %>
+        <a href="https://www.gradeinflation.com/Purdue.html" target="_blank" rel="noopener" class="text-primary underline underline-offset-2">
+          gradeinflation.com
+        </a>
+        <%= t("pages.purdue_gpa.source_anchor_suffix") %>
+      </li>
+      <li>
+        <%= t("pages.purdue_gpa.source_exponent") %>
+        <em>Purdue Exponent</em> (2016–2017) <%= t("pages.purdue_gpa.source_exponent_suffix") %>
+      </li>
+    </ul>
+
+    <p class="text-xs text-secondary border-t border-primary pt-3">
+      <%= t("pages.purdue_gpa.estimate_note") %>
+    </p>
+  </div>
+
+  <%# Peer registrars %>
+  <div class="bg-container rounded-xl shadow-border-xs p-4 space-y-3">
+    <h2 class="text-sm font-medium text-primary">
+      <%= t("pages.purdue_gpa.peers_title") %>
+    </h2>
+    <ul class="text-sm text-secondary space-y-2">
+      <li class="flex items-start gap-2">
+        <span class="font-medium text-primary min-w-40">UW–Madison</span>
+        <a href="https://registrar.wisc.edu/grade-reports/" target="_blank" rel="noopener" class="underline underline-offset-2 break-all">
+          registrar.wisc.edu/grade-reports/
+        </a>
+        <span>— biannual grade-distribution and mean-GPA reports by college/level</span>
+      </li>
+      <li class="flex items-start gap-2">
+        <span class="font-medium text-primary min-w-40">Indiana University</span>
+        <a href="https://gradedistribution.registrar.indiana.edu/" target="_blank" rel="noopener" class="underline underline-offset-2 break-all">
+          gradedistribution.registrar.indiana.edu/
+        </a>
+        <span>— public course-level grade distribution portal</span>
+      </li>
+      <li class="flex items-start gap-2">
+        <span class="font-medium text-primary min-w-40">Univ. of Missouri</span>
+        <a href="https://registrar.missouri.edu/grades-calculators/university-gpa-averages/" target="_blank" rel="noopener" class="underline underline-offset-2 break-all">
+          registrar.missouri.edu/grades-calculators/university-gpa-averages/
+        </a>
+        <span>— explicit "University GPA Averages" table by year</span>
+      </li>
+    </ul>
+  </div>
+</div>

@@ -29,6 +29,10 @@ class PagesController < ApplicationController
     @breadcrumbs = [ [ "Home", root_path ], [ "Dashboard", nil ] ]
   end
 
+  def purdue_gpa
+    @breadcrumbs = [ [ "Home", root_path ], [ t("pages.purdue_gpa.title"), nil ] ]
+  end
+
   def intro
     @breadcrumbs = [ [ "Home", chats_path ], [ "Intro", nil ] ]
   end
