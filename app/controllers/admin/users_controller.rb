@@ -26,7 +26,7 @@ module Admin
       users_by_family = users.group_by(&:family).transform_values do |family_users|
         family_users.sort_by(&:sort_key)
       end
-      @user_sections_by_family = users_by_family.transform_values { |family_users| user_role_sections(family_users) }
+      @user_sections_by_family = users_by_family.transform_keys(&:id).transform_values { |family_users| user_role_sections(family_users) }
 
       family_ids = users.map(&:family_id).uniq
       @accounts_count_by_family = Account.where(family_id: family_ids).group(:family_id).count
