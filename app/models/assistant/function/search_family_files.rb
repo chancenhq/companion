@@ -7,9 +7,12 @@ class Assistant::Function::SearchFamilyFiles < Assistant::Function
     def description
       <<~DESCRIPTION
         Use this function to retrieve official information from Chancen
-        International's ISA contract and policy documents stored in the partner
-        vector store.
+        International's documents stored in the vector store.
 
+        Call this tool if you get a general question about Chancen, Income Share Agreements,
+        the ISA Global Alliance and Chancen Board meetings - or anytime you need specific
+        information about a topic you need specialist knowledge about.
+        
         Always call this tool whenever a student asks about Chancen, Income Share
         Agreements (ISAs), or ISA-related concepts, even if they do not say 'Chancen'
         or 'ISA'. ISA-related concepts include: repayment amounts/percentages,

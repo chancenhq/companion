@@ -51,7 +51,7 @@ jobs:
 
     - name: Update Deployment
       run: |
-        yq -i '.sure.image.tag = "${{ env.DOCKER_IMAGE_TAG }}"' platform-eks-production/apps/companion-prod/values.yaml
+        yq -i '.sure.image.tag = "${{ env.DOCKER_IMAGE_TAG }}"' platform-eks-production/apps/companion-staging/values.yaml
         cd platform-eks-production
         git config --global user.email "platform@chancen.international"
         git config --global user.name "platform-chancen"

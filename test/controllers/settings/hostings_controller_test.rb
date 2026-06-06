@@ -5,6 +5,7 @@ class Settings::HostingsControllerTest < ActionDispatch::IntegrationTest
   include ProviderTestHelper
 
   setup do
+    ensure_tailwind_build
     sign_in users(:family_admin)
 
     @provider = mock
@@ -64,6 +65,34 @@ class Settings::HostingsControllerTest < ActionDispatch::IntegrationTest
       assert_equal "closed", Setting.onboarding_state
       refute Setting.require_invite_for_signup
     end
+  end
+
+  test "clears invite-only default family id when submitted family does not exist" do
+    sign_in users(:sure_support_staff)
+
+    with_self_hosting do
+      Setting.invite_only_default_family_id = families(:empty).id.to_s
+
+      patch settings_hosting_url, params: { setting: { invite_only_default_family_id: SecureRandom.uuid } }
+
+      assert_redirected_to settings_hosting_url
+      assert_nil Setting.invite_only_default_family_id
+    end
+  ensure
+    Setting.invite_only_default_family_id = nil
+  end
+
+  test "saves invite-only default family id when submitted family exists" do
+    sign_in users(:sure_support_staff)
+
+    with_self_hosting do
+      patch settings_hosting_url, params: { setting: { invite_only_default_family_id: families(:empty).id.to_s } }
+
+      assert_redirected_to settings_hosting_url
+      assert_equal families(:empty).id.to_s, Setting.invite_only_default_family_id
+    end
+  ensure
+    Setting.invite_only_default_family_id = nil
   end
 
   test "can update openai access token when self hosting is enabled" do

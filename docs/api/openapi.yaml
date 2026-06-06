@@ -3004,6 +3004,11 @@ paths:
                       type: string
                     last_name:
                       type: string
+                    invitation:
+                      type: string
+                      nullable: true
+                      description: Pending invitation token; joins the invited family
+                        when valid
                   required:
                   - email
                   - password
@@ -3033,6 +3038,11 @@ paths:
                   type: string
                   nullable: true
                   description: Invite code (required when invites are enforced)
+                invitation:
+                  type: string
+                  nullable: true
+                  description: Pending invitation token; joins the invited family
+                    when valid
               required:
               - user
               - device
@@ -3331,10 +3341,12 @@ paths:
       summary: Create a new account via SSO
       tags:
       - Auth
-      description: Creates a new user and family from a previously issued linking
-        code. Links the SSO identity via OidcIdentity, logs the JIT account creation
-        via SsoAuditLog, and issues mobile OAuth tokens. The linking code must have
-        allow_account_creation enabled.
+      description: Creates a new user from a previously issued linking code. The user
+        joins a pending invitation family, the configured invite-only default family,
+        or otherwise a new family. Links the SSO identity via OidcIdentity, logs the
+        JIT account creation via SsoAuditLog, and issues mobile OAuth tokens. The
+        linking code must have allow_account_creation enabled unless a pending invitation
+        exists.
       parameters: []
       responses:
         '200':

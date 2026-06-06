@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -259,9 +260,13 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final bg = Theme.of(context).brightness == Brightness.light ? Colors.white : Colors.black;
 
     return Scaffold(
+      backgroundColor: bg,
       appBar: AppBar(
+        backgroundColor: bg,
+        scrolledUnderElevation: 0,
         title: Consumer<ChatProvider>(
           builder: (context, chatProvider, _) {
             final title = chatProvider.currentChat?.title ?? 'New Conversation';
@@ -380,14 +385,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: colorScheme.surface,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, -2),
-                        ),
-                      ],
+                      color: bg,
                     ),
                     child: Shortcuts(
                       shortcuts: const {
@@ -544,7 +542,8 @@ class _MessageBubble extends StatelessWidget {
                             return Image.asset(config.uri.toString());
                           },
                         ),
-                      if (message.toolCalls != null &&
+                      if (kDebugMode &&
+                          message.toolCalls != null &&
                           message.toolCalls!.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.only(top: 8),

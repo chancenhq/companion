@@ -6,7 +6,7 @@ This repository now includes `.github/workflows/ios-testflight.yml`, which build
 
 - The workflow file itself: `.github/workflows/ios-testflight.yml`
 - Existing app signing identifiers in Xcode:
-  - Bundle ID `am.sure.mobile` (or your custom value in the workflow)
+- Bundle ID `tech.chancen.companion` (or your custom value in the workflow)
 - Flutter assets and source already in `mobile/`
 
 ## Trigger paths
@@ -32,6 +32,8 @@ Set these in **Settings → Secrets and variables → Actions**:
 - `IOS_PROVISIONING_PROFILE_NAME`
 - `IOS_PROVISIONING_PROFILE_BASE64`
 
+For the `companion` package, use `vars.IOS_APP_BUNDLE_ID = tech.chancen.companion` in repository Variables (or rely on the workflow default).
+
 > Do **not** commit private keys, `.p12`, `.mobileprovision` or `.p8` files to the repository.
 
 ## Triggering
@@ -43,11 +45,14 @@ Set these in **Settings → Secrets and variables → Actions**:
 
 - Use an API Key with App Manager or Developer role
 - Create/download an iOS Distribution certificate (`.p12`), convert to base64 for `IOS_DISTRIBUTION_P12_BASE64`
-- Create and distribute an **App Store** provisioning profile for `am.sure.mobile`
+- Create and distribute an **App Store** provisioning profile for `tech.chancen.companion`
 - Base64-encode the `.mobileprovision` file for `IOS_PROVISIONING_PROFILE_BASE64`
+
+## Companion-specific TestFlight asset checklist
+
+See [ios-companion-testflight-assets.md](ios-companion-testflight-assets.md).
 
 ## Output
 
 - IPA artifact: `ios-ipa-testflight`
 - Uploaded IPA to TestFlight on successful upload step
-
