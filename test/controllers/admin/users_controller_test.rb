@@ -50,6 +50,8 @@ class Admin::UsersControllerTest < ActionDispatch::IntegrationTest
 
   test "index sorts family users by role priority then first name" do
     family = users(:family_admin).family
+    assert_equal "admin", users(:family_admin).role, "Fixture setup: users(:family_admin) must be admin role"
+    assert_equal "member", users(:family_member).role, "Fixture setup: users(:family_member) must be member role"
 
     zach = create_admin_user(family:, first_name: "Zach", role: "super_admin")
     amy = create_admin_user(family:, first_name: "Amy", role: "super_admin")
@@ -61,18 +63,22 @@ class Admin::UsersControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
 
     document = Nokogiri::HTML(response.body)
-    section_emails = document.css("[data-admin-role-section]").flat_map do |section|
+    family_section = document.at_css("[data-admin-family-id='#{family.id}']")
+    assert_not_nil family_section, "Expected rendered family section for #{family.id}"
+    section_emails = family_section.css("[data-admin-role-section]").flat_map do |section|
       section.css("[data-admin-user-email]").map { |row| row["data-admin-user-email"] }
     end
 
     expected_order = [ amy, zach, users(:family_admin), charlie, betty, users(:family_member), aaron ].map(&:email)
-    assert_equal expected_order, section_emails & expected_order
+    assert_equal expected_order, section_emails
   end
 
   test "index sorts pending invitations by role priority then email" do
     family = users(:family_admin).family
     member_invite = invitations(:one)
+    assert_equal "member", member_invite.role, "Fixture setup: invitations(:one) must be member role"
     admin_invite = invitations(:two)
+    assert_equal "admin", admin_invite.role, "Fixture setup: invitations(:two) must be admin role"
     guest_invite = create_invitation(family:, email: "guest-sort@example.com", role: "guest")
     earlier_admin_invite = create_invitation(family:, email: "aaa-admin-sort@example.com", role: "admin")
 
@@ -80,12 +86,14 @@ class Admin::UsersControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
 
     document = Nokogiri::HTML(response.body)
-    invitation_emails = document.css("[data-admin-invitation-role-section]").flat_map do |section|
+    family_section = document.at_css("[data-admin-family-id='#{family.id}']")
+    assert_not_nil family_section, "Expected rendered family section for #{family.id}"
+    invitation_emails = family_section.css("[data-admin-invitation-role-section]").flat_map do |section|
       section.css("[data-admin-invitation-email]").map { |row| row["data-admin-invitation-email"] }
     end
 
     expected_order = [ earlier_admin_invite, admin_invite, member_invite, guest_invite ].map(&:email)
-    assert_equal expected_order, invitation_emails & expected_order
+    assert_equal expected_order, invitation_emails
   end
 
   private

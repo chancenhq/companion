@@ -2,10 +2,7 @@
 
 module Admin
   class UsersController < Admin::BaseController
-    ROLE_ORDER = %w[super_admin admin member guest].freeze
-
     before_action :set_user, only: %i[update]
-    helper_method :admin_user_role_order
 
     def index
       authorize User
@@ -27,8 +24,9 @@ module Admin
       ).to_a
 
       users_by_family = users.group_by(&:family).transform_values do |family_users|
-        family_users.sort_by { |user| user_sort_key(user) }
+        family_users.sort_by(&:sort_key)
       end
+      @user_sections_by_family = users_by_family.transform_values { |family_users| user_role_sections(family_users) }
 
       family_ids = users.map(&:family_id).uniq
       @accounts_count_by_family = Account.where(family_id: family_ids).group(:family_id).count
@@ -46,7 +44,8 @@ module Admin
         .where(family_id: family_ids)
         .to_a
         .group_by(&:family_id)
-        .transform_values { |invitations| invitations.sort_by { |invitation| invitation_sort_key(invitation) } }
+        .transform_values { |invitations| invitations.sort_by(&:sort_key) }
+      @invitation_sections_by_family = @invitations_by_family.transform_values { |invitations| invitation_role_sections(invitations) }
 
       @trials_expiring_in_7_days = Subscription
         .where(status: :trialing)
@@ -80,24 +79,64 @@ module Admin
         params.require(:user).permit(:role)
       end
 
-      def admin_user_role_order
-        ROLE_ORDER
+      def user_role_sections(users)
+        records_by_role(users).map do |role, role_users|
+          {
+            role: role,
+            role_label: role_label(role),
+            users: role_users
+          }
+        end
       end
 
-      def user_sort_key(user)
-        [
-          ROLE_ORDER.index(user.role) || ROLE_ORDER.length,
-          (user.first_name.presence || user.display_name).to_s.downcase,
-          user.last_name.to_s.downcase,
-          user.email.to_s.downcase
-        ]
+      def invitation_role_sections(invitations)
+        records_by_role(invitations).map do |role, role_invitations|
+          role_label = role_label(role)
+
+          {
+            role: role,
+            role_label: role_label,
+            invitations: role_invitations.map do |invitation|
+              {
+                invitation: invitation,
+                delete_confirm: invitation_delete_confirm(invitation)
+              }
+            end,
+            delete_all_confirm: invitation_delete_all_confirm(role_label, role_invitations.size)
+          }
+        end
       end
 
-      def invitation_sort_key(invitation)
-        [
-          ROLE_ORDER.index(invitation.role) || ROLE_ORDER.length,
-          invitation.email.to_s.downcase
-        ]
+      def records_by_role(records)
+        grouped_records = records.group_by(&:role)
+
+        User.role_order.filter_map do |role|
+          role_records = grouped_records[role]
+          [ role, role_records ] if role_records.present?
+        end
+      end
+
+      def role_label(role)
+        t("admin.users.index.roles.#{role}", default: role.to_s.humanize)
+      end
+
+      def invitation_delete_confirm(invitation)
+        CustomConfirm.new(
+          title: t("admin.users.index.invitations.delete_confirm_title", email: invitation.email),
+          body: t("admin.users.index.invitations.delete_confirm_body"),
+          btn_text: t("admin.users.index.invitations.delete"),
+          destructive: true
+        )
+      end
+
+      def invitation_delete_all_confirm(role_label, count)
+        CustomConfirm.new(
+          title: t("admin.users.index.invitations.delete_all_confirm_title", count: count, role: role_label),
+          body: t("admin.users.index.invitations.delete_all_confirm_body", role: role_label),
+          btn_text: t("admin.users.index.invitations.delete_all"),
+          destructive: true,
+          high_severity: true
+        )
       end
 
       def apply_trial_filter(scope)

@@ -50,8 +50,10 @@
     <% if @families_with_users.any? %>
       <div class="space-y-4">
         <% @families_with_users.each do |family, users| %>
-          <% pending_invitations = @invitations_by_family[family.id] || [] %>
+          <% user_sections = @user_sections_by_family[family.id] || [] %>
+          <% invitation_sections = @invitation_sections_by_family[family.id] || [] %>
           <details class="bg-container-inset rounded-lg overflow-hidden group"
+                   data-admin-family-id="<%= family.id %>"
                    data-controller="admin-invitation-delete">
             <summary class="flex items-center justify-between gap-4 px-4 py-3 cursor-pointer select-none hover:bg-surface-hover">
               <div class="flex items-center gap-3">
@@ -92,17 +94,14 @@
                 <div class="text-right text-xs font-medium text-secondary uppercase"><%= t(".table.role") %></div>
               </div>
 
-              <% users_by_role = users.group_by(&:role) %>
-              <% admin_user_role_order.each do |role| %>
-                <% role_users = users_by_role[role] || [] %>
-                <% next if role_users.empty? %>
+              <% user_sections.each do |section| %>
 
-                <details open class="group border-b border-primary last:border-b-0" data-admin-role-section="<%= role %>">
+                <details open class="group border-b border-primary last:border-b-0" data-admin-role-section="<%= section[:role] %>">
                   <summary class="grid grid-cols-4 gap-4 items-center px-4 py-2 cursor-pointer select-none hover:bg-surface-hover">
                     <div class="flex items-center gap-2 text-sm font-medium text-primary">
                       <%= icon "chevron-down", class: "w-4 h-4 text-secondary transition-transform group-open:rotate-180" %>
-                      <span><%= t(".roles.#{role}", default: role.humanize) %></span>
-                      <span class="text-xs text-secondary"><%= t(".role_section_count", count: role_users.size) %></span>
+                      <span><%= section[:role_label] %></span>
+                      <span class="text-xs text-secondary"><%= t(".role_section_count", count: section[:users].size) %></span>
                     </div>
                     <div></div>
                     <div></div>
@@ -111,7 +110,7 @@
 
                   <table class="w-full">
                     <tbody class="divide-y divide-alpha-black-200 theme-dark:divide-alpha-white-200">
-                      <% role_users.each do |user| %>
+                      <% section[:users].each do |user| %>
                         <tr data-admin-user-email="<%= user.email %>">
                           <td class="px-4 py-3 w-1/2">
                             <div class="flex items-center gap-3">
@@ -155,36 +154,29 @@
                 </details>
               <% end %>
 
-              <% if pending_invitations.any? %>
+              <% if invitation_sections.any? %>
                 <div class="border-t border-dashed border-primary">
-                  <% invitations_by_role = pending_invitations.group_by(&:role) %>
-                  <% admin_user_role_order.each do |role| %>
-                    <% role_invitations = invitations_by_role[role] || [] %>
-                    <% next if role_invitations.empty? %>
-                    <% delete_all_confirm = CustomConfirm.new(
-                         title: t(".invitations.delete_all_confirm_title", count: role_invitations.size),
-                         body: t(".invitations.delete_all_confirm_body"),
-                         btn_text: t(".invitations.delete_all"),
-                         destructive: true,
-                         high_severity: true
-                       ) %>
-
-                    <details open class="group border-b border-primary last:border-b-0" data-admin-invitation-role-section="<%= role %>">
+                  <% invitation_sections.each do |section| %>
+                    <details open class="group border-b border-primary last:border-b-0" data-admin-invitation-role-section="<%= section[:role] %>">
                       <summary class="grid grid-cols-4 gap-4 items-center px-4 py-2 cursor-pointer select-none hover:bg-surface-hover">
                         <div class="flex items-center gap-2 text-sm font-medium text-secondary">
                           <%= icon "chevron-down", class: "w-4 h-4 text-secondary transition-transform group-open:rotate-180" %>
-                          <span><%= t(".invitations.section_title", role: t(".roles.#{role}", default: role.humanize)) %></span>
-                          <span class="text-xs text-secondary"><%= t(".invitation_section_count", count: role_invitations.size) %></span>
+                          <span><%= t(".invitations.section_title", role: section[:role_label]) %></span>
+                          <span class="text-xs text-secondary"><%= t(".invitation_section_count", count: section[:invitations].size) %></span>
                         </div>
                         <div></div>
                         <div></div>
+                        <div></div>
+                      </summary>
+
+                      <div class="grid grid-cols-4 gap-4 items-center px-4 py-2 bg-surface-default border-t border-primary">
+                        <div></div>
+                        <div></div>
+                        <div></div>
                         <div class="text-right">
-                          <%= form_with url: invitations_admin_family_path(family, role: role), method: :delete,
+                          <%= form_with url: invitations_admin_family_path(family, role: section[:role]), method: :delete,
                                         class: "inline-flex justify-end",
-                                        data: {
-                                          action: "click->admin-invitation-delete#stopPropagation",
-                                          turbo_confirm: delete_all_confirm.to_data_attribute
-                                        } do |f| %>
+                                        data: { turbo_confirm: section[:delete_all_confirm].to_data_attribute } do |f| %>
                             <%= render DS::Button.new(
                                   variant: :outline_destructive,
                                   size: :sm,
@@ -193,17 +185,12 @@
                                 ) %>
                           <% end %>
                         </div>
-                      </summary>
+                      </div>
 
                       <table class="w-full">
                         <tbody class="divide-y divide-alpha-black-200 theme-dark:divide-alpha-white-200">
-                          <% role_invitations.each do |invitation| %>
-                            <% delete_confirm = CustomConfirm.new(
-                                 title: t(".invitations.delete_confirm_title", email: invitation.email),
-                                 body: t(".invitations.delete_confirm_body"),
-                                 btn_text: t(".invitations.delete"),
-                                 destructive: true
-                               ) %>
+                          <% section[:invitations].each do |invitation_row| %>
+                            <% invitation = invitation_row[:invitation] %>
                             <tr class="bg-destructive/10" data-admin-invitation-email="<%= invitation.email %>">
                               <td class="px-4 py-3 w-1/2">
                                 <div class="flex items-center gap-3">
@@ -221,7 +208,7 @@
                                 —
                               </td>
                               <td class="px-4 py-3 text-right w-1/4">
-                                <%= form_with url: admin_invitation_path(invitation), method: :delete, class: "inline-flex justify-end", data: { turbo_confirm: delete_confirm.to_data_attribute } do |f| %>
+                                <%= form_with url: admin_invitation_path(invitation), method: :delete, class: "inline-flex justify-end", data: { turbo_confirm: invitation_row[:delete_confirm].to_data_attribute } do |f| %>
                                   <%= render DS::Button.new(
                                         variant: :outline_destructive,
                                         size: :sm,

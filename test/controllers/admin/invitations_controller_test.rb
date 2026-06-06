@@ -9,7 +9,9 @@ class Admin::InvitationsControllerTest < ActionDispatch::IntegrationTest
   test "destroy all only deletes pending invitations for requested role" do
     family = users(:family_admin).family
     admin_invite = invitations(:two)
+    assert_equal "admin", admin_invite.role, "Fixture setup: invitations(:two) must be admin role"
     member_invite = invitations(:one)
+    assert_equal "member", member_invite.role, "Fixture setup: invitations(:one) must be member role"
     guest_invite = family.invitations.create!(
       email: "role-delete-guest@example.com",
       role: "guest",

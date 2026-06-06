@@ -24,8 +24,19 @@ class Invitation < ApplicationRecord
   scope :pending, -> { where(accepted_at: nil).where("expires_at > ?", Time.current) }
   scope :accepted, -> { where.not(accepted_at: nil) }
 
+  def self.role_order
+    User.role_order
+  end
+
   def pending?
     accepted_at.nil? && expires_at > Time.current
+  end
+
+  def sort_key
+    [
+      self.class.role_order.index(role) || self.class.role_order.length,
+      email.to_s.downcase
+    ]
   end
 
   def accept_for(user)

@@ -58,9 +58,9 @@ en:
           delete_confirm_body: "This invitation will be removed. This is not reversible."
           delete_all: "Delete All"
           delete_all_confirm_title:
-            one: "Delete 1 invite?"
-            other: "Delete %{count} invites?"
-          delete_all_confirm_body: "Only invites in this role section will be removed. This is not reversible."
+            one: "Delete 1 %{role} invite?"
+            other: "Delete %{count} %{role} invites?"
+          delete_all_confirm_body: "Only %{role} invites in this role section will be removed. This is not reversible."
       update:
         success: "User role updated successfully."
         failure: "Failed to update user role."

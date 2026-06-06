@@ -57,8 +57,14 @@ class User < ApplicationRecord
   enum :role, { guest: "guest", member: "member", admin: "admin", super_admin: "super_admin" }, validate: true
   enum :ui_layout, { dashboard: "dashboard", intro: "intro" }, validate: true, prefix: true
 
+  ROLE_ORDER = %w[super_admin admin member guest].freeze
+
   before_validation :apply_ui_layout_defaults
   before_validation :apply_role_based_ui_defaults
+
+  def self.role_order
+    ROLE_ORDER
+  end
 
   # Returns the appropriate role for a new user creating a family.
   # The very first user of an instance becomes super_admin; subsequent users
@@ -129,6 +135,15 @@ class User < ApplicationRecord
 
   def display_name
     [ first_name, last_name ].compact.join(" ").presence || email
+  end
+
+  def sort_key
+    [
+      self.class.role_order.index(role) || self.class.role_order.length,
+      (first_name.presence || display_name).to_s.downcase,
+      last_name.to_s.downcase,
+      email.to_s.downcase
+    ]
   end
 
   def initial
