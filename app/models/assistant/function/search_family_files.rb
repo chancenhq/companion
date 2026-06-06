@@ -12,7 +12,7 @@ class Assistant::Function::SearchFamilyFiles < Assistant::Function
         Call this tool if you get a general question about Chancen, Income Share Agreements,
         the ISA Global Alliance and Chancen Board meetings - or anytime you need specific
         information about a topic you need specialist knowledge about.
-        
+
         Always call this tool whenever a student asks about Chancen, Income Share
         Agreements (ISAs), or ISA-related concepts, even if they do not say 'Chancen'
         or 'ISA'. ISA-related concepts include: repayment amounts/percentages,
