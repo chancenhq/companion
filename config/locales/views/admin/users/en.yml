@@ -13,6 +13,12 @@ en:
         unnamed_family: "Unnamed Family/Group"
         no_subscription: "No subscription"
         family_summary: "%{members} members · %{accounts} accounts · %{transactions} transactions"
+        role_section_count:
+          one: "1 user"
+          other: "%{count} users"
+        invitation_section_count:
+          one: "1 invite"
+          other: "%{count} invites"
         filters:
           role: "Role"
           role_all: "All roles"
@@ -45,9 +51,16 @@ en:
           super_admin: "Instance administrator. Can manage SSO providers, user roles, and impersonate users for support."
         invitations:
           pending_label: "Invited (pending)"
+          section_title: "%{role} invites"
           expires: "Expires %{date}"
           delete: "Delete"
+          delete_confirm_title: "Delete invite for %{email}?"
+          delete_confirm_body: "This invitation will be removed. This is not reversible."
           delete_all: "Delete All"
+          delete_all_confirm_title:
+            one: "Delete 1 %{role} invite?"
+            other: "Delete %{count} %{role} invites?"
+          delete_all_confirm_body: "Only %{role} invites in this role section will be removed. This is not reversible."
       update:
         success: "User role updated successfully."
         failure: "Failed to update user role."
