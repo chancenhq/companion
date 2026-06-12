@@ -1,0 +1,26 @@
+<div class="space-y-4">
+  <div>
+    <h2 class="font-medium mb-1"><%= t(".title") %></h2>
+    <p class="text-secondary text-sm mb-4"><%= t(".description") %></p>
+  </div>
+
+  <%= styled_form_with model: Setting.new,
+                       url: settings_hosting_path,
+                       method: :patch,
+                       class: "space-y-4",
+                       data: {
+                         controller: "auto-submit-form",
+                         "auto-submit-form-trigger-event-value": "blur"
+                       } do |form| %>
+    <%= form.text_field :chancen_student_sheet_url,
+                        label: t(".url_label"),
+                        placeholder: t(".url_placeholder"),
+                        value: Setting.chancen_student_sheet_url,
+                        autocomplete: "off",
+                        autocapitalize: "none",
+                        spellcheck: "false",
+                        inputmode: "url",
+                        data: { "auto-submit-form-target": "auto" } %>
+    <p class="text-xs text-secondary"><%= t(".url_help") %></p>
+  <% end %>
+</div>

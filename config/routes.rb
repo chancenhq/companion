@@ -490,6 +490,8 @@ Rails.application.routes.draw do
         end
       end
 
+      resource :my_account, only: :show, controller: :my_account
+
       get "users/reset/status", to: "users#reset_status"
       delete "users/reset", to: "users#reset"
       delete "users/me", to: "users#destroy"

@@ -1567,7 +1567,29 @@ RSpec.configure do |config|
               }
             }
           }
-        }
+        },
+          StudentAccount: {
+            type: :object,
+            required: %w[email status total_financed repayments_received max_amount installments_paid max_installments currency],
+            properties: {
+              email: { type: :string, format: :email },
+              status: { type: :string, enum: %w[contract_signed repaying paused service_fee_mode completed defaulted graduated] },
+              total_financed: { type: :number, format: :float },
+              repayments_received: { type: :number, format: :float },
+              max_amount: { type: :number, format: :float },
+              installments_paid: { type: :integer },
+              max_installments: { type: :integer },
+              currency: { type: :string }
+            }
+          },
+          MobileVersion: {
+            type: :object,
+            required: %w[android ios],
+            properties: {
+              android: { type: :string, example: "1.0.0" },
+              ios: { type: :string, example: "1.0.0" }
+            }
+          }
       }
     }
   }

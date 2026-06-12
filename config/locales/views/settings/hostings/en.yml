@@ -24,7 +24,14 @@ en:
         sync_settings: Sync Settings
         invites: Invite Codes
         title: Self-Hosting
+        chancen_student_data: Chancen Student Data
         danger_zone: Danger Zone
+      chancen_student_data:
+        title: Student Account Data
+        description: Connect a Google Sheet containing student ISA account data for display in the Companion mobile app.
+        url_label: Google Sheets sharing URL
+        url_placeholder: "https://docs.google.com/spreadsheets/d/..."
+        url_help: Paste the sharing URL of your Google Sheet. The sheet must be shared publicly (Anyone with the link - Viewer).
         clear_cache: Clear data cache
         clear_cache_warning: Clearing the data cache will remove all exchange rates, security prices, account balances, and other data. This will not delete accounts, transactions, categories, or other user-owned data.
         confirm_clear_cache:
