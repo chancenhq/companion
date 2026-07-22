@@ -14,7 +14,7 @@ class SheetInsightsFetcher
     "Repayment Percentage"    => :repayment_percentage,
     "Maximum Financed Amount" => :maximum_financed_amount,
     "Total Repaid So Far"     => :total_repaid_so_far,
-    "Installments Paid"       => :installments_paid,
+    "installments_paid"       => :installments_paid,
     "Max Installments"        => :max_installments,
     "Currency"                => :currency,
     "Institution"             => :institution

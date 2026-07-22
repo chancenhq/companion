@@ -63,6 +63,7 @@ compose-dev.yaml
 
 # Ignore GCP keyfile
 gcp-storage-keyfile.json
+sheets_reader.json
 
 coverage
 .cursorrules
