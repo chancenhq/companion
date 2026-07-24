@@ -1,12 +1,12 @@
 # Companion TestFlight Assets
 
 Package: `companion`
-Identifier: `com.chancen.companion`
+Identifier: `international.chancen.companion`
 Team: Chancen International Services Ltd (`ZJ46XS79LS`)
 
 ## Required build inputs
 
-- `APP_BUNDLE_IDENTIFIER=com.chancen.companion`
+- `APP_BUNDLE_IDENTIFIER=international.chancen.companion`
 - `APP_DISPLAY_NAME=Companion`
 - `app_icon.png` (build source for launcher/icon generation)
 
@@ -14,7 +14,7 @@ Team: Chancen International Services Ltd (`ZJ46XS79LS`)
 
 - App Store Distribution certificate (`.p12` + password)
 - Distribution certificate private key importable on CI runner keychain
-- App Store provisioning profile scoped to `com.chancen.companion`
+- App Store provisioning profile scoped to `international.chancen.companion`
 - App Store Connect API key (`.p8`) + key ID + issuer ID
 - App Store icon (1024x1024 PNG) uploaded in App Store Connect for the Companion app listing
 
@@ -33,7 +33,7 @@ Team: Chancen International Services Ltd (`ZJ46XS79LS`)
 
 ## App Store Connect items to verify per upload
 
-- Bundle ID set to `com.chancen.companion`
+- Bundle ID set to `international.chancen.companion`
 - App name and subtitle are final for this product
 - Privacy/permissions text is accurate
 - Screenshots and marketing metadata for this brand are set (if you publish the storefront page)
@@ -43,7 +43,7 @@ Team: Chancen International Services Ltd (`ZJ46XS79LS`)
 
 ```bash
 cd /Users/jjmata/.codex/worktrees/53b2/companion/mobile
-APP_BUNDLE_IDENTIFIER=com.chancen.companion \
+APP_BUNDLE_IDENTIFIER=international.chancen.companion \
 APP_DISPLAY_NAME="Companion" \
 flutter build ios --release --no-codesign
 ```
