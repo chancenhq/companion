@@ -1,16 +1,223 @@
 <% content_for :title, t(".title") %>
 
-<div class="flex items-center justify-center h-full p-4 sm:p-6 lg:p-8">
-  <div class="w-full max-w-md sm:max-w-lg lg:max-w-2xl">
-    <div class="bg-container border border-primary rounded-xl p-6 sm:p-8 shadow-sm">
-      <div class="text-center">
-        <h1 class="text-xl sm:text-2xl font-bold text-primary mb-4">
-          <%= @country_name ? t(".heading_country", country: @country_name) : t(".heading") %>
-        </h1>
-        <p class="text-sm sm:text-base text-subdued">
-          <%= @country_name ? t(".placeholder_country", country: @country_name) : t(".placeholder") %>
-        </p>
-      </div>
+<div class="max-w-3xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+  <div class="bg-container border border-primary rounded-xl p-6 sm:p-10 shadow-sm">
+
+    <%# Header %>
+    <div class="mb-8 pb-6 border-b border-primary">
+      <h1 class="text-2xl sm:text-3xl font-bold text-primary mb-2">Master Privacy Policy</h1>
+      <p class="text-base font-semibold text-primary mb-4">Chancen Companion Mobile App</p>
+      <dl class="text-sm text-subdued space-y-1">
+        <div><dt class="inline font-medium text-primary">Entity:</dt> <dd class="inline">Chancen International Services</dd></div>
+        <div><dt class="inline font-medium text-primary">Effective Date:</dt> <dd class="inline">13.04.2026</dd></div>
+        <div><dt class="inline font-medium text-primary">Review Cycle:</dt> <dd class="inline">Annual (or earlier if required)</dd></div>
+      </dl>
+    </div>
+
+    <div class="prose prose-sm sm:prose max-w-none text-primary space-y-8">
+
+      <%# Section 1 %>
+      <section>
+        <h2 class="text-lg font-bold text-primary mb-3">1. Introduction</h2>
+        <p class="text-subdued mb-3">Chancen Companion (the <strong>"App"</strong>) helps students and graduates understand their Income Share Agreements (ISAs), build money skills, and explore career options.</p>
+        <p class="text-subdued mb-3">This <strong>Master Privacy Policy</strong> explains how personal data is collected, used, shared, and protected across the App. We write in clear, plain language so you can understand your rights and choices.</p>
+        <p class="text-subdued">Where required by local law, <strong>country-specific Privacy Policies apply and take precedence</strong>. You will see the policy that applies to you when you log in to the App.</p>
+      </section>
+
+      <%# Section 2 %>
+      <section>
+        <h2 class="text-lg font-bold text-primary mb-3">2. Who Controls Your Data</h2>
+
+        <h3 class="text-base font-semibold text-primary mb-2">App Publisher and Platform Operator</h3>
+        <div class="bg-secondary rounded-lg p-4 mb-4 text-sm text-subdued">
+          <p class="font-semibold text-primary mb-1">Chancen Africa HoldCo (UK)</p>
+          <p>Publisher of the App on Google Play and owner of the Companion platform. Chancen Africa HoldCo operates the App and, where applicable, processes personal data on behalf of local Data Controllers.</p>
+        </div>
+
+        <h3 class="text-base font-semibold text-primary mb-2">Local Data Controllers</h3>
+        <p class="text-subdued mb-3">Your personal data is controlled by the Chancen entity in your country:</p>
+        <ul class="list-none space-y-4 text-sm text-subdued">
+          <li class="bg-secondary rounded-lg p-4">
+            <p class="font-semibold text-primary mb-1">Kenya — Chancen Kenya Ltd</p>
+            <p>Email: <a href="mailto:privacy.ke@chancen.org" class="text-accent hover:underline">privacy.ke@chancen.org</a></p>
+            <p>Postal: P.O BOX 22494, Ngong Road</p>
+            <p>Location: Jasmine Centre, Waiyaki Way, Westlands, Nairobi</p>
+          </li>
+          <li class="bg-secondary rounded-lg p-4">
+            <p class="font-semibold text-primary mb-1">South Africa — Khanilor NPC (Chancen South Africa)</p>
+            <p>Email: <a href="mailto:privacy.za@chancen.org" class="text-accent hover:underline">privacy.za@chancen.org</a></p>
+            <p>Location: Maxwell Dr, Sandton Midrand, 21918 Johannesburg, South Africa</p>
+          </li>
+          <li class="bg-secondary rounded-lg p-4">
+            <p class="font-semibold text-primary mb-1">Rwanda — Chancen International Rwanda Ltd</p>
+            <p>Email: <a href="mailto:privacy.rw@chancen.org" class="text-accent hover:underline">privacy.rw@chancen.org</a></p>
+            <p>Location: KK 15 Road, CPR Unity House, 2nd Floor, Kicukiro, Kigali, Rwanda</p>
+          </li>
+        </ul>
+        <p class="text-subdued mt-4">At launch, each country subsidiary controls only its own users' data, and no cross-country sharing of user personal data occurs.</p>
+      </section>
+
+      <%# Section 3 %>
+      <section>
+        <h2 class="text-lg font-bold text-primary mb-3">3. Scope and Application</h2>
+        <p class="text-subdued mb-3">This Master Privacy Policy describes our overall approach to data protection across the Companion platform.</p>
+        <p class="text-subdued">If you are shown a country-specific Privacy Policy, that policy governs how your data is processed in your country. If there is any conflict, the <strong>country-specific policy applies</strong>.</p>
+      </section>
+
+      <%# Section 4 %>
+      <section>
+        <h2 class="text-lg font-bold text-primary mb-3">4. Personal Data We Collect</h2>
+        <p class="text-subdued mb-4">We collect information you provide and information generated through your use of the App, including:</p>
+
+        <h3 class="text-base font-semibold text-primary mb-2">Identity and Contact Data</h3>
+        <p class="text-subdued mb-4">Name, email address, date of birth.</p>
+
+        <h3 class="text-base font-semibold text-primary mb-2">Account and ISA Data</h3>
+        <p class="text-subdued mb-4">ISA status, payment schedules, repayment history, account identifiers, application and enrolment details.</p>
+
+        <h3 class="text-base font-semibold text-primary mb-2">Device and Technical Data</h3>
+        <p class="text-subdued mb-4">Device model, operating system, app version, unique app or device identifiers, IP address, crash logs, mobile network information.</p>
+
+        <h3 class="text-base font-semibold text-primary mb-2">Usage Data</h3>
+        <p class="text-subdued mb-4">Features used, pages viewed, timestamps, and chatbot interactions (questions and responses).</p>
+
+        <h3 class="text-base font-semibold text-primary mb-2">Communications</h3>
+        <p class="text-subdued mb-4">Messages sent to support or the chatbot, feedback, and survey responses.</p>
+
+        <h3 class="text-base font-semibold text-primary mb-2">Location Data</h3>
+        <p class="text-subdued mb-4"><strong>Country-level location only</strong>, detected from IP address or device settings, used solely to display the correct local policy and content.</p>
+
+        <h3 class="text-base font-semibold text-primary mb-2">Sensitive Data</h3>
+        <p class="text-subdued">We do <strong>not</strong> intentionally collect special category data (such as health, race, or religion). If you voluntarily include sensitive information in free-text fields, we will treat it with extra care and process it only where lawful and necessary.</p>
+      </section>
+
+      <%# Section 5 %>
+      <section>
+        <h2 class="text-lg font-bold text-primary mb-3">5. How We Use Personal Data and Our Legal Bases</h2>
+        <p class="text-subdued mb-3">We process personal data for the following purposes:</p>
+        <ul class="list-disc list-outside ml-5 text-subdued space-y-2">
+          <li><strong>To provide the App and manage your account</strong> — performance of a contract</li>
+          <li><strong>To display and explain ISA-related information</strong> — performance of a contract; legal obligation</li>
+          <li><strong>To operate, maintain, and improve the App</strong> — legitimate interests, balanced against your rights</li>
+          <li><strong>To send service messages and important updates</strong> — contract performance or legal obligation</li>
+          <li><strong>To send marketing or promotional messages</strong> — your consent (you can withdraw consent at any time via App settings)</li>
+          <li><strong>To comply with laws and respond to lawful requests</strong> — legal obligation</li>
+          <li><strong>To protect users and the App from fraud or misuse</strong> — legitimate interests</li>
+        </ul>
+      </section>
+
+      <%# Section 6 %>
+      <section>
+        <h2 class="text-lg font-bold text-primary mb-3">6. Sharing and Disclosure of Data</h2>
+
+        <h3 class="text-base font-semibold text-primary mb-2">Local Control</h3>
+        <p class="text-subdued mb-4">Each country subsidiary controls only the personal data of users in its country. No cross-country sharing of user personal data occurs at launch.</p>
+
+        <h3 class="text-base font-semibold text-primary mb-2">Service Providers</h3>
+        <p class="text-subdued mb-3">We may share personal data with trusted third-party service providers (such as hosting, analytics, and messaging providers). These providers:</p>
+        <ul class="list-disc list-outside ml-5 text-subdued space-y-1 mb-4">
+          <li>Act only on our instructions</li>
+          <li>Are contractually required to protect your data</li>
+          <li>Are not permitted to use your data for their own purposes</li>
+        </ul>
+
+        <h3 class="text-base font-semibold text-primary mb-2">Legal Requirements</h3>
+        <p class="text-subdued mb-4">We may disclose data where required to comply with laws, court orders, or to protect rights, safety, or property.</p>
+
+        <h3 class="text-base font-semibold text-primary mb-2">Business Transfers</h3>
+        <p class="text-subdued mb-4">If the App or a Chancen entity is involved in a merger, acquisition, or sale, personal data may be transferred as part of that transaction. We will notify affected users where required by law.</p>
+
+        <h3 class="text-base font-semibold text-primary mb-2">No Sale of Personal Data</h3>
+        <p class="text-subdued font-medium">We do not sell personal data.</p>
+      </section>
+
+      <%# Section 7 %>
+      <section>
+        <h2 class="text-lg font-bold text-primary mb-3">7. International Data Transfers</h2>
+        <p class="text-subdued mb-3">At launch, <strong>cross-country transfers of user personal data are not part of our operations</strong>.</p>
+        <p class="text-subdued">If international transfers are introduced in the future, we will ensure appropriate safeguards are in place (such as standard contractual clauses or equivalent protections) and update our policies as required by law.</p>
+      </section>
+
+      <%# Section 8 %>
+      <section>
+        <h2 class="text-lg font-bold text-primary mb-3">8. Data Retention</h2>
+        <p class="text-subdued mb-3">We retain personal data only for as long as necessary, in line with the purpose for which it was collected and applicable legal obligations.</p>
+        <p class="text-subdued mb-3">Typical retention periods include:</p>
+        <ul class="list-disc list-outside ml-5 text-subdued space-y-1 mb-3">
+          <li><strong>Account and ISA records:</strong> for the duration of the ISA and a reasonable period after repayment (typically 7 years, unless local law requires otherwise)</li>
+          <li><strong>Support communications:</strong> typically 2 years</li>
+          <li><strong>Analytics and logs:</strong> retained in aggregated or pseudonymised form where possible (typically 2 years)</li>
+        </ul>
+        <p class="text-subdued">Data is deleted or anonymised when no longer required, unless the law requires longer retention. All Data Controllers are subsidiaries of the Publisher and have inter-company data sharing rights.</p>
+      </section>
+
+      <%# Section 9 %>
+      <section>
+        <h2 class="text-lg font-bold text-primary mb-3">9. Your Rights</h2>
+        <p class="text-subdued mb-3">Depending on your location, you may have the right to:</p>
+        <ul class="list-disc list-outside ml-5 text-subdued space-y-1 mb-3">
+          <li>Access your personal data</li>
+          <li>Correct inaccurate or incomplete data</li>
+          <li>Request deletion of your data</li>
+          <li>Restrict or object to certain processing</li>
+          <li>Receive your data in a portable format</li>
+          <li>Withdraw consent where processing is based on consent</li>
+        </ul>
+        <p class="text-subdued">To exercise your rights, contact your local Data Controller or email <a href="mailto:privacy@chancen.org" class="text-accent hover:underline">privacy@chancen.org</a>. We may verify your identity before responding. You may also lodge a complaint with your local data protection authority.</p>
+      </section>
+
+      <%# Section 10 %>
+      <section>
+        <h2 class="text-lg font-bold text-primary mb-3">10. Security Measures</h2>
+        <p class="text-subdued mb-3">We use reasonable technical and organisational measures to protect personal data, including encryption in transit, access controls, and regular security testing.</p>
+        <p class="text-subdued">No system is completely secure. If a data breach occurs that creates a risk to your rights, we will notify affected users and regulators as required by law.</p>
+      </section>
+
+      <%# Section 11 %>
+      <section>
+        <h2 class="text-lg font-bold text-primary mb-3">11. Safeguards for Vulnerable Users</h2>
+        <p class="text-subdued mb-3">We design the App to be accessible and respectful. We:</p>
+        <ul class="list-disc list-outside ml-5 text-subdued space-y-1">
+          <li>Use clear, plain language</li>
+          <li>Avoid aggressive or coercive practices</li>
+          <li>Provide additional care where vulnerability is disclosed</li>
+          <li>Limit automated decision-making with legal or similarly significant effects and provide human review where applicable</li>
+        </ul>
+      </section>
+
+      <%# Section 12 %>
+      <section>
+        <h2 class="text-lg font-bold text-primary mb-3">12. AI and Chatbot Transparency</h2>
+        <p class="text-subdued mb-3">The App includes an automated chatbot and AI-supported features designed to provide educational information about financial literacy, budgeting, and Income Share Agreements (ISAs).</p>
+        <p class="text-subdued mb-3">The chatbot is intended for <strong>general informational and educational purposes only</strong>. It does not provide personalised financial advice, legal advice, tax advice, or binding interpretations of ISA contracts.</p>
+        <p class="text-subdued mb-3">While we strive to provide accurate and helpful information, AI systems may generate incomplete, outdated, or incorrect responses. Users should independently verify important information before making financial decisions.</p>
+        <p class="text-subdued mb-3">Official account information — including repayment balances, payment schedules, and contractual terms — is available only through your formal ISA agreement and official account statements. In case of discrepancies, disputes, or uncertainty, users must contact their local Chancen entity directly.</p>
+        <p class="text-subdued">All financial decisions remain the responsibility of the user.</p>
+      </section>
+
+      <%# Section 13 %>
+      <section>
+        <h2 class="text-lg font-bold text-primary mb-3">13. Cookies and Similar Technologies</h2>
+        <p class="text-subdued">We use cookies and similar technologies (such as SDKs and app identifiers) for essential app functionality, analytics, and optional personalisation. You can manage preferences in the App settings where available.</p>
+      </section>
+
+      <%# Section 14 %>
+      <section>
+        <h2 class="text-lg font-bold text-primary mb-3">14. Changes to This Policy</h2>
+        <p class="text-subdued">We may update this Master Privacy Policy from time to time. If changes are material, we will notify you through the App or by email. The policy shown at login will reflect what applies to you.</p>
+      </section>
+
+      <%# Section 15 %>
+      <section>
+        <h2 class="text-lg font-bold text-primary mb-3">15. Contact</h2>
+        <p class="text-subdued mb-3">For privacy questions, data requests, or complaints:</p>
+        <div class="bg-secondary rounded-lg p-4 text-sm text-subdued">
+          <p class="font-semibold text-primary mb-1">Global Privacy Contact</p>
+          <p>Email: <a href="mailto:privacy@chancen.org" class="text-accent hover:underline">privacy@chancen.org</a></p>
+          <p class="mt-2 text-xs">For local Data Controllers, see Section 2 above.</p>
+        </div>
+      </section>
+
     </div>
   </div>
 </div>
