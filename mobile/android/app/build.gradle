@@ -79,7 +79,7 @@ android {
     defaultConfig {
         applicationId "tech.chancen.companion"
         minSdkVersion 24
-        targetSdkVersion flutter.targetSdkVersion
+        targetSdkVersion 36
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
     }
@@ -98,4 +98,3 @@ android {
 flutter {
     source '../..'
 }
-
