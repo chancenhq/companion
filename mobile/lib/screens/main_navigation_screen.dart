@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import 'chat_list_screen.dart';
 import 'dashboard_screen.dart';
-import 'intro_screen.dart';
+import 'insights_screen.dart';
 import 'more_screen.dart';
 import 'settings_screen.dart';
 
@@ -28,7 +28,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     }
 
     if (introLayout) {
-      screens.add(IntroScreen(onStartChat: onStartChat));
+      screens.add(InsightsScreen(onStartChat: onStartChat));
     }
 
     screens.add(const ChatListScreen());
