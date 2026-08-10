@@ -90,7 +90,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         const NavigationDestination(
           icon: Icon(Icons.auto_awesome_outlined),
           selectedIcon: Icon(Icons.auto_awesome),
-          label: 'Intro',
+          label: 'Account',
         ),
       );
     }
