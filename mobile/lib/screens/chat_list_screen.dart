@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
+import '../widgets/ai_disabled_empty_state.dart';
 import 'chat_conversation_screen.dart';
+
+const Color _kPurple = Color(0xFF986EF9);
 
 class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
@@ -70,6 +73,16 @@ class _ChatListScreenState extends State<ChatListScreen> {
   Future<void> _deleteSelectedChats() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+
+    if (!authProvider.aiEnabled) {
+      chatProvider.clearChats();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('AI is not enabled yet for this account.'),
+        ),
+      );
+      return;
+    }
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -198,11 +211,61 @@ class _ChatListScreenState extends State<ChatListScreen> {
           ],
         ],
       ),
-      body: Consumer<ChatProvider>(
-        builder: (context, chatProvider, _) {
-          if (chatProvider.isLoading && chatProvider.chats.isEmpty) {
+      body: Consumer2<AuthProvider, ChatProvider>(
+        builder: (context, authProvider, chatProvider, _) {
+          if (chatProvider.isLoading && chatProvider.chats.isEmpty && !chatProvider.aiConsentRequired) {
             return const Center(
               child: CircularProgressIndicator(),
+            );
+          }
+
+          if (chatProvider.aiUnavailable || chatProvider.aiConsentRequired) {
+            return AiDisabledEmptyState(
+              action: Column(
+                children: [
+                  if (chatProvider.errorMessage != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        chatProvider.errorMessage!,
+                        style: TextStyle(color: Theme.of(context).colorScheme.error),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _kPurple,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: chatProvider.isLoading
+                          ? null
+                          : () async {
+                              final token = await authProvider.getValidAccessToken();
+                              if (token == null) {
+                                await authProvider.logout();
+                                return;
+                              }
+                              await chatProvider.enableAi(accessToken: token);
+                            },
+                      child: chatProvider.isLoading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text('Enable AI'),
+                    ),
+                  ),
+                ],
+              ),
             );
           }
 
@@ -387,10 +450,18 @@ class _ChatListScreenState extends State<ChatListScreen> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _openNewChat,
-        tooltip: 'New Chat',
-        child: const Icon(Icons.add),
+      floatingActionButton: Consumer<ChatProvider>(
+        builder: (context, chatProvider, _) {
+          if (chatProvider.aiConsentRequired || chatProvider.aiUnavailable) {
+            return const SizedBox.shrink();
+          }
+
+          return FloatingActionButton(
+            onPressed: _openNewChat,
+            tooltip: 'New Chat',
+            child: const Icon(Icons.add),
+          );
+        },
       ),
     );
   }
