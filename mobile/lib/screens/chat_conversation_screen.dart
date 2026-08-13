@@ -10,6 +10,7 @@ import '../providers/chat_provider.dart';
 import '../models/message.dart';
 import '../constants/suggested_questions.dart';
 import '../widgets/typing_indicator.dart';
+import '../widgets/ai_disabled_empty_state.dart';
 
 class _SendMessageIntent extends Intent {
   const _SendMessageIntent();
@@ -138,65 +139,68 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
     setState(() => _isSendInFlight = true);
 
     try {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final chatProvider = Provider.of<ChatProvider>(context, listen: false);
 
-    final accessToken = await authProvider.getValidAccessToken();
-    if (accessToken == null) {
-      await authProvider.logout();
-      return;
-    }
-
-    _messageController.clear();
-
-    if (_chatId == null) {
-      // First message in a new chat — create the chat with it.
-      final chat = await chatProvider.createChat(
-        accessToken: accessToken,
-        title: Chat.generateTitle(content),
-        initialMessage: content,
-      );
-      if (!mounted) return;
-      if (chat == null) {
-        // Restore the message so the user doesn't lose it.
-        _messageController.text = content;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(chatProvider.errorMessage ?? 'Failed to start conversation. Please try again.'),
-            backgroundColor: Colors.red,
-          ),
-        );
+      final accessToken = await authProvider.getValidAccessToken();
+      if (accessToken == null) {
+        await authProvider.logout();
         return;
       }
-      setState(() => _chatId = chat.id);
-    } else {
-      final shouldUpdateTitle =
-          chatProvider.currentChat?.hasDefaultTitle == true;
 
-      final delivered = await chatProvider.sendMessage(
-        accessToken: accessToken,
-        chatId: _chatId!,
-        content: content,
-      );
+      _messageController.clear();
 
-      if (delivered && shouldUpdateTitle) {
-        await chatProvider.updateChatTitle(
+      if (_chatId == null) {
+        // First message in a new chat — create the chat with it.
+        final chat = await chatProvider.createChat(
+          accessToken: accessToken,
+          title: Chat.generateTitle(content),
+          initialMessage: content,
+        );
+        if (!mounted) return;
+        if (chat == null) {
+          // Restore the message so the user doesn't lose it.
+          _messageController.text = content;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                chatProvider.errorMessage ??
+                    'Failed to start conversation. Please try again.',
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+        setState(() => _chatId = chat.id);
+      } else {
+        final shouldUpdateTitle =
+            chatProvider.currentChat?.hasDefaultTitle == true;
+
+        final delivered = await chatProvider.sendMessage(
           accessToken: accessToken,
           chatId: _chatId!,
-          title: Chat.generateTitle(content),
+          content: content,
         );
-      }
-    }
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+        if (delivered && shouldUpdateTitle) {
+          await chatProvider.updateChatTitle(
+            accessToken: accessToken,
+            chatId: _chatId!,
+            title: Chat.generateTitle(content),
+          );
+        }
       }
-    });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
     } finally {
       if (mounted) setState(() => _isSendInFlight = false);
     }
@@ -299,8 +303,17 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
             ),
         ],
       ),
-      body: Consumer<ChatProvider>(
-        builder: (context, chatProvider, _) {
+      body: Consumer2<AuthProvider, ChatProvider>(
+        builder: (context, authProvider, chatProvider, _) {
+          if (chatProvider.aiUnavailable) {
+            return AiDisabledEmptyState(
+              action: OutlinedButton.icon(
+                onPressed: () => Navigator.maybePop(context),
+                icon: const Icon(Icons.arrow_back),
+                label: const Text('Go Back'),
+              ),
+            );
+          }
           if (chatProvider.isLoading && chatProvider.currentChat == null) {
             return const Center(child: CircularProgressIndicator());
           }
