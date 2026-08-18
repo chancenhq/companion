@@ -4,7 +4,8 @@ class AiDisabledEmptyState extends StatelessWidget {
   const AiDisabledEmptyState({
     super.key,
     this.title = 'AI is not enabled yet',
-    this.message = 'Your account does not have AI enabled yet. Once you opt in/it is turned on, conversations with the AI assistant will show here.',
+    this.message =
+        'Your account does not have AI enabled yet. Once you opt in/it is turned on, conversations with the AI assistant will show here.',
     this.action,
   });
 

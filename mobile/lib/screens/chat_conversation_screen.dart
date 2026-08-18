@@ -147,15 +147,6 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final chatProvider = Provider.of<ChatProvider>(context, listen: false);
 
-      if (!authProvider.aiEnabled) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('AI is not enabled yet for this account.'),
-          ),
-        );
-        return;
-      }
-
       final accessToken = await authProvider.getValidAccessToken();
       if (accessToken == null) {
         await authProvider.logout();
@@ -319,7 +310,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
       ),
       body: Consumer2<AuthProvider, ChatProvider>(
         builder: (context, authProvider, chatProvider, _) {
-          if (!authProvider.aiEnabled || chatProvider.isAiFeatureDisabled) {
+          if (chatProvider.aiUnavailable) {
             return AiDisabledEmptyState(
               action: OutlinedButton.icon(
                 onPressed: () => Navigator.maybePop(context),

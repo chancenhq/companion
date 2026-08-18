@@ -5,6 +5,8 @@ import '../providers/chat_provider.dart';
 import '../widgets/ai_disabled_empty_state.dart';
 import 'chat_conversation_screen.dart';
 
+const Color _kPurple = Color(0xFF986EF9);
+
 class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
 
@@ -219,12 +221,59 @@ class _ChatListScreenState extends State<ChatListScreen> {
       ),
       body: Consumer2<AuthProvider, ChatProvider>(
         builder: (context, authProvider, chatProvider, _) {
-          if (!authProvider.aiEnabled || chatProvider.isAiFeatureDisabled) {
-            return const AiDisabledEmptyState();
-          }
-          if (chatProvider.isLoading && chatProvider.chats.isEmpty) {
+          if (chatProvider.isLoading && chatProvider.chats.isEmpty && !chatProvider.aiConsentRequired) {
             return const Center(
               child: CircularProgressIndicator(),
+            );
+          }
+
+          if (chatProvider.aiUnavailable || chatProvider.aiConsentRequired) {
+            return AiDisabledEmptyState(
+              action: Column(
+                children: [
+                  if (chatProvider.errorMessage != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        chatProvider.errorMessage!,
+                        style: TextStyle(color: Theme.of(context).colorScheme.error),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _kPurple,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: chatProvider.isLoading
+                          ? null
+                          : () async {
+                              final token = await authProvider.getValidAccessToken();
+                              if (token == null) {
+                                await authProvider.logout();
+                                return;
+                              }
+                              await chatProvider.enableAi(accessToken: token);
+                            },
+                      child: chatProvider.isLoading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text('Enable AI'),
+                    ),
+                  ),
+                ],
+              ),
             );
           }
 
@@ -409,9 +458,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
           );
         },
       ),
-      floatingActionButton: Consumer<AuthProvider>(
-        builder: (context, authProvider, _) {
-          if (!authProvider.aiEnabled) return const SizedBox.shrink();
+      floatingActionButton: Consumer<ChatProvider>(
+        builder: (context, chatProvider, _) {
+          if (chatProvider.aiConsentRequired || chatProvider.aiUnavailable) {
+            return const SizedBox.shrink();
+          }
 
           return FloatingActionButton(
             onPressed: _openNewChat,

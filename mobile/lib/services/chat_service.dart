@@ -44,7 +44,7 @@ class ChatService {
         return {
           'success': false,
           'error': 'feature_disabled',
-          'message': responseData['message'] ?? 'AI features not enabled',
+          'ai_available': responseData['ai_available'] ?? false,
         };
       } else {
         final responseData = jsonDecode(response.body);
@@ -58,6 +58,34 @@ class ChatService {
         'success': false,
         'error': 'Network error: ${e.toString()}',
       };
+    }
+  }
+
+  /// Enable AI features for the current user
+  Future<Map<String, dynamic>> enableAi({required String accessToken}) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/enable_ai');
+      final response = await http.patch(
+        url,
+        headers: ApiConfig.getAuthHeaders(accessToken),
+      ).timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        return {'success': true};
+      } else if (response.statusCode == 401) {
+        return {'success': false, 'error': 'unauthorized'};
+      } else if (response.statusCode == 403) {
+        final responseData = jsonDecode(response.body);
+        final error = (responseData['error'] ?? '').toString();
+        return {
+          'success': false,
+          'error': error == 'ai_unavailable' ? 'ai_unavailable' : 'insufficient_scope',
+        };
+      } else {
+        return {'success': false, 'error': 'Failed to enable AI'};
+      }
+    } catch (e) {
+      return {'success': false, 'error': 'Network error: ${e.toString()}'};
     }
   }
 

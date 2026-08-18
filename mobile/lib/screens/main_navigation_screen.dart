@@ -56,14 +56,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     AuthProvider authProvider,
     List<_Tab> tabs,
   ) async {
-    const chatIndex = 0;
+    if (mounted) {
+      setState(() {
+        _currentIndex = index;
+      });
 
-    if (index == chatIndex && !authProvider.aiEnabled) {
-      final enabled = await _showEnableAiPrompt();
-      if (!enabled) return;
+      if (!introLayout && index == 0) {
+        _dashboardKey.currentState?.reloadPreferences();
+      }
     }
-
-    if (mounted) setState(() => _currentIndex = index);
   }
 
   Future<void> _handleSelectSettings(
@@ -118,48 +119,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  Future<bool> _showEnableAiPrompt() async {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-
-    final shouldEnable = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Turn on AI Chat?'),
-        content: const Text(
-          'AI Chat is currently disabled in your account settings. '
-          'Would you like to turn it on now?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Not now'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Turn on AI'),
-          ),
-        ],
-      ),
-    );
-
-    if (shouldEnable != true) return false;
-
-    final enabled = await authProvider.enableAi();
-
-    if (!enabled && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(authProvider.errorMessage ?? 'Unable to enable AI right now.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-
-    return enabled;
-  }
-
-  int _resolveBottomIndex(int tabCount) {
-    if (_currentIndex < 0 || _currentIndex >= tabCount) return 0;
+  int _resolveBottomSelectedIndex(List<NavigationDestination> destinations) {
+    if (destinations.isEmpty) return 0;
+    if (_currentIndex < 0) return 0;
+    if (_currentIndex >= destinations.length) return destinations.length - 1;
     return _currentIndex;
   }
 
