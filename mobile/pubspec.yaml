@@ -27,6 +27,7 @@ dependencies:
   local_auth: ^2.3.0
   flutter_markdown: ^0.7.2
   webview_flutter: ^4.10.0
+  sign_in_with_apple: ^6.1.0
 
 dev_dependencies:
   flutter_test:

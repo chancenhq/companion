@@ -232,6 +232,51 @@ module Api
         end
       end
 
+      def apple_sign_in
+        unless valid_device_info?
+          render json: { error: "Device information is required" }, status: :bad_request
+          return
+        end
+
+        identity_token = params[:identity_token]
+        if identity_token.blank?
+          render json: { error: "identity_token is required" }, status: :bad_request
+          return
+        end
+
+        claims = AppleSignIn.verify!(identity_token)
+        apple_uid = claims["sub"]
+        email     = claims["email"].presence || params[:email].presence
+
+        identity = OidcIdentity.find_by(provider: "apple", uid: apple_uid)
+
+        user = if identity
+          identity.user
+        elsif email.present? && (existing_user = User.find_by(email: email))
+          OidcIdentity.create!(
+            user: existing_user,
+            provider: "apple",
+            uid: apple_uid,
+            issuer: AppleSignIn::ISSUER,
+            info: {
+              email: email,
+              first_name: params[:first_name].presence || existing_user.first_name,
+              last_name: params[:last_name].presence || existing_user.last_name
+            },
+            last_authenticated_at: Time.current
+          )
+          existing_user
+        else
+          render json: { error: "No Companion account found for this Apple ID. Please sign in with your email and password to link your Apple account." }, status: :not_found
+          return
+        end
+
+        issue_mobile_tokens(user, device_params)
+      rescue AppleSignIn::Error => e
+        Rails.logger.warn("[Auth] Apple Sign-In verification failed: #{e.message}")
+        render json: { error: "Invalid Apple identity token" }, status: :unauthorized
+      end
+
       def enable_ai
         user = current_resource_owner
 
