@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:provider/provider.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../providers/auth_provider.dart';
@@ -429,6 +430,25 @@ class _LoginFormBodyState extends State<LoginFormBody> {
               );
             },
           ),
+
+          // ── Apple Sign-In (iOS only — Apple requires it when other SSO is offered) ──
+          if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) ...[
+            const SizedBox(height: 12),
+            Consumer<AuthProvider>(
+              builder: (context, authProvider, _) {
+                return SignInWithAppleButton(
+                  onPressed: authProvider.isLoading
+                      ? () {}
+                      : () => authProvider.signInWithApple(),
+                  style: Theme.of(context).brightness == Brightness.dark
+                      ? SignInWithAppleButtonStyle.white
+                      : SignInWithAppleButtonStyle.black,
+                  height: 50,
+                  borderRadius: BorderRadius.circular(12),
+                );
+              },
+            ),
+          ],
 
           const SizedBox(height: 24),
         ],
