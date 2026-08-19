@@ -547,6 +547,101 @@ class AuthService {
     }
   }
 
+  Future<Map<String, dynamic>> appleSignIn({
+    required String identityToken,
+    required Map<String, String> deviceInfo,
+    String? firstName,
+    String? lastName,
+    String? email,
+  }) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/apple_sign_in');
+
+      final Map<String, dynamic> body = {
+        'identity_token': identityToken,
+        'device': deviceInfo,
+      };
+      if (firstName != null) body['first_name'] = firstName;
+      if (lastName != null) body['last_name'] = lastName;
+      if (email != null) body['email'] = email;
+
+      final response = await http.post(
+        url,
+        headers: ApiConfig.jsonHeaders(),
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 30));
+
+      LogService.instance.debug('AuthService', 'Apple Sign-In response status: ${response.statusCode}');
+
+      final responseData = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        final tokens = AuthTokens.fromJson(responseData);
+        await _saveTokens(tokens);
+
+        User? user;
+        if (responseData['user'] != null) {
+          _logRawUserPayload('apple_sign_in', responseData['user']);
+          user = User.fromJson(responseData['user']);
+          await _saveUser(user);
+        }
+
+        return {'success': true, 'tokens': tokens, 'user': user};
+      } else {
+        return {
+          'success': false,
+          'error': responseData['error'] ?? 'Apple Sign-In failed',
+        };
+      }
+    } on SocketException catch (e, stackTrace) {
+      LogService.instance.error('AuthService', 'Apple Sign-In SocketException: $e\n$stackTrace');
+      return {'success': false, 'error': 'Network unavailable'};
+    } on TimeoutException catch (e, stackTrace) {
+      LogService.instance.error('AuthService', 'Apple Sign-In TimeoutException: $e\n$stackTrace');
+      return {'success': false, 'error': 'Request timed out'};
+    } catch (e, stackTrace) {
+      LogService.instance.error('AuthService', 'Apple Sign-In unexpected error: $e\n$stackTrace');
+      return {'success': false, 'error': 'Apple Sign-In failed'};
+    }
+  }
+
+  Future<Map<String, dynamic>> enableAi({
+    required String accessToken,
+  }) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/enable_ai');
+      final response = await http.patch(
+        url,
+        headers: {
+          ...ApiConfig.getAuthHeaders(accessToken),
+          'Content-Type': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 30));
+
+      final responseData = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        _logRawUserPayload('enable_ai', responseData['user']);
+        final user = User.fromJson(responseData['user']);
+        await _saveUser(user);
+        return {
+          'success': true,
+          'user': user,
+        };
+      }
+
+      return {
+        'success': false,
+        'error': responseData['error'] ?? responseData['errors']?.join(', ') ?? 'Failed to enable AI',
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'error': 'Network error: ${e.toString()}',
+      };
+    }
+  }
+
   Future<void> logout() async {
     await _storage.delete(key: _tokenKey);
     await _storage.delete(key: _userKey);

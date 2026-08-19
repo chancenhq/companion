@@ -1,5 +1,6 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/user.dart';
 import '../models/auth_tokens.dart';
@@ -242,6 +243,64 @@ class AuthProvider with ChangeNotifier {
       }
     } catch (e) {
       _errorMessage = 'Connection error: ${e.toString()}';
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> signInWithApple() async {
+    _errorMessage = null;
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final appleCredential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+      );
+
+      final identityToken = appleCredential.identityToken;
+      if (identityToken == null) {
+        _errorMessage = 'Apple Sign-In failed: no identity token received.';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+
+      final deviceInfo = await _deviceService.getDeviceInfo();
+      final result = await _authService.appleSignIn(
+        identityToken: identityToken,
+        deviceInfo: deviceInfo,
+        firstName: appleCredential.givenName,
+        lastName: appleCredential.familyName,
+        email: appleCredential.email,
+      );
+
+      if (result['success'] == true) {
+        _tokens = result['tokens'] as AuthTokens?;
+        _user = result['user'] as User?;
+        _isLoading = false;
+        notifyListeners();
+        return true;
+      } else {
+        _errorMessage = result['error'] as String?;
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+    } on SignInWithAppleAuthorizationException catch (e) {
+      if (e.code != AuthorizationErrorCode.canceled) {
+        _errorMessage = 'Apple Sign-In failed. Please try again.';
+      }
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    } catch (e, stackTrace) {
+      LogService.instance.error('AuthProvider', 'Apple Sign-In error: $e\n$stackTrace');
+      _errorMessage = 'Apple Sign-In failed. Please try again.';
       _isLoading = false;
       notifyListeners();
       return false;
