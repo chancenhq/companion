@@ -484,6 +484,8 @@ Rails.application.routes.draw do
       end
       resources :provider_connections, only: [ :index ]
 
+      resource :my_account, only: [ :show ], controller: :my_account
+
       resources :chats, only: [ :index, :show, :create, :update, :destroy ] do
         resources :messages, only: [ :create ] do
           post :retry, on: :collection
