@@ -9,7 +9,9 @@ const Color _kDarkGreen = Color(0xFF1F4834);
 const Color _kPurple    = Color(0xFF986EF9);
 
 class InsightsScreen extends StatefulWidget {
-  const InsightsScreen({super.key});
+  const InsightsScreen({super.key, this.onStartChat});
+
+  final VoidCallback? onStartChat;
 
   @override
   State<InsightsScreen> createState() => _InsightsScreenState();

@@ -4,41 +4,10 @@ import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
 import 'chat_list_screen.dart';
+import 'dashboard_screen.dart';
 import 'insights_screen.dart';
+import 'more_screen.dart';
 import 'settings_screen.dart';
-
-/// Pairs a visible tab screen with its bottom-nav destination.
-/// To add or reorder tabs for a user type, edit [_tabsFor] only —
-/// MainNavigationScreen never needs to change.
-class _Tab {
-  const _Tab({required this.screen, required this.destination});
-  final Widget screen;
-  final NavigationDestination destination;
-}
-
-/// Returns the tab list for the given user layout.
-List<_Tab> _tabsFor(String uiLayout) {
-  // Shared layout: Assistant → My Account.
-  // Settings is appended separately and reached via the AppBar gear icon.
-  return const [
-    _Tab(
-      screen: ChatListScreen(),
-      destination: NavigationDestination(
-        icon: Icon(Icons.chat_bubble_outline),
-        selectedIcon: Icon(Icons.chat_bubble),
-        label: 'Assistant',
-      ),
-    ),
-    _Tab(
-      screen: InsightsScreen(),
-      destination: NavigationDestination(
-        icon: Icon(Icons.insights_outlined),
-        selectedIcon: Icon(Icons.insights),
-        label: 'My Account',
-      ),
-    ),
-  ];
-}
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
@@ -49,40 +18,109 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
+  final _dashboardKey = GlobalKey<DashboardScreenState>();
+
+  List<Widget> _buildScreens(bool introLayout, VoidCallback? onStartChat) {
+    final screens = <Widget>[];
+
+    if (!introLayout) {
+      screens.add(DashboardScreen(key: _dashboardKey));
+    }
+
+    if (introLayout) {
+      screens.add(InsightsScreen(onStartChat: onStartChat));
+    }
+
+    screens.add(const ChatListScreen());
+
+    if (!introLayout) {
+      screens.add(const MoreScreen());
+    }
+
+    screens.add(const SettingsScreen());
+
+    return screens;
+  }
 
   Future<void> _handleDestinationSelected(
     int index,
     AuthProvider authProvider,
-    List<_Tab> tabs,
+    bool introLayout,
   ) async {
-    const chatIndex = 0;
+    const chatIndex = 1;
 
     if (index == chatIndex && !authProvider.aiEnabled) {
       final enabled = await _showEnableAiPrompt();
-      if (!enabled) return;
+      if (!enabled) {
+        return;
+      }
     }
 
-    if (mounted) setState(() => _currentIndex = index);
+    if (mounted) {
+      setState(() {
+        _currentIndex = index;
+      });
+
+      if (!introLayout && index == 0) {
+        _dashboardKey.currentState?.reloadPreferences();
+      }
+    }
   }
 
-  Future<void> _handleSelectSettings(
-    AuthProvider authProvider,
-    List<_Tab> tabs,
-  ) async {
-    // Settings is always the screen after the visible tabs.
-    await _handleDestinationSelected(tabs.length, authProvider, tabs);
+  Future<void> _handleSelectSettings(AuthProvider authProvider, bool introLayout) async {
+    final settingsIndex = introLayout ? 2 : 3;
+    await _handleDestinationSelected(settingsIndex, authProvider, introLayout);
   }
 
-  PreferredSizeWidget _buildTopBar(AuthProvider authProvider, List<_Tab> tabs) {
-    final bg = Theme.of(context).brightness == Brightness.light
-        ? Colors.white
-        : Colors.black;
+  List<NavigationDestination> _buildDestinations(bool introLayout) {
+    final destinations = <NavigationDestination>[];
+
+    if (!introLayout) {
+      destinations.add(
+        const NavigationDestination(
+          icon: Icon(Icons.home_outlined),
+          selectedIcon: Icon(Icons.home),
+          label: 'Home',
+        ),
+      );
+    }
+
+    if (introLayout) {
+      destinations.add(
+        const NavigationDestination(
+          icon: Icon(Icons.auto_awesome_outlined),
+          selectedIcon: Icon(Icons.auto_awesome),
+          label: 'Account',
+        ),
+      );
+    }
+
+    destinations.add(
+      const NavigationDestination(
+        icon: Icon(Icons.chat_bubble_outline),
+        selectedIcon: Icon(Icons.chat_bubble),
+        label: 'Assistant',
+      ),
+    );
+
+    if (!introLayout) {
+      destinations.add(
+        const NavigationDestination(
+          icon: Icon(Icons.more_horiz),
+          selectedIcon: Icon(Icons.more_horiz),
+          label: 'More',
+        ),
+      );
+    }
+
+    return destinations;
+  }
+
+  PreferredSizeWidget _buildTopBar(AuthProvider authProvider, bool introLayout) {
     return AppBar(
       automaticallyImplyLeading: false,
       toolbarHeight: 60,
       elevation: 0,
-      scrolledUnderElevation: 0,
-      backgroundColor: bg,
       titleSpacing: 0,
       centerTitle: false,
       actionsPadding: EdgeInsets.zero,
@@ -104,7 +142,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           padding: const EdgeInsets.only(right: 12),
           child: Center(
             child: InkWell(
-              onTap: () => _handleSelectSettings(authProvider, tabs),
+              onTap: () {
+                _handleSelectSettings(authProvider, introLayout);
+              },
               child: const SizedBox(
                 width: 36,
                 height: 36,
@@ -124,10 +164,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Turn on AI Chat?'),
-        content: const Text(
-          'AI Chat is currently disabled in your account settings. '
-          'Would you like to turn it on now?',
-        ),
+        content: const Text('AI Chat is currently disabled in your account settings. Would you like to turn it on now?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -141,7 +178,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       ),
     );
 
-    if (shouldEnable != true) return false;
+    if (shouldEnable != true) {
+      return false;
+    }
 
     final enabled = await authProvider.enableAi();
 
@@ -157,8 +196,19 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     return enabled;
   }
 
-  int _resolveBottomIndex(int tabCount) {
-    if (_currentIndex < 0 || _currentIndex >= tabCount) return 0;
+  int _resolveBottomSelectedIndex(List<NavigationDestination> destinations) {
+    if (destinations.isEmpty) {
+      return 0;
+    }
+
+    if (_currentIndex < 0) {
+      return 0;
+    }
+
+    if (_currentIndex >= destinations.length) {
+      return destinations.length - 1;
+    }
+
     return _currentIndex;
   }
 
@@ -166,27 +216,30 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   Widget build(BuildContext context) {
     return Consumer<AuthProvider>(
       builder: (context, authProvider, _) {
-        final tabs = _tabsFor(authProvider.user?.uiLayout ?? 'intro');
-        final screens = [...tabs.map((t) => t.screen), const SettingsScreen()];
-        final destinations = tabs.map((t) => t.destination).toList();
-        final bg = Theme.of(context).brightness == Brightness.light
-            ? Colors.white
-            : Colors.black;
+        final introLayout = authProvider.isIntroLayout;
+        const chatIndex = 1;
+        final screens = _buildScreens(
+          introLayout,
+          () => _handleDestinationSelected(chatIndex, authProvider, introLayout),
+        );
+        final destinations = _buildDestinations(introLayout);
+        final bottomNavIndex = _resolveBottomSelectedIndex(destinations);
 
-        if (_currentIndex >= screens.length) _currentIndex = 0;
+        if (_currentIndex >= screens.length) {
+          _currentIndex = 0;
+        }
 
         return Scaffold(
-          backgroundColor: bg,
-          appBar: _buildTopBar(authProvider, tabs),
+          appBar: _buildTopBar(authProvider, introLayout),
           body: IndexedStack(
             index: _currentIndex,
             children: screens,
           ),
           bottomNavigationBar: NavigationBar(
-            backgroundColor: bg,
-            selectedIndex: _resolveBottomIndex(tabs.length),
-            onDestinationSelected: (index) =>
-                _handleDestinationSelected(index, authProvider, tabs),
+            selectedIndex: bottomNavIndex,
+            onDestinationSelected: (index) {
+              _handleDestinationSelected(index, authProvider, introLayout);
+            },
             destinations: destinations,
           ),
         );
