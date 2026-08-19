@@ -319,7 +319,7 @@ class _IsaFinancingCard extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             Text(
-              'Total Financed',
+              'Repayments Received',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -327,21 +327,34 @@ class _IsaFinancingCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               '—',
-              style: theme.textTheme.displaySmall?.copyWith(
+              style: theme.textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w800,
               ),
             ),
             const SizedBox(height: 20),
             Divider(height: 1, color: theme.dividerColor),
             const SizedBox(height: 16),
-            Align(
-              alignment: Alignment.centerRight,
-              child: _StatItem(
-                label: 'Repayments Received',
-                value: '—',
-                theme: theme,
-                align: CrossAxisAlignment.end,
-              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: _StatItem(
+                    label: 'Repayments\nReceived',
+                    value: '—',
+                    theme: theme,
+                    align: CrossAxisAlignment.start,
+                  ),
+                ),
+                VerticalDivider(width: 1, thickness: 1, color: theme.dividerColor),
+                Expanded(
+                  child: _StatItem(
+                    label: 'Total\nFinanced',
+                    value: '—',
+                    theme: theme,
+                    align: CrossAxisAlignment.end,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
