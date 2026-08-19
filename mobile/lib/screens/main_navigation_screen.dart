@@ -61,9 +61,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         _currentIndex = index;
       });
 
-      if (!introLayout && index == 0) {
-        _dashboardKey.currentState?.reloadPreferences();
-      }
     }
   }
 
@@ -148,7 +145,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           ),
           bottomNavigationBar: NavigationBar(
             backgroundColor: bg,
-            selectedIndex: _resolveBottomIndex(tabs.length),
+            selectedIndex: _resolveBottomSelectedIndex(destinations),
             onDestinationSelected: (index) =>
                 _handleDestinationSelected(index, authProvider, tabs),
             destinations: destinations,
