@@ -32,7 +32,7 @@ class AuthProvider with ChangeNotifier {
   bool _ssoHasPendingInvitation = false;
 
   User? get user => _user;
-  bool get isIntroLayout => true;
+  bool get isIntroLayout => _user?.isIntroLayout ?? false;
   bool get aiEnabled => _user?.aiEnabled ?? false;
   AuthTokens? get tokens => _tokens;
   bool get isLoading => _isLoading;
