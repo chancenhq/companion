@@ -1,12 +1,76 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/my_account_provider.dart';
 import 'chat_conversation_screen.dart';
 
 const Color _kGreen     = Color(0xFF84BD00);
 const Color _kDarkGreen = Color(0xFF1F4834);
 const Color _kPurple    = Color(0xFF986EF9);
+
+// ─── ISA status ──────────────────────────────────────────────────────────────
+
+// These four map directly to the values the Chancen ISA warehouse (via
+// Metabase) can return for "ISA Status", plus `applicationStage` for
+// students who don't have a row yet (the /api/v1/my_account 404 case —
+// no ISA contract exists for them so far).
+enum IsaStatus {
+  applicationStage,
+  contractSigned,
+  graduated,
+  droppedOut,
+}
+
+extension IsaStatusDisplay on IsaStatus {
+  String get label {
+    switch (this) {
+      case IsaStatus.applicationStage: return 'Application';
+      case IsaStatus.contractSigned:   return 'ISA Contract Signed';
+      case IsaStatus.graduated:        return 'Graduated';
+      case IsaStatus.droppedOut:       return 'Drop out';
+    }
+  }
+
+  Color get color {
+    switch (this) {
+      case IsaStatus.applicationStage: return _kPurple;
+      case IsaStatus.contractSigned:   return _kDarkGreen;
+      case IsaStatus.graduated:        return const Color(0xFF10A861);
+      case IsaStatus.droppedOut:       return const Color(0xFFE53935);
+    }
+  }
+
+  IconData get icon {
+    switch (this) {
+      case IsaStatus.applicationStage: return Icons.hourglass_top_outlined;
+      case IsaStatus.contractSigned:   return Icons.verified_outlined;
+      case IsaStatus.graduated:        return Icons.school_outlined;
+      case IsaStatus.droppedOut:       return Icons.warning_amber_outlined;
+    }
+  }
+
+  static IsaStatus fromString(String s) {
+    switch (s.toLowerCase().trim()) {
+      case 'isa contract signed':
+      case 'contract_signed':
+      case 'contract signed':
+        return IsaStatus.contractSigned;
+      case 'graduated':
+        return IsaStatus.graduated;
+      case 'drop out':
+      case 'dropout':
+      case 'drop_out':
+        return IsaStatus.droppedOut;
+      default:
+        // Covers empty/unknown status and the "no ISA record yet" case.
+        return IsaStatus.applicationStage;
+    }
+  }
+}
+
+// ─── Screen ──────────────────────────────────────────────────────────────────
 
 class InsightsScreen extends StatefulWidget {
   const InsightsScreen({super.key});
@@ -21,42 +85,129 @@ class _InsightsScreenState extends State<InsightsScreen>
   bool get wantKeepAlive => true;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  Future<void> _load() async {
+    if (!mounted) return;
+    final auth = context.read<AuthProvider>();
+    final token = await auth.getValidAccessToken();
+    if (!mounted || token == null) return;
+    await context.read<MyAccountProvider>().load(token);
+  }
+
+  @override
   Widget build(BuildContext context) {
     super.build(context);
-    return const _AccountSummaryView();
+    return _AccountSummaryView(onRefresh: _load);
   }
 }
 
+// ─── Summary view ─────────────────────────────────────────────────────────────
+
+// Repayments data isn't returned by the Metabase question yet — null means
+// "unavailable", not zero, so render it the same way the rest of the ISA
+// cards render missing data.
+String? _formatOrDash(double? value, NumberFormat fmt) {
+  return value == null ? null : fmt.format(value);
+}
+
 class _AccountSummaryView extends StatelessWidget {
-  const _AccountSummaryView();
+  const _AccountSummaryView({required this.onRefresh});
+
+  final Future<void> Function() onRefresh;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final firstName = context.watch<AuthProvider>().user?.firstName ?? 'there';
+    final provider = context.watch<MyAccountProvider>();
+    final account = provider.account;
+    final loading = provider.isLoading;
     final bg = theme.brightness == Brightness.light ? Colors.white : Colors.black;
-    return ColoredBox(
-      color: bg,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _GreetingCard(firstName: firstName, theme: theme),
-            const SizedBox(height: 8),
-            _AskAnythingTile(theme: theme),
-            const SizedBox(height: 20),
-            _SectionHeaderTile(theme: theme),
-            const SizedBox(height: 16),
-            _IsaFinancingCard(theme: theme),
-            const SizedBox(height: 12),
-            _IsaInstalmentsCard(theme: theme),
-          ],
+
+    // Derive ISA status (null account → application stage)
+    final isaStatus = account != null
+        ? IsaStatusDisplay.fromString(account.status)
+        : IsaStatus.applicationStage;
+
+    final currency = account?.currency ?? 'KES';
+    final fmt = NumberFormat.currency(
+      locale: 'en',
+      symbol: currency == 'KES' ? 'KSh ' : '$currency ',
+      decimalDigits: 0,
+    );
+
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: ColoredBox(
+        color: bg,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _GreetingCard(firstName: firstName, theme: theme),
+              const SizedBox(height: 8),
+              _AskAnythingTile(theme: theme),
+              const SizedBox(height: 20),
+              _SectionHeaderTile(theme: theme, isaStatus: isaStatus),
+              const SizedBox(height: 16),
+              switch (isaStatus) {
+                // Still applying / no ISA contract on file yet — just the
+                // progress explainer. ISA Status badge above already shows.
+                IsaStatus.applicationStage =>
+                  _ApplicationStageCard(theme: theme, loading: loading),
+
+                // Contract signed but not graduated: show financing so far.
+                // Instalment tracking isn't relevant until repayment starts —
+                // later this card becomes tappable to drill into instalments.
+                IsaStatus.contractSigned => _IsaFinancingCard(
+                    theme: theme,
+                    isaStatus: isaStatus,
+                    totalFinanced: loading ? null : fmt.format(account!.totalFinanced),
+                    repaymentsReceived: loading
+                        ? null
+                        : _formatOrDash(account!.repaymentsReceived, fmt),
+                    loading: loading,
+                  ),
+
+                // Graduated or dropped out: repayment tracking is fully
+                // relevant either way, so both cards are always expanded.
+                IsaStatus.graduated || IsaStatus.droppedOut => Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _IsaFinancingCard(
+                        theme: theme,
+                        isaStatus: isaStatus,
+                        totalFinanced: loading ? null : fmt.format(account!.totalFinanced),
+                        repaymentsReceived: loading
+                            ? null
+                            : _formatOrDash(account!.repaymentsReceived, fmt),
+                        loading: loading,
+                      ),
+                      const SizedBox(height: 12),
+                      _IsaInstalmentsCard(
+                        theme: theme,
+                        installmentsPaid: loading ? null : account!.installmentsPaid,
+                        maxInstallments: loading ? null : account!.maxInstallments,
+                        loading: loading,
+                      ),
+                    ],
+                  ),
+              },
+            ],
+          ),
         ),
       ),
     );
   }
 }
+
+// ─── Greeting ────────────────────────────────────────────────────────────────
 
 class _GreetingCard extends StatelessWidget {
   const _GreetingCard({required this.firstName, required this.theme});
@@ -97,6 +248,8 @@ class _GreetingCard extends StatelessWidget {
     );
   }
 }
+
+// ─── Ask anything ────────────────────────────────────────────────────────────
 
 class _AskAnythingTile extends StatelessWidget {
   const _AskAnythingTile({required this.theme});
@@ -179,10 +332,71 @@ class _AskAnythingTile extends StatelessWidget {
   }
 }
 
+// ─── Section header ───────────────────────────────────────────────────────────
+
 class _SectionHeaderTile extends StatelessWidget {
-  const _SectionHeaderTile({required this.theme});
+  const _SectionHeaderTile({required this.theme, required this.isaStatus});
 
   final ThemeData theme;
+  final IsaStatus isaStatus;
+
+  @override
+  Widget build(BuildContext context) {
+    final statusColor = (isaStatus == IsaStatus.contractSigned &&
+            theme.brightness == Brightness.dark)
+        ? _kGreen
+        : isaStatus.color;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.brightness == Brightness.light ? Colors.white : Colors.black,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'My Account',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: statusColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(isaStatus.icon, size: 13, color: statusColor),
+                const SizedBox(width: 4),
+                Text(
+                  isaStatus.label,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: statusColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Application Stage card ───────────────────────────────────────────────────
+
+class _ApplicationStageCard extends StatelessWidget {
+  const _ApplicationStageCard({required this.theme, required this.loading});
+
+  final ThemeData theme;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
@@ -190,74 +404,126 @@ class _SectionHeaderTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: theme.brightness == Brightness.light ? Colors.white : Colors.black,
         borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: _kPurple.withValues(alpha: 0.18),
+            blurRadius: 0,
+            offset: const Offset(4, 4),
+          ),
+        ],
       ),
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-      child: Text(
-        'My Account',
-        style: theme.textTheme.titleLarge?.copyWith(
-          fontWeight: FontWeight.w700,
-        ),
-      ),
+      padding: const EdgeInsets.all(24),
+      child: loading
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: _kPurple.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.hourglass_top_outlined,
+                    color: _kPurple,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Your application is in progress',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Once your ISA is active, your financing details and repayment progress will appear here.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Divider(height: 1, color: theme.dividerColor),
+                const SizedBox(height: 16),
+                _InfoRow(
+                  icon: Icons.school_outlined,
+                  label: 'Complete your studies',
+                  theme: theme,
+                ),
+                const SizedBox(height: 12),
+                _InfoRow(
+                  icon: Icons.description_outlined,
+                  label: 'Sign your ISA contract',
+                  theme: theme,
+                ),
+                const SizedBox(height: 12),
+                _InfoRow(
+                  icon: Icons.trending_up_outlined,
+                  label: 'Start your repayment journey',
+                  theme: theme,
+                ),
+              ],
+            ),
     );
   }
 }
 
-enum IsaStatus {
-  contractSigned,
-  repaying,
-  paused,
-  serviceFeeMode,
-  completed,
-  defaulted,
-}
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({required this.icon, required this.label, required this.theme});
 
-extension IsaStatusDisplay on IsaStatus {
-  String get label {
-    switch (this) {
-      case IsaStatus.contractSigned: return 'Graduated';
-      case IsaStatus.repaying:       return 'Repaying';
-      case IsaStatus.paused:         return 'Paused';
-      case IsaStatus.serviceFeeMode: return 'Service Fee Mode';
-      case IsaStatus.completed:      return 'Completed';
-      case IsaStatus.defaulted:      return 'Defaulted';
-    }
-  }
-
-  Color get color {
-    switch (this) {
-      case IsaStatus.contractSigned: return _kDarkGreen;
-      case IsaStatus.repaying:       return const Color(0xFF10A861);
-      case IsaStatus.paused:         return const Color(0xFFFFA726);
-      case IsaStatus.serviceFeeMode: return const Color(0xFFFFA726);
-      case IsaStatus.completed:      return const Color(0xFF10A861);
-      case IsaStatus.defaulted:      return const Color(0xFFE53935);
-    }
-  }
-
-  IconData get icon {
-    switch (this) {
-      case IsaStatus.contractSigned: return Icons.verified_outlined;
-      case IsaStatus.repaying:       return Icons.trending_up;
-      case IsaStatus.paused:         return Icons.pause_circle_outline;
-      case IsaStatus.serviceFeeMode: return Icons.work_off_outlined;
-      case IsaStatus.completed:      return Icons.check_circle_outline;
-      case IsaStatus.defaulted:      return Icons.warning_amber_outlined;
-    }
-  }
-}
-
-class _IsaFinancingCard extends StatelessWidget {
-  const _IsaFinancingCard({required this.theme});
-
+  final IconData icon;
+  final String label;
   final ThemeData theme;
-
-  static const _status = IsaStatus.contractSigned;
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = (_status == IsaStatus.contractSigned && theme.brightness == Brightness.dark)
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: _kPurple),
+        const SizedBox(width: 10),
+        Text(
+          label,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── ISA Financing card ───────────────────────────────────────────────────────
+
+class _IsaFinancingCard extends StatelessWidget {
+  const _IsaFinancingCard({
+    required this.theme,
+    required this.isaStatus,
+    required this.totalFinanced,
+    required this.repaymentsReceived,
+    required this.loading,
+  });
+
+  final ThemeData theme;
+  final IsaStatus isaStatus;
+  final String? totalFinanced;
+  final String? repaymentsReceived;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    final statusColor = (isaStatus == IsaStatus.contractSigned &&
+            theme.brightness == Brightness.dark)
         ? _kGreen
-        : _status.color;
+        : isaStatus.color;
 
     return Container(
       decoration: BoxDecoration(
@@ -265,7 +531,8 @@ class _IsaFinancingCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: (theme.brightness == Brightness.light ? _kDarkGreen : _kGreen).withValues(alpha: 0.18),
+            color: (theme.brightness == Brightness.light ? _kDarkGreen : _kGreen)
+                .withValues(alpha: 0.18),
             blurRadius: 0,
             offset: const Offset(4, 4),
           ),
@@ -303,10 +570,10 @@ class _IsaFinancingCard extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(_status.icon, size: 13, color: statusColor),
+                      Icon(isaStatus.icon, size: 13, color: statusColor),
                       const SizedBox(width: 4),
                       Text(
-                        _status.label,
+                        isaStatus.label,
                         style: theme.textTheme.labelSmall?.copyWith(
                           color: statusColor,
                           fontWeight: FontWeight.w600,
@@ -326,7 +593,7 @@ class _IsaFinancingCard extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              '—',
+              loading ? '—' : (totalFinanced ?? '—'),
               style: theme.textTheme.displaySmall?.copyWith(
                 fontWeight: FontWeight.w800,
               ),
@@ -337,8 +604,8 @@ class _IsaFinancingCard extends StatelessWidget {
             Align(
               alignment: Alignment.centerRight,
               child: _StatItem(
-                label: 'Repayments Received',
-                value: '—',
+                label: 'Repayments\nReceived',
+                value: loading ? null : repaymentsReceived,
                 theme: theme,
                 align: CrossAxisAlignment.end,
               ),
@@ -350,20 +617,38 @@ class _IsaFinancingCard extends StatelessWidget {
   }
 }
 
+// ─── ISA Instalments card ─────────────────────────────────────────────────────
+
 class _IsaInstalmentsCard extends StatelessWidget {
-  const _IsaInstalmentsCard({required this.theme});
+  const _IsaInstalmentsCard({
+    required this.theme,
+    required this.installmentsPaid,
+    required this.maxInstallments,
+    required this.loading,
+  });
 
   final ThemeData theme;
+  final int? installmentsPaid;
+  final int? maxInstallments;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
+    // installmentsPaid isn't returned by the Metabase question yet — treat
+    // it as "unknown", not zero, so the ring/label read "—" instead of 0%.
+    final paid = installmentsPaid;
+    final max = maxInstallments ?? 1;
+    final progress = (paid != null && max > 0) ? (paid / max).clamp(0.0, 1.0) : 0.0;
+    final pct = (progress * 100).round();
+
     return Container(
       decoration: BoxDecoration(
         color: theme.brightness == Brightness.light ? Colors.white : Colors.black,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: (theme.brightness == Brightness.light ? _kDarkGreen : _kGreen).withValues(alpha: 0.18),
+            color: (theme.brightness == Brightness.light ? _kDarkGreen : _kGreen)
+                .withValues(alpha: 0.18),
             blurRadius: 0,
             offset: const Offset(4, 4),
           ),
@@ -373,7 +658,11 @@ class _IsaInstalmentsCard extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         child: Row(
           children: [
-            const _CircularProgress(progress: 0, color: _kGreen, label: '—'),
+            _CircularProgress(
+              progress: loading ? 0.0 : progress,
+              color: _kGreen,
+              label: loading ? '—' : (paid != null ? '$pct%' : '—'),
+            ),
             const SizedBox(width: 20),
             Expanded(
               child: Column(
@@ -387,7 +676,8 @@ class _IsaInstalmentsCard extends StatelessWidget {
                           color: _kGreen.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Icon(_IsaIcons.instalments, color: _kGreen, size: 18),
+                        child: const Icon(_IsaIcons.instalments,
+                            color: _kGreen, size: 18),
                       ),
                       const SizedBox(width: 10),
                       Text(
@@ -403,14 +693,14 @@ class _IsaInstalmentsCard extends StatelessWidget {
                   const SizedBox(height: 14),
                   _StatItem(
                     label: 'Paid So Far',
-                    value: '—',
+                    value: loading ? null : (paid != null ? '$paid' : null),
                     theme: theme,
                     align: CrossAxisAlignment.start,
                   ),
                   const SizedBox(height: 10),
                   _StatItem(
                     label: 'Maximum No. of Instalments',
-                    value: '—',
+                    value: loading ? null : '$max',
                     theme: theme,
                     align: CrossAxisAlignment.start,
                   ),
@@ -424,8 +714,10 @@ class _IsaInstalmentsCard extends StatelessWidget {
   }
 }
 
+// ─── Shared widgets ───────────────────────────────────────────────────────────
+
 abstract class _IsaIcons {
-  static const financing  = Icons.account_balance_outlined;
+  static const financing   = Icons.account_balance_outlined;
   static const instalments = Icons.calendar_month_outlined;
 }
 
@@ -438,7 +730,7 @@ class _StatItem extends StatelessWidget {
   });
 
   final String label;
-  final String value;
+  final String? value;
   final ThemeData theme;
   final CrossAxisAlignment align;
 
@@ -458,7 +750,7 @@ class _StatItem extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            value,
+            value ?? '—',
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w600,
             ),
@@ -472,13 +764,13 @@ class _StatItem extends StatelessWidget {
 class _CircularProgress extends StatelessWidget {
   const _CircularProgress({
     required this.progress,
+    required this.label,
     this.color = _kGreen,
-    this.label = '',
   });
 
   final double progress;
-  final Color color;
   final String label;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -537,7 +829,6 @@ class _CircularProgressPainter extends CustomPainter {
         ..strokeWidth = _strokeWidth
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round;
-
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
         -math.pi / 2,
