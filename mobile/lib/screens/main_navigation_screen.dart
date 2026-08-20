@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
 import 'chat_list_screen.dart';
-import 'intro_screen_stub.dart';
+import 'insights_screen.dart';
 import 'settings_screen.dart';
 
 /// Pairs a visible tab screen with its bottom-nav destination.
@@ -17,9 +17,8 @@ class _Tab {
 }
 
 /// Returns the tab list for the given user layout.
-/// Both guest (intro) and admin (dashboard) currently share the same layout.
 List<_Tab> _tabsFor(String uiLayout) {
-  // Shared layout: Assistant → Insights.
+  // Shared layout: Assistant → My Account.
   // Settings is appended separately and reached via the AppBar gear icon.
   return const [
     _Tab(
@@ -31,11 +30,11 @@ List<_Tab> _tabsFor(String uiLayout) {
       ),
     ),
     _Tab(
-      screen: InsightsPreviewScreen(),
+      screen: InsightsScreen(),
       destination: NavigationDestination(
         icon: Icon(Icons.insights_outlined),
         selectedIcon: Icon(Icons.insights),
-        label: 'Insights',
+        label: 'My Account',
       ),
     ),
   ];
