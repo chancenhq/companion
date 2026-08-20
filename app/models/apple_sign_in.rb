@@ -19,7 +19,7 @@ module AppleSignIn
       verify_iss: true
     )
 
-    client_id = Rails.application.credentials.dig(:apple, :client_id)
+    client_id = Rails.application.credentials.dig(:apple, :client_id) || "international.chancen.companion"
     raise Error, "Invalid audience" unless Array(payload["aud"]).include?(client_id)
 
     payload
