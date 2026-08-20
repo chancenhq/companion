@@ -24,22 +24,39 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _groupByType = false;
-  String? _appVersion;
   bool _isResettingAccount = false;
   bool _isDeletingAccount = false;
   bool _biometricSupported = false;
   bool _biometricEnabled = false;
   bool _isTogglingBiometric = false;
+  // dev-mode easter egg
+  bool _devMode = false;
+  int _devTapCount = 0;
+  // debug-only state (loaded when dev mode is activated)
+  bool _groupByType = false;
+  String? _appVersion;
   List<CustomProxyHeader> _customHeaders = [];
 
   @override
   void initState() {
     super.initState();
-    _loadPreferences();
-    _loadAppVersion();
     _loadBiometricState();
-    _loadCustomHeaders();
+  }
+
+  void _onAvatarTap() {
+    _devTapCount++;
+    if (_devTapCount >= 7) {
+      _devTapCount = 0;
+      setState(() => _devMode = !_devMode);
+      if (_devMode) {
+        _loadPreferences();
+        _loadAppVersion();
+        _loadCustomHeaders();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Developer mode enabled')),
+        );
+      }
+    }
   }
 
   Future<void> _loadBiometricState() async {
@@ -84,7 +101,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mounted) {
       final build = packageInfo.buildNumber;
       final display = build.isNotEmpty
-          ? '${packageInfo.version} (${build})'
+          ? '${packageInfo.version} ($build)'
           : packageInfo.version;
       setState(() => _appVersion = display);
     }
@@ -92,22 +109,86 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadPreferences() async {
     final groupByType = await PreferencesService.instance.getGroupByType();
-    if (mounted) {
-      setState(() {
-        _groupByType = groupByType;
-      });
-    }
+    if (mounted) setState(() => _groupByType = groupByType);
   }
 
   Future<void> _loadCustomHeaders() async {
     try {
       final headers = await CustomProxyHeadersService.instance.loadHeaders();
-      if (mounted) {
-        setState(() => _customHeaders = headers);
-      }
+      if (mounted) setState(() => _customHeaders = headers);
     } catch (e, stack) {
       debugPrint('SettingsScreen: failed to load custom headers: $e\n$stack');
-      // Keep the existing _customHeaders state so the screen remains usable.
+    }
+  }
+
+  Future<void> _showCustomHeadersDialog() async {
+    final formKey = GlobalKey<FormState>();
+    final latestHeaders = await CustomProxyHeadersService.instance.loadHeaders();
+    if (!mounted) return;
+
+    setState(() => _customHeaders = latestHeaders);
+    var draftHeaders = List<CustomProxyHeader>.from(latestHeaders);
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Custom proxy headers'),
+        content: SingleChildScrollView(
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                CustomProxyHeadersEditor(
+                  initialHeaders: draftHeaders,
+                  onChanged: (headers) => draftHeaders = headers,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Headers are sent with API requests. External SSO pages may not receive them.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (formKey.currentState?.validate() != true) return;
+              Navigator.pop(context, true);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (saved != true) return;
+
+    try {
+      await CustomProxyHeadersService.instance.saveHeaders(draftHeaders);
+      ApiConfig.setCustomProxyHeaders(draftHeaders);
+      if (!mounted) return;
+      setState(() => _customHeaders = draftHeaders);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Custom proxy headers saved')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to save custom proxy headers: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
     }
   }
 
@@ -176,7 +257,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _launchContactUrl(BuildContext context) async {
-    final uri = Uri.parse('https://discord.com/invite/36ZGBsxYEK');
+    final uri = Uri.parse('https://chat.whatsapp.com/IVBXS2QtJpqIFlZYoSPD1t');
     final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!launched && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -336,85 +417,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _showCustomHeadersDialog() async {
-    final formKey = GlobalKey<FormState>();
-    final latestHeaders = await CustomProxyHeadersService.instance.loadHeaders();
-    if (!mounted) return;
-
-    setState(() => _customHeaders = latestHeaders);
-    var draftHeaders = List<CustomProxyHeader>.from(latestHeaders);
-
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Custom proxy headers'),
-          content: SingleChildScrollView(
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  CustomProxyHeadersEditor(
-                    initialHeaders: draftHeaders,
-                    onChanged: (headers) => draftHeaders = headers,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Headers are sent by the app with API requests. External browser SSO pages may not receive them.',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (formKey.currentState?.validate() != true) return;
-                Navigator.pop(context, true);
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (saved != true) return;
-
-    try {
-      await CustomProxyHeadersService.instance.saveHeaders(draftHeaders);
-      ApiConfig.setCustomProxyHeaders(draftHeaders);
-      if (!mounted) return;
-      setState(() => _customHeaders = draftHeaders);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Custom proxy headers saved')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to save custom proxy headers: $e'),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final authProvider = Provider.of<AuthProvider>(context);
+    final bg = Theme.of(context).brightness == Brightness.light ? Colors.white : Colors.black;
 
     return Scaffold(
+      backgroundColor: bg,
       body: ListView(
         children: [
           // User info section
@@ -428,15 +438,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     Row(
                       children: [
-                        CircleAvatar(
-                          radius: 30,
-                          backgroundColor: colorScheme.primary,
-                          child: Text(
-                            authProvider.user?.displayName[0].toUpperCase() ?? 'U',
-                            style: TextStyle(
-                              fontSize: 24,
-                              color: colorScheme.onPrimary,
-                              fontWeight: FontWeight.bold,
+                        GestureDetector(
+                          onTap: _onAvatarTap,
+                          child: CircleAvatar(
+                            radius: 30,
+                            backgroundColor: colorScheme.primary,
+                            child: Text(
+                              authProvider.user?.displayName[0].toUpperCase() ?? 'U',
+                              style: TextStyle(
+                                fontSize: 24,
+                                color: colorScheme.onPrimary,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                         ),
@@ -469,25 +482,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
 
-          // App version
-          ListTile(
-            leading: const Icon(Icons.info_outline),
-            title: Text('App Version: ${_appVersion ?? '…'}'),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(' > ui_layout: ${authProvider.user?.uiLayout}'),
-                Text(' > ai_enabled: ${authProvider.user?.aiEnabled}'),
-              ],
-            ),
-          ),
-
           ListTile(
             leading: const Icon(Icons.chat_bubble_outline),
             title: const Text('Contact us'),
             subtitle: Text(
-              'https://discord.com/invite/36ZGBsxYEK',
+              'chat.whatsapp.com/IVBXS2QtJpqIFlZYoSPD1t',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.primary,
                 decoration: TextDecoration.underline,
@@ -496,21 +495,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: () => _launchContactUrl(context),
           ),
 
-          Semantics(
-            label: 'Open debug logs',
-            button: true,
-            child: ListTile(
-              leading: const Icon(Icons.bug_report),
-              title: const Text('Debug Logs'),
-              subtitle: const Text('View app diagnostic logs'),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const LogViewerScreen()),
-                );
-              },
+          if (_devMode) ...[
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: Text('App Version: ${_appVersion ?? '…'}'),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(' > ui_layout: ${authProvider.user?.uiLayout}'),
+                  Text(' > ai_enabled: ${authProvider.user?.aiEnabled}'),
+                ],
+              ),
             ),
-          ),
+            Semantics(
+              label: 'Open debug logs',
+              button: true,
+              child: ListTile(
+                leading: const Icon(Icons.bug_report),
+                title: const Text('Debug Logs'),
+                subtitle: const Text('View app diagnostic logs'),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const LogViewerScreen()),
+                ),
+              ),
+            ),
+          ],
 
           const Divider(),
 
@@ -527,18 +538,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
 
-          SwitchListTile(
-            secondary: const Icon(Icons.view_list),
-            title: const Text('Group by Account Type'),
-            subtitle: const Text('Group accounts by type (Crypto, Bank, etc.)'),
-            value: _groupByType,
-            onChanged: (value) async {
-              await PreferencesService.instance.setGroupByType(value);
-              setState(() {
-                _groupByType = value;
-              });
-            },
-          ),
+          if (_devMode)
+            SwitchListTile(
+              secondary: const Icon(Icons.view_list),
+              title: const Text('Group by Account Type'),
+              subtitle: const Text('Group accounts by type (Crypto, Bank, etc.)'),
+              value: _groupByType,
+              onChanged: (value) async {
+                await PreferencesService.instance.setGroupByType(value);
+                setState(() => _groupByType = value);
+              },
+            ),
 
           Consumer<ThemeProvider>(
             builder: (context, themeProvider, _) {
@@ -571,30 +581,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
           ),
 
-          const Divider(),
-
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text(
-              'Connection',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey,
+          if (_devMode) ...[
+            const Divider(),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                'Connection',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey),
               ),
             ),
-          ),
-
-          ListTile(
-            leading: const Icon(Icons.http_outlined),
-            title: const Text('Custom proxy headers'),
-            subtitle: Text(
-              _customHeaders.isEmpty
-                  ? 'Optional headers for a reverse proxy or auth gateway'
-                  : '${_customHeaders.length} configured',
+            ListTile(
+              leading: const Icon(Icons.http_outlined),
+              title: const Text('Custom proxy headers'),
+              subtitle: Text(
+                _customHeaders.isEmpty
+                    ? 'Optional headers for a reverse proxy or auth gateway'
+                    : '${_customHeaders.length} configured',
+              ),
+              onTap: _showCustomHeadersDialog,
             ),
-            onTap: _showCustomHeadersDialog,
-          ),
+          ],
 
           const Divider(),
 

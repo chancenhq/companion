@@ -104,7 +104,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         children: [
           const Spacer(flex: 2),
           SvgPicture.asset(
-            'assets/images/logomark-color.svg',
+            'assets/images/companion-logo.svg',
             width: 80,
             height: 80,
           ),
@@ -209,7 +209,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         children: [
           const Spacer(flex: 2),
           SvgPicture.asset(
-            'assets/images/logomark-color.svg',
+            'assets/images/companion-logo.svg',
             width: 64,
             height: 64,
           ),

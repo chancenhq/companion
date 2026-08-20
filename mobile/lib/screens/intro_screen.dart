@@ -8,6 +8,6 @@ class IntroScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IntroScreenPlatform(onStartChat: onStartChat);
+    return const InsightsPreviewScreen();
   }
 }

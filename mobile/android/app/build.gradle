@@ -52,7 +52,7 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace "am.sure.mobile"
+    namespace "tech.chancen.companion"
     compileSdk = 36
     ndkVersion flutter.ndkVersion
 
@@ -77,9 +77,9 @@ android {
     }
 
     defaultConfig {
-        applicationId "am.sure.mobile"
+        applicationId "tech.chancen.companion"
         minSdkVersion 24
-        targetSdkVersion flutter.targetSdkVersion
+        targetSdkVersion 36
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
     }
@@ -98,4 +98,3 @@ android {
 flutter {
     source '../..'
 }
-

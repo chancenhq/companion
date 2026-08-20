@@ -2,16 +2,16 @@ import 'dart:html' as html;
 import 'dart:ui_web' as ui;
 import 'package:flutter/material.dart';
 
-class IntroScreenPlatform extends StatefulWidget {
-  const IntroScreenPlatform({super.key, this.onStartChat});
+class InsightsPreviewScreen extends StatefulWidget {
+  const InsightsPreviewScreen({super.key, this.onStartChat});
 
   final VoidCallback? onStartChat;
 
   @override
-  State<IntroScreenPlatform> createState() => _IntroScreenPlatformState();
+  State<InsightsPreviewScreen> createState() => _InsightsPreviewScreenState();
 }
 
-class _IntroScreenPlatformState extends State<IntroScreenPlatform> {
+class _InsightsPreviewScreenState extends State<InsightsPreviewScreen> {
   static int _nextViewId = 0;
 
   late final String _viewType;

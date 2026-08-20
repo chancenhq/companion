@@ -7,8 +7,8 @@ import 'package:flutter/material.dart';
 /// returns localised strings via AppLocalizations. The call site in
 /// _EmptyState requires only a one-line change.
 const List<({IconData icon, String text})> suggestedQuestions = [
-  (icon: Icons.account_balance_wallet_outlined, text: 'What is my current net worth?'),
-  (icon: Icons.show_chart,                      text: 'How has my spending changed this month?'),
-  (icon: Icons.savings_outlined,                text: 'How can I improve my savings rate?'),
-  (icon: Icons.receipt_long_outlined,           text: 'What are my biggest expenses lately?'),
+  (icon: Icons.help_outline,         text: 'What is a Chancen ISA?'),
+  (icon: Icons.trending_up,          text: 'How does Chancen ISA impact my future income?'),
+  (icon: Icons.attach_money,         text: 'Can I repay my Chancen ISA all at once?'),
+  (icon: Icons.table_chart_outlined, text: 'How to budget in volatile situations?'),
 ];
