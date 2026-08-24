@@ -266,8 +266,42 @@ module Api
           )
           existing_user
         else
-          render json: { error: "No Companion account found for this Apple ID. Please sign in with your email and password to link your Apple account." }, status: :not_found
-          return
+          unless email.present?
+            render json: { error: "Please share your email address with Companion to continue." }, status: :unprocessable_entity
+            return
+          end
+
+          new_user = User.new(
+            email:      email,
+            first_name: params[:first_name].presence || email.split("@").first,
+            last_name:  params[:last_name].presence  || "",
+            password:   SecureRandom.hex(24)
+          )
+          assign_signup_family_and_role(new_user, invitation: nil)
+
+          begin
+            ActiveRecord::Base.transaction do
+              unless new_user.save
+                render json: { errors: new_user.errors.full_messages }, status: :unprocessable_entity
+                raise ActiveRecord::Rollback
+              end
+              OidcIdentity.create!(
+                user:                  new_user,
+                provider:              "apple",
+                uid:                   apple_uid,
+                issuer:                AppleSignIn::ISSUER,
+                info:                  { email: email, first_name: new_user.first_name, last_name: new_user.last_name },
+                last_authenticated_at: Time.current
+              )
+            end
+          rescue ActiveRecord::RecordInvalid => e
+            Rails.logger.error("[Auth] Apple Sign-In account creation failed: #{e.class} - #{e.message}")
+            render json: { error: "Failed to create account" }, status: :unprocessable_entity
+            return
+          end
+
+          return if performed?
+          new_user
         end
 
         issue_mobile_tokens(user, device_params)
