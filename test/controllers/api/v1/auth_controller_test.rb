@@ -1152,6 +1152,50 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
 
     new_user = User.find_by!(email: apple_email)
     assert OidcIdentity.exists?(user: new_user, provider: "apple", uid: apple_uid)
+    assert_nil new_user.password_digest, "Apple-created account must be SSO-only (no password digest)"
+    assert new_user.sso_only?, "Apple-created account must be SSO-only"
+  end
+
+  test "apple_sign_in new account with pending invitation joins invitation family and role" do
+    invitation = invitations(:one)
+    apple_uid = "apple.uid.invited"
+
+    AppleSignIn.stubs(:verify!).returns({ "sub" => apple_uid, "email" => invitation.email })
+
+    assert_difference("User.count", 1) do
+      post "/api/v1/auth/apple_sign_in", params: {
+        identity_token: "fake.token",
+        device: @device_info
+      }
+    end
+
+    assert_response :success
+    new_user = User.find_by!(email: invitation.email)
+    assert_equal invitation.family, new_user.family
+    assert_equal invitation.role, new_user.role
+    assert_nil new_user.password_digest
+    assert invitation.reload.accepted_at.present?, "invitation should be marked accepted"
+  end
+
+  test "apple_sign_in returns 403 when invite-only default family is unavailable and no invitation" do
+    Setting.onboarding_state = "invite_only"
+    Setting.invite_only_default_family_id = 0.to_s  # non-existent family
+
+    apple_uid = "apple.uid.blocked"
+    apple_email = "blocked@example.com"
+
+    AppleSignIn.stubs(:verify!).returns({ "sub" => apple_uid, "email" => apple_email })
+
+    assert_no_difference("User.count") do
+      post "/api/v1/auth/apple_sign_in", params: {
+        identity_token: "fake.token",
+        device: @device_info
+      }
+    end
+
+    assert_response :forbidden
+    data = JSON.parse(response.body)
+    assert_match(/unavailable/, data["error"])
   end
 
   test "apple_sign_in new account joins invite-only default family as member" do

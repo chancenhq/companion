@@ -200,35 +200,19 @@ module Api
         # Atomically claim the code before creating the user
         return render json: { error: "Linking code is invalid or expired" }, status: :unauthorized unless consume_linking_code!(linking_code)
 
-        user = User.new(
-          email: email,
-          first_name: params[:first_name].presence || cached[:first_name],
-          last_name: params[:last_name].presence || cached[:last_name],
-          skip_password_validation: true
+        user = jit_create_sso_user(
+          email:                    email,
+          first_name:               params[:first_name].presence || cached[:first_name],
+          last_name:                params[:last_name].presence  || cached[:last_name],
+          provider:                 cached[:provider],
+          uid:                      cached[:uid],
+          issuer:                   cached[:issuer],
+          new_family_fallback_role: sso_provider_default_role(cached[:provider]) || :admin,
+          invitation:               invitation
         )
+        return unless user
 
-        assign_signup_family_and_role(
-          user,
-          invitation: invitation,
-          new_family_fallback_role: sso_provider_default_role(cached[:provider]) || :admin
-        )
-
-        if user.save
-          # Mark invitation as accepted if one was used
-          invitation&.update!(accepted_at: Time.current)
-
-          OidcIdentity.create_from_omniauth(build_omniauth_hash(cached), user)
-
-          SsoAuditLog.log_jit_account_created!(
-            user: user,
-            provider: cached[:provider],
-            request: request
-          )
-
-          issue_mobile_tokens(user, cached[:device_info])
-        else
-          render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
-        end
+        issue_mobile_tokens(user, cached[:device_info])
       end
 
       def apple_sign_in
@@ -271,36 +255,15 @@ module Api
             return
           end
 
-          new_user = User.new(
+          new_user = jit_create_sso_user(
             email:      email,
             first_name: params[:first_name].presence || email.split("@").first,
             last_name:  params[:last_name].presence  || "",
-            password:   SecureRandom.hex(24)
+            provider:   "apple",
+            uid:        apple_uid,
+            issuer:     AppleSignIn::ISSUER
           )
-          assign_signup_family_and_role(new_user, invitation: nil)
-
-          begin
-            ActiveRecord::Base.transaction do
-              unless new_user.save
-                render json: { errors: new_user.errors.full_messages }, status: :unprocessable_entity
-                raise ActiveRecord::Rollback
-              end
-              OidcIdentity.create!(
-                user:                  new_user,
-                provider:              "apple",
-                uid:                   apple_uid,
-                issuer:                AppleSignIn::ISSUER,
-                info:                  { email: email, first_name: new_user.first_name, last_name: new_user.last_name },
-                last_authenticated_at: Time.current
-              )
-            end
-          rescue ActiveRecord::RecordInvalid => e
-            Rails.logger.error("[Auth] Apple Sign-In account creation failed: #{e.class} - #{e.message}")
-            render json: { error: "Failed to create account" }, status: :unprocessable_entity
-            return
-          end
-
-          return if performed?
+          return unless new_user
           new_user
         end
 
@@ -435,6 +398,43 @@ module Api
             ui_layout: user.ui_layout,
             ai_enabled: user.ai_enabled?
           }
+        end
+
+        def jit_create_sso_user(email:, first_name:, last_name:, provider:, uid:, issuer:, new_family_fallback_role: :admin, invitation: nil)
+          invitation ||= Invitation.pending.find_by(email: email)
+
+          if invitation.blank? && invite_only_default_family_missing?
+            render json: { error: "Invite-only default family is unavailable. Please contact an administrator." }, status: :forbidden
+            return nil
+          end
+
+          user = User.new(
+            email:      email,
+            first_name: first_name,
+            last_name:  last_name,
+            skip_password_validation: true
+          )
+          assign_signup_family_and_role(user, invitation: invitation, new_family_fallback_role: new_family_fallback_role)
+
+          ActiveRecord::Base.transaction do
+            unless user.save
+              render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
+              raise ActiveRecord::Rollback
+            end
+            OidcIdentity.create!(
+              user:                  user,
+              provider:              provider,
+              uid:                   uid,
+              issuer:                issuer,
+              info:                  { email: email, first_name: user.first_name, last_name: user.last_name },
+              last_authenticated_at: Time.current
+            )
+            invitation&.update!(accepted_at: Time.current)
+            SsoAuditLog.log_jit_account_created!(user: user, provider: provider, request: request)
+          end
+
+          return nil if performed?
+          user
         end
 
         def build_omniauth_hash(cached)
