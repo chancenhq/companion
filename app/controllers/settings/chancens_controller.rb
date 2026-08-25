@@ -36,7 +36,7 @@ class Settings::ChancensController < ApplicationController
     end
 
     def ensure_super_admin
-      redirect_to root_path, alert: t(".not_authorized") unless Current.user.super_admin?
+      redirect_to root_path, alert: t("settings.chancens.ensure_super_admin.not_authorized") unless Current.user.super_admin?
     end
 
     def update_encrypted_setting(param_key)
