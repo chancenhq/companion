@@ -74,10 +74,7 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
     final previousHeaders = ApiConfig.customProxyHeaders;
     try {
       // Normalize base URL by removing trailing slashes
-      final normalizedUrl = _urlController.text.trim().replaceAll(
-        RegExp(r'/+$'),
-        '',
-      );
+      final normalizedUrl = _normalizeUrl(_urlController.text);
 
       // Apply the unsaved edits only for the duration of this probe so the
       // test reflects what the user is about to save. Restored in `finally`.
@@ -138,10 +135,7 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
 
     try {
       // Normalize base URL by removing trailing slashes
-      final normalizedUrl = _urlController.text.trim().replaceAll(
-        RegExp(r'/+$'),
-        '',
-      );
+      final normalizedUrl = _normalizeUrl(_urlController.text);
 
       // Save URL to SharedPreferences
       final prefs = await SharedPreferences.getInstance();
@@ -171,6 +165,12 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
         });
       }
     }
+  }
+
+  /// Strips trailing slashes so equivalent URLs compare equal regardless of
+  /// how they were entered (typed by hand vs. picked from a preset chip).
+  String _normalizeUrl(String value) {
+    return value.trim().replaceAll(RegExp(r'/+$'), '');
   }
 
   String? _validateUrl(String? value) {
@@ -264,7 +264,7 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
                       const SizedBox(height: 12),
                       Text(
                         '• https://companion-prod.chancen.tech\n'
-                        '• https://your-domain.com\n'
+                        '• https://companion-staging.chancen.tech\n'
                         '• http://localhost:3000',
                         style: TextStyle(
                           color: colorScheme.onSurface,
@@ -273,6 +273,35 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
                       ),
                     ],
                   ),
+                ),
+                const SizedBox(height: 24),
+
+                // Environment quick-switch
+                Text(
+                  'Quick switch',
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final env in ApiConfig.knownEnvironments)
+                      ChoiceChip(
+                        label: Text(env.label),
+                        selected: _normalizeUrl(_urlController.text) ==
+                            _normalizeUrl(env.baseUrl),
+                        onSelected: (_) {
+                          setState(() {
+                            _urlController.text = env.baseUrl;
+                            _errorMessage = null;
+                            _successMessage = null;
+                          });
+                        },
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 24),
 
