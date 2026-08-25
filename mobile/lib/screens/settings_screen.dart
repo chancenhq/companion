@@ -272,8 +272,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Reset Account'),
         content: const Text(
-          'Resetting your account will delete all your accounts, categories, '
-          'merchants, tags, and other data, but keep your user account intact.\n\n'
+          'Resetting your account will delete all your account details. '
           'This action cannot be undone. Are you sure?',
         ),
         actions: [
