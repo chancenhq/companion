@@ -24,7 +24,6 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _isResettingAccount = false;
   bool _isDeletingAccount = false;
   bool _biometricSupported = false;
   bool _biometricEnabled = false;
@@ -263,76 +262,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Unable to open link')),
       );
-    }
-  }
-
-  Future<void> _handleResetAccount(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Reset Account'),
-        content: const Text(
-          'Resetting your account will delete all your accounts, categories, '
-          'merchants, tags, and other data, but keep your user account intact.\n\n'
-          'This action cannot be undone. Are you sure?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(
-              foregroundColor: Theme.of(context).colorScheme.error,
-            ),
-            child: const Text('Reset Account'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !context.mounted) return;
-
-    setState(() => _isResettingAccount = true);
-    try {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final accessToken = await authProvider.getValidAccessToken();
-      if (accessToken == null) {
-        await authProvider.logout();
-        return;
-      }
-
-      final result = await UserService().resetAccount(accessToken: accessToken);
-
-      if (!context.mounted) return;
-
-      if (result['success'] == true) {
-        await OfflineStorageService().clearAllData();
-        if (context.mounted) {
-          Provider.of<CategoriesProvider>(context, listen: false).clear();
-        }
-
-        if (!context.mounted) return;
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Account reset has been initiated. This may take a moment.'),
-            backgroundColor: Colors.green,
-          ),
-        );
-
-        await authProvider.logout();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['error'] ?? 'Failed to reset account'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isResettingAccount = false);
     }
   }
 
@@ -665,19 +594,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
 
           ListTile(
-            leading: const Icon(Icons.restart_alt, color: Colors.red),
-            title: const Text('Reset Account'),
-            subtitle: const Text(
-              'Delete all accounts, categories, merchants, and tags but keep your user account',
-            ),
-            trailing: _isResettingAccount
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                : null,
-            enabled: !_isResettingAccount && !_isDeletingAccount,
-            onTap: _isResettingAccount || _isDeletingAccount ? null : () => _handleResetAccount(context),
-          ),
-
-          ListTile(
             leading: const Icon(Icons.delete_forever, color: Colors.red),
             title: const Text('Delete Account'),
             subtitle: const Text(
@@ -686,8 +602,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             trailing: _isDeletingAccount
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                 : null,
-            enabled: !_isDeletingAccount && !_isResettingAccount,
-            onTap: _isDeletingAccount || _isResettingAccount ? null : () => _handleDeleteAccount(context),
+            enabled: !_isDeletingAccount,
+            onTap: _isDeletingAccount ? null : () => _handleDeleteAccount(context),
           ),
 
           const Divider(),
