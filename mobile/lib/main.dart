@@ -308,11 +308,6 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
       );
     }
 
-    // Show onboarding flow on first launch
-    if (!_onboardingComplete) {
-      return OnboardingScreen(onComplete: _onOnboardingComplete);
-    }
-
     return Consumer<AuthProvider>(
       builder: (context, authProvider, _) {
         // Only show loading spinner during initial auth check
@@ -344,8 +339,14 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
           });
         }
 
+        // Auth callback states win over first-launch onboarding.
         if (authProvider.ssoOnboardingPending) {
           return const SsoOnboardingScreen();
+        }
+
+        // Show onboarding flow on first launch
+        if (!_onboardingComplete) {
+          return OnboardingScreen(onComplete: _onOnboardingComplete);
         }
 
         return const LoginScreen();
