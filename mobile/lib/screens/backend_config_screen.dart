@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import '../models/custom_proxy_header.dart';
+import '../providers/categories_provider.dart';
 import '../services/api_config.dart';
 import '../services/custom_proxy_headers_service.dart';
+import '../services/log_service.dart';
+import '../services/offline_storage_service.dart';
 import '../widgets/custom_proxy_headers_editor.dart';
 
 class BackendConfigScreen extends StatefulWidget {
@@ -137,8 +141,12 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
       // Normalize base URL by removing trailing slashes
       final normalizedUrl = _normalizeUrl(_urlController.text);
 
-      // Save URL to SharedPreferences
       final prefs = await SharedPreferences.getInstance();
+      final previousUrl = prefs.getString('backend_url');
+      final isSwitchingBackend =
+          previousUrl != null && _normalizeUrl(previousUrl) != normalizedUrl;
+
+      // Save URL to SharedPreferences
       await prefs.setString('backend_url', normalizedUrl);
 
       // Save custom proxy headers
@@ -147,6 +155,12 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
 
       // Update ApiConfig
       ApiConfig.setBaseUrl(normalizedUrl);
+
+      // Data cached from the previous backend is meaningless (and possibly
+      // confusing/wrong) once pointed at a different environment, so wipe it.
+      if (isSwitchingBackend) {
+        await _clearLocalDataForBackendSwitch();
+      }
 
       // Notify parent that config is saved
       if (mounted && widget.onConfigSaved != null) {
@@ -171,6 +185,25 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
   /// how they were entered (typed by hand vs. picked from a preset chip).
   String _normalizeUrl(String value) {
     return value.trim().replaceAll(RegExp(r'/+$'), '');
+  }
+
+  /// Wipes locally cached data when the backend URL actually changes, so
+  /// records from one environment (e.g. production) never linger on screen
+  /// after switching to another (e.g. staging). Mirrors the "Clear Local
+  /// Data" action in settings_screen.dart.
+  Future<void> _clearLocalDataForBackendSwitch() async {
+    try {
+      final log = LogService.instance;
+      log.info('BackendConfigScreen', 'Backend changed, clearing local data...');
+      await OfflineStorageService().clearAllData();
+      if (mounted) {
+        Provider.of<CategoriesProvider>(context, listen: false).clear();
+      }
+      log.info('BackendConfigScreen', 'Local data cleared after backend switch');
+    } catch (e, stack) {
+      // Don't block the backend switch on a cache-clear failure; just log it.
+      debugPrint('BackendConfigScreen: failed to clear local data: $e\n$stack');
+    }
   }
 
   String? _validateUrl(String? value) {
