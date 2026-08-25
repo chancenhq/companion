@@ -10,6 +10,7 @@ import '../services/log_service.dart';
 import '../services/biometric_service.dart';
 import '../services/preferences_service.dart';
 import '../services/user_service.dart';
+import 'backend_config_screen.dart';
 import 'log_viewer_screen.dart';
 import '../models/custom_proxy_header.dart';
 import '../services/api_config.dart';
@@ -120,6 +121,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e, stack) {
       debugPrint('SettingsScreen: failed to load custom headers: $e\n$stack');
     }
+  }
+
+  void _openBackendSwitcher() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (routeContext) => BackendConfigScreen(
+          onConfigSaved: () => _onBackendSwitched(routeContext),
+        ),
+      ),
+    );
+  }
+
+  /// Switching backend mid-session leaves an auth token that belongs to the
+  /// old environment, so sign out and drop back to the root (Login) rather
+  /// than leaving a broken authenticated screen up.
+  Future<void> _onBackendSwitched(BuildContext routeContext) async {
+    final authProvider = Provider.of<AuthProvider>(routeContext, listen: false);
+    final navigator = Navigator.of(routeContext);
+    await authProvider.logout();
+    navigator.popUntil((route) => route.isFirst);
   }
 
   Future<void> _showCustomHeadersDialog() async {
@@ -577,6 +599,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'Connection',
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey),
               ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.dns_outlined),
+              title: const Text('Backend server'),
+              subtitle: Text(ApiConfig.baseUrl),
+              onTap: _openBackendSwitcher,
             ),
             ListTile(
               leading: const Icon(Icons.http_outlined),
