@@ -1,9 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart';
 import 'package:provider/provider.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_config.dart';
@@ -39,35 +37,14 @@ class _LoginFormBodyState extends State<LoginFormBody> {
   final _passwordFocus = FocusNode();
   bool _obscurePassword = true;
   bool _isSignUp = false;
-  late final TapGestureRecognizer _signUpTapRecognizer;
-
-  static const _emailPlaceholder = 'user@example.com';
-  static const _passwordPlaceholder = 'Password1!';
 
   @override
   void initState() {
     super.initState();
-    _signUpTapRecognizer = TapGestureRecognizer()..onTap = _openSignUpPage;
-    if (kDebugMode && !widget.branded) {
-      _emailController.text = _emailPlaceholder;
-      _passwordController.text = _passwordPlaceholder;
-      _emailFocus.addListener(() => _clearPlaceholderOnFocus(
-            _emailFocus, _emailController, _emailPlaceholder));
-      _passwordFocus.addListener(() => _clearPlaceholderOnFocus(
-            _passwordFocus, _passwordController, _passwordPlaceholder));
-    }
-  }
-
-  void _clearPlaceholderOnFocus(
-      FocusNode node, TextEditingController controller, String placeholder) {
-    if (node.hasFocus && controller.text == placeholder) {
-      controller.clear();
-    }
   }
 
   @override
   void dispose() {
-    _signUpTapRecognizer.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _otpController.dispose();
@@ -76,16 +53,6 @@ class _LoginFormBodyState extends State<LoginFormBody> {
     _emailFocus.dispose();
     _passwordFocus.dispose();
     super.dispose();
-  }
-
-  Future<void> _openSignUpPage() async {
-    final signUpUrl = Uri.parse('${ApiConfig.baseUrl}/registration/new');
-    final launched = await launchUrl(signUpUrl, mode: LaunchMode.externalApplication);
-    if (!launched && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to open sign up page')),
-      );
-    }
   }
 
   Future<void> _handleLogin() async {
@@ -152,44 +119,6 @@ class _LoginFormBodyState extends State<LoginFormBody> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
-          ] else ...[
-            SvgPicture.asset(
-              'assets/images/companion-logo.svg',
-              width: 80,
-              height: 80,
-            ),
-            const SizedBox(height: 24),
-            if (kDebugMode) ...[
-              Text.rich(
-                TextSpan(
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                  children: [
-                    const TextSpan(text: 'Demo account or '),
-                    TextSpan(
-                      text: 'Sign Up',
-                      style: TextStyle(
-                        color: colorScheme.primary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      recognizer: _signUpTapRecognizer,
-                    ),
-                    const TextSpan(text: '!'),
-                  ],
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ] else ...[
-              Text(
-                'Welcome back',
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-            const SizedBox(height: 48),
           ],
 
           // ── Sign In | Sign Up toggle ─────────────────────────────────
@@ -584,7 +513,7 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const LoginFormBody(branded: false, allowSignUp: false),
+                  const LoginFormBody(branded: true, allowSignUp: true),
 
                   if (kDebugMode) ...[
                     // Backend URL info
