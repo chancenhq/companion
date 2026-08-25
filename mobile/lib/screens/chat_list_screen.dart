@@ -28,11 +28,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
 
-    if (!authProvider.aiEnabled) {
-      chatProvider.clearChats();
-      return;
-    }
-
     final accessToken = await authProvider.getValidAccessToken();
     if (accessToken == null) {
       await authProvider.logout();
@@ -141,9 +136,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   Future<void> _openNewChat() async {
     if (!mounted) return;
-
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    if (!authProvider.aiEnabled) return;
 
     await Navigator.push(
       context,
