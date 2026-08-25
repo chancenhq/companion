@@ -122,14 +122,14 @@ an [AGPLv3 license](https://github.com/we-promise/sure/blob/main/LICENSE).
 ![Alt](https://repobeats.axiom.co/api/embed/3a9753cff07501fba8a6749d0ebd567ff63848c8.svg "Repobeats analytics image")
 
 <!-- MOBILE_DOWNLOADS_START -->
-## Latest Mobile Release: v0.7.1-alpha.7.9
+## Latest Mobile Build: test-companion-20260825-202608252345
 
-**Release page**: [mobile-v0.7.1-alpha.7.9](https://github.com/chancenhq/companion/releases/tag/mobile-v0.7.1-alpha.7.9)
+**Build from**: `test-companion-20260825` branch
 
 ### Direct Downloads
 
-- **Android APK**: [sure-v0.7.1-alpha.7.9.apk](https://github.com/chancenhq/companion/releases/download/mobile-v0.7.1-alpha.7.9/sure-v0.7.1-alpha.7.9.apk)
-- **iOS Build (unsigned)**: [sure-v0.7.1-alpha.7.9-ios-unsigned.zip](https://github.com/chancenhq/companion/releases/download/mobile-v0.7.1-alpha.7.9/sure-v0.7.1-alpha.7.9-ios-unsigned.zip)
+- **Android APK**: [sure-test-companion-20260825-202608252345.apk](https://github.com/chancenhq/companion/releases/download/test-companion-20260825-build-202608252345/sure-test-companion-20260825-202608252345.apk)
+- **iOS Build (unsigned)**: [sure-test-companion-20260825-202608252345-ios-unsigned.zip](https://github.com/chancenhq/companion/releases/download/test-companion-20260825-build-202608252345/sure-test-companion-20260825-202608252345-ios-unsigned.zip)
 
-> **Note**: These are builds intended for testing purposes. For production use, please build from source with proper signing credentials.
+> **Note**: These are development builds from `test-companion-20260825` intended for testing purposes. For production use, please use a tagged release or build from source with proper signing credentials.
 <!-- MOBILE_DOWNLOADS_END -->
