@@ -22,7 +22,6 @@ en:
         ai_assistant: AI Assistant
         financial_data_providers: Financial Data Providers
         sync_settings: Sync Settings
-        metabase: Metabase
         invites: Invite Codes
         title: Self-Hosting
         danger_zone: Danger Zone
@@ -177,18 +176,6 @@ en:
       clear_cache:
         cache_cleared: Data cache has been cleared. This may take a few moments to complete.
       not_authorized: You are not authorized to perform this action
-      metabase_settings:
-        title: Metabase Student Data
-        description: Connect to the Chancen ISA warehouse via Metabase to power the My Account screen.
-        env_configured_message: Configured via environment variable.
-        url_label: Metabase URL
-        url_placeholder: "https://metabase.example.com"
-        api_key_label: API Key
-        api_key_placeholder: Enter API key
-        question_id_label: Student Question ID
-        question_id_placeholder: "1329"
-        email_param_label: Email Template Tag
-        email_param_placeholder: email
       sync_settings:
         auto_sync_label: Enable automatic sync
         auto_sync_description: When enabled, all accounts will be automatically synced daily at the specified time.
