@@ -1,0 +1,22 @@
+<div class="space-y-4">
+  <div>
+    <h2 class="font-medium mb-1"><%= t("title") %></h2>
+    <% if env_configured? %>
+      <p class="text-sm text-secondary"><%= t("env_configured_message") %></p>
+    <% else %>
+      <p class="text-secondary text-sm mb-4"><%= t("description") %></p>
+    <% end %>
+  </div>
+
+  <% fields.each do |field| %>
+    <%= styled_form_with model: Setting.new,
+                         url: settings_chancen_path,
+                         method: :patch,
+                         data: {
+                           controller: "auto-submit-form",
+                           "auto-submit-form-trigger-event-value": "blur"
+                         } do |form| %>
+      <%= form.public_send(field.type, field.name, **field_options(field)) %>
+    <% end %>
+  <% end %>
+</div>
