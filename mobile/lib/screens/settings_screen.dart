@@ -28,6 +28,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _biometricSupported = false;
   bool _biometricEnabled = false;
   bool _isTogglingBiometric = false;
+  bool _themeExpanded = false;
   // dev-mode easter egg
   bool _devMode = false;
   int _devTapCount = 0;
@@ -493,31 +494,77 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           Consumer<ThemeProvider>(
             builder: (context, themeProvider, _) {
-              return ListTile(
-                leading: const Icon(Icons.brightness_6_outlined),
-                title: const Text('Theme'),
-                trailing: SegmentedButton<ThemeMode>(
-                  segments: const [
-                    ButtonSegment(
-                      value: ThemeMode.light,
-                      icon: Icon(Icons.light_mode, size: 18),
-                      tooltip: 'Light',
+              final current = themeProvider.themeMode;
+              final (currentIcon, currentLabel) = switch (current) {
+                ThemeMode.light  => (Icons.light_mode, 'Light'),
+                ThemeMode.dark   => (Icons.dark_mode, 'Dark'),
+                _                => (Icons.brightness_auto, 'System'),
+              };
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.brightness_6_outlined),
+                    title: const Text('Theme'),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(currentIcon, size: 18,
+                            color: Theme.of(context).colorScheme.primary),
+                        const SizedBox(width: 6),
+                        Text(currentLabel,
+                            style: TextStyle(
+                                color: Theme.of(context).colorScheme.primary)),
+                        const SizedBox(width: 4),
+                        Icon(
+                          _themeExpanded
+                              ? Icons.expand_less
+                              : Icons.expand_more,
+                          size: 18,
+                        ),
+                      ],
                     ),
-                    ButtonSegment(
-                      value: ThemeMode.system,
-                      icon: Icon(Icons.brightness_auto, size: 18),
-                      tooltip: 'System',
-                    ),
-                    ButtonSegment(
-                      value: ThemeMode.dark,
-                      icon: Icon(Icons.dark_mode, size: 18),
-                      tooltip: 'Dark',
-                    ),
-                  ],
-                  selected: {themeProvider.themeMode},
-                  onSelectionChanged: (modes) => themeProvider.setThemeMode(modes.first),
-                  showSelectedIcon: false,
-                ),
+                    onTap: () =>
+                        setState(() => _themeExpanded = !_themeExpanded),
+                  ),
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeInOut,
+                    child: _themeExpanded
+                        ? Column(
+                            children: [
+                              _ThemeOption(
+                                icon: Icons.light_mode,
+                                label: 'Light',
+                                selected: current == ThemeMode.light,
+                                onTap: () {
+                                  themeProvider.setThemeMode(ThemeMode.light);
+                                  setState(() => _themeExpanded = false);
+                                },
+                              ),
+                              _ThemeOption(
+                                icon: Icons.brightness_auto,
+                                label: 'System',
+                                selected: current == ThemeMode.system,
+                                onTap: () {
+                                  themeProvider.setThemeMode(ThemeMode.system);
+                                  setState(() => _themeExpanded = false);
+                                },
+                              ),
+                              _ThemeOption(
+                                icon: Icons.dark_mode,
+                                label: 'Dark',
+                                selected: current == ThemeMode.dark,
+                                onTap: () {
+                                  themeProvider.setThemeMode(ThemeMode.dark);
+                                  setState(() => _themeExpanded = false);
+                                },
+                              ),
+                            ],
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ],
               );
             },
           ),
@@ -634,6 +681,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ThemeOption extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ThemeOption({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            const SizedBox(width: 40),
+            Icon(icon, size: 20,
+                color: selected ? colorScheme.primary : colorScheme.onSurfaceVariant),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                  color: selected ? colorScheme.primary : colorScheme.onSurface,
+                ),
+              ),
+            ),
+            if (selected)
+              Icon(Icons.check, size: 18, color: colorScheme.primary),
+          ],
+        ),
       ),
     );
   }
