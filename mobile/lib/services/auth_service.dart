@@ -42,7 +42,9 @@ class AuthService {
       ).timeout(const Duration(seconds: 30));
 
       LogService.instance.debug('AuthService', 'Login response status: ${response.statusCode}');
-      LogService.instance.debug('AuthService', 'Login response body: ${response.body}');
+      if (kDebugMode) {
+        LogService.instance.debug('AuthService', 'Login response body: ${response.body}');
+      }
 
       final responseData = jsonDecode(response.body);
 
