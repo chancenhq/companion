@@ -8,3 +8,10 @@ en:
       expiry_notice: This link will expire in %{hours} hours.
       greeting: Hello!
       subject: '%{product_name}: Confirm your email change'
+    signup_confirmation:
+      body: Thanks for signing up! Click the button below to confirm your email address
+        and activate your account.
+      cta: Confirm email address
+      expiry_notice: This link will expire in %{hours} hours.
+      greeting: Welcome!
+      subject: '%{product_name}: Confirm your email address'

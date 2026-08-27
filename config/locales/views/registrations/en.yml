@@ -10,6 +10,7 @@ en:
   registrations:
     closed: Signups are currently closed.
     create:
+      confirm_email: Check your email to confirm your account before signing in.
       failure: There was a problem signing up.
       invalid_invite_code: Invalid invite code, please try again.
       success: You have signed up successfully.
