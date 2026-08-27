@@ -529,13 +529,52 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     assert_nil session[:mobile_sso], "Expected mobile_sso session to be cleared"
   end
 
-  test "mobile SSO redirects with error when OIDC identity not linked" do
+  test "mobile SSO auto-links existing account by email without a linking code" do
     user_without_oidc = users(:new_email)
 
     setup_omniauth_mock(
       provider: "openid_connect",
       uid: "unlinked-uid-99999",
       email: user_without_oidc.email,
+      name: "New User"
+    )
+
+    Rails.configuration.x.auth.stubs(:sso_providers).returns([
+      { name: "openid_connect", strategy: "openid_connect", label: "Google" }
+    ])
+
+    assert_difference "OidcIdentity.count", 1 do
+      assert_difference "SsoAuditLog.where(event_type: 'link').count", 1 do
+        get "/auth/mobile/openid_connect", params: {
+          device_id: "flutter-device-006",
+          device_name: "Pixel 8",
+          device_type: "android"
+        }
+        get "/auth/openid_connect/callback"
+      end
+    end
+
+    assert_response :redirect
+    redirect_url = @response.redirect_url
+
+    assert redirect_url.start_with?("sureapp://oauth/callback?"), "Expected redirect to sureapp://"
+    params = Rack::Utils.parse_query(URI.parse(redirect_url).query)
+    assert_nil params["status"], "Expected no account_not_linked status - account should auto-link"
+    assert params["code"].present?, "Expected a one-time authorization code, same as a normal SSO login"
+    assert_nil session[:mobile_sso], "Expected mobile_sso session to be cleared"
+
+    identity = OidcIdentity.find_by(provider: "openid_connect", uid: "unlinked-uid-99999")
+    assert_equal user_without_oidc, identity.user
+
+    device = user_without_oidc.mobile_devices.find_by(device_id: "flutter-device-006")
+    assert device.active_tokens.any?, "Expected device to have active tokens after auto-link"
+  end
+
+  test "mobile SSO redirects with error when no account exists for email" do
+    setup_omniauth_mock(
+      provider: "openid_connect",
+      uid: "brand-new-uid-99999",
+      email: "brand-new-sso-user@example.com",
       name: "New User"
     )
 
@@ -568,8 +607,8 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
       cached = Rails.cache.read("mobile_sso_link:#{params['linking_code']}")
       assert cached.present?, "Expected cache entry for mobile_sso_link:#{params['linking_code']}"
       assert_equal "openid_connect", cached[:provider]
-      assert_equal "unlinked-uid-99999", cached[:uid]
-      assert_equal user_without_oidc.email, cached[:email]
+      assert_equal "brand-new-uid-99999", cached[:uid]
+      assert_equal "brand-new-sso-user@example.com", cached[:email]
       assert_equal "New User", cached[:name]
       assert cached.key?(:device_info), "Expected device_info in cached payload"
       assert cached.key?(:allow_account_creation), "Expected allow_account_creation in cached payload"
