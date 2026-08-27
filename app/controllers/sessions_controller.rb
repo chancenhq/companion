@@ -241,8 +241,8 @@ class SessionsController < ApplicationController
   end
 
   private
-    def handle_mobile_sso_callback(user)
-      device_info = session.delete(:mobile_sso)
+    def handle_mobile_sso_callback(user, device_info: nil)
+      device_info ||= session.delete(:mobile_sso)
 
       unless device_info.present?
         mobile_sso_redirect(error: "missing_session", message: "Mobile SSO session expired")
@@ -276,6 +276,20 @@ class SessionsController < ApplicationController
     def handle_mobile_sso_onboarding(auth)
       device_info = session.delete(:mobile_sso)
       email = auth.info&.email
+
+      # Auto-link: if an account already exists with this email, link it silently.
+      # Google has verified the user owns this email — no password challenge needed.
+      existing_user = email.present? ? User.find_by(email: email) : nil
+      if existing_user
+        if existing_user.otp_required?
+          mobile_sso_redirect(error: "mfa_not_supported", message: "MFA users should sign in with email and password")
+          return
+        end
+        OidcIdentity.create_from_omniauth(auth, existing_user)
+        SsoAuditLog.log_link!(user: existing_user, provider: auth.provider, request: request)
+        handle_mobile_sso_callback(existing_user, device_info: device_info)
+        return
+      end
 
       has_pending_invitation = email.present? && Invitation.pending.exists?(email: email)
       allow_creation = has_pending_invitation || (!AuthConfig.jit_link_only? && AuthConfig.allowed_oidc_domain?(email))
