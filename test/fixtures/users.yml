@@ -5,6 +5,7 @@ empty:
   email: user1@example.com
   password_digest: $2a$12$XoNBo/cMCyzpYtvhrPAhsubG21mELX48RAcjSVCRctW8dG8wrDIla
   onboarded_at: <%= 3.days.ago %>
+  confirmed_at: <%= 3.days.ago %>
   role: admin
   ai_enabled: true
   show_sidebar: true
@@ -19,6 +20,7 @@ sure_support_staff:
   password_digest: $2a$12$XoNBo/cMCyzpYtvhrPAhsubG21mELX48RAcjSVCRctW8dG8wrDIla
   role: super_admin
   onboarded_at: <%= 3.days.ago %>
+  confirmed_at: <%= 3.days.ago %>
   ai_enabled: true
   show_sidebar: true
   show_ai_sidebar: true
@@ -32,6 +34,7 @@ family_admin:
   password_digest: $2a$12$XoNBo/cMCyzpYtvhrPAhsubG21mELX48RAcjSVCRctW8dG8wrDIla
   role: admin
   onboarded_at: <%= 3.days.ago %>
+  confirmed_at: <%= 3.days.ago %>
   ai_enabled: true
   show_sidebar: true
   show_ai_sidebar: true
@@ -44,6 +47,7 @@ family_member:
   email: jakobdylan@yahoo.com
   password_digest: $2a$12$XoNBo/cMCyzpYtvhrPAhsubG21mELX48RAcjSVCRctW8dG8wrDIla
   onboarded_at: <%= 3.days.ago %>
+  confirmed_at: <%= 3.days.ago %>
   role: member
   ai_enabled: true
   show_sidebar: true
@@ -58,6 +62,7 @@ new_email:
   unconfirmed_email: new@example.com
   password_digest: $2a$12$XoNBo/cMCyzpYtvhrPAhsubG21mELX48RAcjSVCRctW8dG8wrDIla
   onboarded_at: <%= Time.current %>
+  confirmed_at: <%= Time.current %>
   role: member
   ai_enabled: true
   show_sidebar: true
@@ -71,6 +76,7 @@ intro_user:
   email: intro@example.com
   password_digest: $2a$12$XoNBo/cMCyzpYtvhrPAhsubG21mELX48RAcjSVCRctW8dG8wrDIla
   onboarded_at: <%= 1.day.ago %>
+  confirmed_at: <%= 1.day.ago %>
   role: guest
   ai_enabled: true
   show_sidebar: false
@@ -85,6 +91,7 @@ inactive_trial_user:
   password_digest: $2a$12$XoNBo/cMCyzpYtvhrPAhsubG21mELX48RAcjSVCRctW8dG8wrDIla
   role: admin
   onboarded_at: <%= 90.days.ago %>
+  confirmed_at: <%= 90.days.ago %>
   ai_enabled: true
   show_sidebar: true
   show_ai_sidebar: true
@@ -99,4 +106,5 @@ sso_only:
   password_digest: ~
   role: admin
   onboarded_at: <%= 1.day.ago %>
+  confirmed_at: <%= 1.day.ago %>
   ai_enabled: true
