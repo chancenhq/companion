@@ -40,6 +40,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _loadBiometricState();
+    _loadAppVersion();
   }
 
   void _onAvatarTap() {
@@ -415,13 +416,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
             leading: const Icon(Icons.chat_bubble_outline),
             title: const Text('Contact us'),
             subtitle: Text(
-              'chat.whatsapp.com/IVBXS2QtJpqIFlZYoSPD1t',
+              'WhatsApp',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.primary,
-                decoration: TextDecoration.underline,
               ),
             ),
             onTap: () => _launchContactUrl(context),
+          ),
+
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('About'),
+            subtitle: Text(_appVersion ?? '…'),
+            onTap: () => showAboutDialog(
+              context: context,
+              applicationName: 'Chancen',
+              applicationVersion: _appVersion ?? '…',
+              applicationLegalese: '© ${DateTime.now().year} Chancen International',
+            ),
           ),
 
           if (_devMode) ...[
