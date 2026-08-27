@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models/auth_tokens.dart';
@@ -597,10 +598,18 @@ class AuthService {
     }
 
     if (userPayload is Map<String, dynamic>) {
+      final payload = kDebugMode
+          ? userPayload
+          : {
+              'id': userPayload['id'],
+              'role': userPayload['role'],
+              'ui_layout': userPayload['ui_layout'],
+              'ai_enabled': userPayload['ai_enabled'],
+            };
       try {
-        LogService.instance.debug('AuthService', '$source user payload: ${jsonEncode(userPayload)}');
+        LogService.instance.debug('AuthService', '$source user payload: ${jsonEncode(payload)}');
       } catch (_) {
-        LogService.instance.debug('AuthService', '$source user payload: $userPayload');
+        LogService.instance.debug('AuthService', '$source user payload: $payload');
       }
     } else {
       LogService.instance.debug('AuthService', '$source user payload type: ${userPayload.runtimeType}');
