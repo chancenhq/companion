@@ -208,7 +208,8 @@ module Api
           uid:                      cached[:uid],
           issuer:                   cached[:issuer],
           new_family_fallback_role: sso_provider_default_role(cached[:provider]) || :admin,
-          invitation:               invitation
+          invitation:               invitation,
+          password:                 params[:password].presence
         )
         return unless user
 
@@ -400,7 +401,7 @@ module Api
           }
         end
 
-        def jit_create_sso_user(email:, first_name:, last_name:, provider:, uid:, issuer:, new_family_fallback_role: :admin, invitation: nil)
+        def jit_create_sso_user(email:, first_name:, last_name:, provider:, uid:, issuer:, new_family_fallback_role: :admin, invitation: nil, password: nil)
           invitation ||= Invitation.pending.find_by(email: email)
 
           if invitation.blank? && invite_only_default_family_missing?
@@ -412,8 +413,9 @@ module Api
             email:      email,
             first_name: first_name,
             last_name:  last_name,
-            skip_password_validation: true
+            skip_password_validation: password.blank?
           )
+          user.password = password if password.present?
           assign_signup_family_and_role(user, invitation: invitation, new_family_fallback_role: new_family_fallback_role)
 
           ActiveRecord::Base.transaction do

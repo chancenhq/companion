@@ -498,6 +498,7 @@ class AuthService {
     required String linkingCode,
     String? firstName,
     String? lastName,
+    String? password,
   }) async {
     try {
       final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/sso_create_account');
@@ -506,6 +507,7 @@ class AuthService {
       };
       if (firstName != null) body['first_name'] = firstName;
       if (lastName != null) body['last_name'] = lastName;
+      if (password != null) body['password'] = password;
 
       final response = await http.post(
         url,
