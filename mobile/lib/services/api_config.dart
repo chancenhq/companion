@@ -36,6 +36,11 @@ class ApiConfig {
     _baseUrl = url;
   }
 
+  /// Strips surrounding whitespace and trailing slashes so equivalent URLs
+  /// compare equal regardless of how they were entered or stored.
+  static String normalizeUrl(String url) =>
+      url.trim().replaceAll(RegExp(r'/+$'), '');
+
   // API key authentication mode
   static bool _isApiKeyAuth = false;
   static String? _apiKeyValue;

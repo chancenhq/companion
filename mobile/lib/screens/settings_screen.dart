@@ -139,7 +139,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// old environment, so sign out and drop back to the root (Login) rather
   /// than leaving a broken authenticated screen up.
   Future<void> _onBackendSwitched(BuildContext routeContext, String previousUrl) async {
-    if (ApiConfig.baseUrl == previousUrl) return;
+    if (ApiConfig.normalizeUrl(ApiConfig.baseUrl) == ApiConfig.normalizeUrl(previousUrl)) return;
     final authProvider = Provider.of<AuthProvider>(routeContext, listen: false);
     final navigator = Navigator.of(routeContext);
     await authProvider.logout();

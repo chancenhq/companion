@@ -19,8 +19,11 @@ class CustomProxyHeadersService {
 
   // Per-backend storage key derived from the URL so staging/prod headers
   // never bleed into each other after a quick-switch.
+  // base64Url of the UTF-8 URL bytes gives a deterministic, stable key that
+  // survives process restarts (unlike String.hashCode which is not guaranteed
+  // to be consistent across Dart versions or runs).
   static String _keyForUrl(String backendUrl) =>
-      'custom_proxy_headers_v2_${backendUrl.hashCode}';
+      'custom_proxy_headers_v2_${base64Url.encode(utf8.encode(backendUrl))}';
 
   Future<List<CustomProxyHeader>> loadHeaders({required String backendUrl}) async {
     const storage = FlutterSecureStorage();

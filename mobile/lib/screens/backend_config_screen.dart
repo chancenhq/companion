@@ -156,9 +156,14 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
       // Save URL to SharedPreferences
       await prefs.setString('backend_url', normalizedUrl);
 
-      // Save and apply custom proxy headers scoped to the new backend URL
-      await CustomProxyHeadersService.instance.saveHeaders(_customHeaders, backendUrl: normalizedUrl);
-      ApiConfig.setCustomProxyHeaders(isSwitchingBackend ? [] : _customHeaders);
+      // When switching to a different backend, persist empty headers for the
+      // new URL so headers that belong to the old backend are never written
+      // under the new one. The user can add headers for the new backend after
+      // switching. When staying on the same backend, persist whatever is in
+      // the editor (the user's explicit edits).
+      final headersToSave = isSwitchingBackend ? <CustomProxyHeader>[] : _customHeaders;
+      await CustomProxyHeadersService.instance.saveHeaders(headersToSave, backendUrl: normalizedUrl);
+      ApiConfig.setCustomProxyHeaders(headersToSave);
 
       // Update ApiConfig
       ApiConfig.setBaseUrl(normalizedUrl);
@@ -182,11 +187,7 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
     }
   }
 
-  /// Strips trailing slashes so equivalent URLs compare equal regardless of
-  /// how they were entered (typed by hand vs. picked from a preset chip).
-  String _normalizeUrl(String value) {
-    return value.trim().replaceAll(RegExp(r'/+$'), '');
-  }
+  String _normalizeUrl(String value) => ApiConfig.normalizeUrl(value);
 
   /// Wipes locally cached data when the backend URL actually changes, so
   /// records from one environment (e.g. production) never linger on screen
@@ -326,15 +327,20 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
                             _normalizeUrl(env.baseUrl),
                         onSelected: (_) async {
                           final normalizedEnvUrl = _normalizeUrl(env.baseUrl);
+                          // Set URL immediately so the UI responds and so the
+                          // staleness check below is reliable if the user taps
+                          // a second chip before this load finishes.
+                          setState(() {
+                            _urlController.text = env.baseUrl;
+                            _customHeaders = [];
+                            _errorMessage = null;
+                            _successMessage = null;
+                          });
                           final headers = await CustomProxyHeadersService.instance
                               .loadHeaders(backendUrl: normalizedEnvUrl);
-                          if (mounted) {
-                            setState(() {
-                              _urlController.text = env.baseUrl;
-                              _customHeaders = headers;
-                              _errorMessage = null;
-                              _successMessage = null;
-                            });
+                          // Discard if the user already selected a different URL.
+                          if (mounted && _normalizeUrl(_urlController.text) == normalizedEnvUrl) {
+                            setState(() => _customHeaders = headers);
                           }
                         },
                       ),
