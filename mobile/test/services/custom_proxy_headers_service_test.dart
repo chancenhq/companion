@@ -1,9 +1,15 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:sure_mobile/models/custom_proxy_header.dart';
 import 'package:sure_mobile/services/custom_proxy_headers_service.dart';
 
 const _backendUrl = 'https://example.com';
+
+// Must mirror _keyForUrl exactly so the stability test is meaningful.
+String _expectedKey(String url) =>
+    'custom_proxy_headers_v2_${base64Url.encode(utf8.encode(url))}';
 
 void main() {
   setUp(() {
@@ -20,6 +26,24 @@ void main() {
     await service.saveHeaders(headers, backendUrl: _backendUrl);
 
     expect(await service.loadHeaders(backendUrl: _backendUrl), headers);
+  });
+
+  test('storage key is deterministic across restart lifecycle boundaries', () async {
+    // Simulate data written in a previous run by pre-seeding storage with
+    // the known key. If _keyForUrl ever changes (e.g. back to hashCode),
+    // loadHeaders will return empty because it looks at the wrong key.
+    const storage = FlutterSecureStorage();
+    final headers = [CustomProxyHeader(name: 'X-Persist', value: 'val')];
+    final key = _expectedKey(_backendUrl);
+    await storage.write(
+      key: key,
+      value: jsonEncode(headers.map((h) => h.toJson()).toList()),
+    );
+
+    final loaded = await CustomProxyHeadersService.instance.loadHeaders(
+      backendUrl: _backendUrl,
+    );
+    expect(loaded, headers);
   });
 
   test('headers are isolated between different backend URLs', () async {
@@ -51,9 +75,7 @@ void main() {
 
   test('returns an empty list for invalid stored json', () async {
     const storage = FlutterSecureStorage();
-    // Write bad JSON directly to the v2 key for this URL
-    final key = 'custom_proxy_headers_v2_${_backendUrl.hashCode}';
-    await storage.write(key: key, value: 'not json');
+    await storage.write(key: _expectedKey(_backendUrl), value: 'not json');
 
     expect(
       await CustomProxyHeadersService.instance.loadHeaders(backendUrl: _backendUrl),
