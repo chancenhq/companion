@@ -167,7 +167,6 @@ class _AccountSummaryView extends StatelessWidget {
                 // later this card becomes tappable to drill into instalments.
                 IsaStatus.contractSigned => _IsaFinancingCard(
                     theme: theme,
-                    isaStatus: isaStatus,
                     totalFinanced: loading ? null : fmt.format(account!.totalFinanced),
                     repaymentsReceived: loading
                         ? null
@@ -182,7 +181,6 @@ class _AccountSummaryView extends StatelessWidget {
                     children: [
                       _IsaFinancingCard(
                         theme: theme,
-                        isaStatus: isaStatus,
                         totalFinanced: loading ? null : fmt.format(account!.totalFinanced),
                         repaymentsReceived: loading
                             ? null
@@ -506,25 +504,18 @@ class _InfoRow extends StatelessWidget {
 class _IsaFinancingCard extends StatelessWidget {
   const _IsaFinancingCard({
     required this.theme,
-    required this.isaStatus,
     required this.totalFinanced,
     required this.repaymentsReceived,
     required this.loading,
   });
 
   final ThemeData theme;
-  final IsaStatus isaStatus;
   final String? totalFinanced;
   final String? repaymentsReceived;
   final bool loading;
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = (isaStatus == IsaStatus.contractSigned &&
-            theme.brightness == Brightness.dark)
-        ? _kGreen
-        : isaStatus.color;
-
     return Container(
       decoration: BoxDecoration(
         color: theme.brightness == Brightness.light ? Colors.white : Colors.black,
@@ -558,28 +549,6 @@ class _IsaFinancingCard extends StatelessWidget {
                   'ISA Financing',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(isaStatus.icon, size: 13, color: statusColor),
-                      const SizedBox(width: 4),
-                      Text(
-                        isaStatus.label,
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: statusColor,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
                   ),
                 ),
               ],
