@@ -57,6 +57,7 @@ module Api
             end
             InviteCode.claim!(params[:invite_code]) if params[:invite_code].present?
             @invitation&.update!(accepted_at: Time.current)
+            user.initiate_signup_confirmation
             device = MobileDevice.upsert_device!(user, device_params)
             token_response = device.issue_token!
           end
@@ -73,6 +74,11 @@ module Api
         user = User.find_by(email: params[:email])
 
         if user&.authenticate(params[:password])
+          unless user.email_confirmed?
+            render json: { error: "email_not_confirmed", message: "Please confirm your email address before signing in." }, status: :unauthorized
+            return
+          end
+
           # Check MFA if enabled
           if user.otp_required?
             unless params[:otp_code].present? && user.verify_otp?(params[:otp_code])
@@ -432,6 +438,7 @@ module Api
               last_authenticated_at: Time.current
             )
             invitation&.update!(accepted_at: Time.current)
+            user.update_column(:confirmed_at, Time.current)
             SsoAuditLog.log_jit_account_created!(user: user, provider: provider, request: request)
           end
 

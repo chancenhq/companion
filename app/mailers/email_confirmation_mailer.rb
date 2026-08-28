@@ -12,4 +12,13 @@ class EmailConfirmationMailer < ApplicationMailer
 
     mail to: @user.unconfirmed_email, subject: @subject
   end
+
+  def signup_confirmation
+    @user = params[:user]
+    @subject = t(".subject", product_name: product_name)
+    @cta = t(".cta")
+    @confirmation_url = new_email_confirmation_url(token: @user.generate_token_for(:email_confirmation))
+
+    mail to: @user.unconfirmed_email, subject: @subject
+  end
 end
