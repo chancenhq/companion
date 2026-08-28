@@ -324,12 +324,18 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
                         label: Text(env.label),
                         selected: _normalizeUrl(_urlController.text) ==
                             _normalizeUrl(env.baseUrl),
-                        onSelected: (_) {
-                          setState(() {
-                            _urlController.text = env.baseUrl;
-                            _errorMessage = null;
-                            _successMessage = null;
-                          });
+                        onSelected: (_) async {
+                          final normalizedEnvUrl = _normalizeUrl(env.baseUrl);
+                          final headers = await CustomProxyHeadersService.instance
+                              .loadHeaders(backendUrl: normalizedEnvUrl);
+                          if (mounted) {
+                            setState(() {
+                              _urlController.text = env.baseUrl;
+                              _customHeaders = headers;
+                              _errorMessage = null;
+                              _successMessage = null;
+                            });
+                          }
                         },
                       ),
                   ],
