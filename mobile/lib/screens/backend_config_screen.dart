@@ -47,7 +47,7 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final savedUrl = prefs.getString('backend_url');
-      headers = await CustomProxyHeadersService.instance.loadHeaders();
+      headers = await CustomProxyHeadersService.instance.loadHeaders(backendUrl: ApiConfig.baseUrl);
       if (savedUrl != null && savedUrl.isNotEmpty) {
         urlToShow = savedUrl;
       }
@@ -146,21 +146,22 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
       final isSwitchingBackend =
           previousUrl != null && _normalizeUrl(previousUrl) != normalizedUrl;
 
-      // Save URL to SharedPreferences
-      await prefs.setString('backend_url', normalizedUrl);
-
-      // Save custom proxy headers
-      await CustomProxyHeadersService.instance.saveHeaders(_customHeaders);
-      ApiConfig.setCustomProxyHeaders(_customHeaders);
-
-      // Update ApiConfig
-      ApiConfig.setBaseUrl(normalizedUrl);
-
-      // Data cached from the previous backend is meaningless (and possibly
-      // confusing/wrong) once pointed at a different environment, so wipe it.
+      // Clear stale cache BEFORE activating the new backend so we never end
+      // up live on the new backend with old data. Let failures propagate so
+      // the switch aborts cleanly rather than silently leaving bad state.
       if (isSwitchingBackend) {
         await _clearLocalDataForBackendSwitch();
       }
+
+      // Save URL to SharedPreferences
+      await prefs.setString('backend_url', normalizedUrl);
+
+      // Save and apply custom proxy headers scoped to the new backend URL
+      await CustomProxyHeadersService.instance.saveHeaders(_customHeaders, backendUrl: normalizedUrl);
+      ApiConfig.setCustomProxyHeaders(isSwitchingBackend ? [] : _customHeaders);
+
+      // Update ApiConfig
+      ApiConfig.setBaseUrl(normalizedUrl);
 
       // Notify parent that config is saved
       if (mounted && widget.onConfigSaved != null) {
@@ -192,18 +193,15 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
   /// after switching to another (e.g. staging). Mirrors the "Clear Local
   /// Data" action in settings_screen.dart.
   Future<void> _clearLocalDataForBackendSwitch() async {
-    try {
-      final log = LogService.instance;
-      log.info('BackendConfigScreen', 'Backend changed, clearing local data...');
-      await OfflineStorageService().clearAllData();
-      if (mounted) {
-        Provider.of<CategoriesProvider>(context, listen: false).clear();
-      }
-      log.info('BackendConfigScreen', 'Local data cleared after backend switch');
-    } catch (e, stack) {
-      // Don't block the backend switch on a cache-clear failure; just log it.
-      debugPrint('BackendConfigScreen: failed to clear local data: $e\n$stack');
+    final log = LogService.instance;
+    log.info('BackendConfigScreen', 'Backend changed, clearing local data...');
+    // Let exceptions propagate — caller aborts the switch rather than
+    // leaving the app live on the new backend with stale old-backend data.
+    await OfflineStorageService().clearAllData();
+    if (mounted) {
+      Provider.of<CategoriesProvider>(context, listen: false).clear();
     }
+    log.info('BackendConfigScreen', 'Local data cleared after backend switch');
   }
 
   String? _validateUrl(String? value) {

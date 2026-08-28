@@ -116,7 +116,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadCustomHeaders() async {
     try {
-      final headers = await CustomProxyHeadersService.instance.loadHeaders();
+      final headers = await CustomProxyHeadersService.instance.loadHeaders(backendUrl: ApiConfig.baseUrl);
       if (mounted) setState(() => _customHeaders = headers);
     } catch (e, stack) {
       debugPrint('SettingsScreen: failed to load custom headers: $e\n$stack');
@@ -124,11 +124,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _openBackendSwitcher() {
+    final urlBeforeSwitch = ApiConfig.baseUrl;
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (routeContext) => BackendConfigScreen(
-          onConfigSaved: () => _onBackendSwitched(routeContext),
+          onConfigSaved: () => _onBackendSwitched(routeContext, urlBeforeSwitch),
         ),
       ),
     );
@@ -137,7 +138,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// Switching backend mid-session leaves an auth token that belongs to the
   /// old environment, so sign out and drop back to the root (Login) rather
   /// than leaving a broken authenticated screen up.
-  Future<void> _onBackendSwitched(BuildContext routeContext) async {
+  Future<void> _onBackendSwitched(BuildContext routeContext, String previousUrl) async {
+    if (ApiConfig.baseUrl == previousUrl) return;
     final authProvider = Provider.of<AuthProvider>(routeContext, listen: false);
     final navigator = Navigator.of(routeContext);
     await authProvider.logout();
@@ -146,7 +148,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _showCustomHeadersDialog() async {
     final formKey = GlobalKey<FormState>();
-    final latestHeaders = await CustomProxyHeadersService.instance.loadHeaders();
+    final latestHeaders = await CustomProxyHeadersService.instance.loadHeaders(backendUrl: ApiConfig.baseUrl);
     if (!mounted) return;
 
     setState(() => _customHeaders = latestHeaders);
@@ -197,7 +199,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (saved != true) return;
 
     try {
-      await CustomProxyHeadersService.instance.saveHeaders(draftHeaders);
+      await CustomProxyHeadersService.instance.saveHeaders(draftHeaders, backendUrl: ApiConfig.baseUrl);
       ApiConfig.setCustomProxyHeaders(draftHeaders);
       if (!mounted) return;
       setState(() => _customHeaders = draftHeaders);
