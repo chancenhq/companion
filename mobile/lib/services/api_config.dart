@@ -110,7 +110,7 @@ class ApiConfig {
 
       if (savedUrl != null && savedUrl.isNotEmpty) {
         _baseUrl = savedUrl;
-        _customProxyHeaders = await CustomProxyHeadersService.instance.loadHeaders();
+        _customProxyHeaders = await CustomProxyHeadersService.instance.loadHeaders(backendUrl: _baseUrl);
         return true;
       }
 
@@ -118,7 +118,7 @@ class ApiConfig {
       // go straight to login while still letting users override it later.
       _baseUrl = _defaultBaseUrl;
       await prefs.setString(_backendUrlKey, _defaultBaseUrl);
-      _customProxyHeaders = await CustomProxyHeadersService.instance.loadHeaders();
+      _customProxyHeaders = await CustomProxyHeadersService.instance.loadHeaders(backendUrl: _baseUrl);
       return true;
     } catch (e) {
       // If initialization fails, keep the default URL
