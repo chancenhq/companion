@@ -420,6 +420,7 @@ class AuthProvider with ChangeNotifier {
   Future<bool> ssoCreateAccount({
     String? firstName,
     String? lastName,
+    String? password,
   }) async {
     if (_ssoLinkingCode == null) {
       _errorMessage = 'No pending SSO session. Please try signing in again.';
@@ -436,6 +437,7 @@ class AuthProvider with ChangeNotifier {
         linkingCode: _ssoLinkingCode!,
         firstName: firstName,
         lastName: lastName,
+        password: password,
       );
 
       if (result['success'] == true) {
