@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -8,6 +10,7 @@ import '../providers/theme_provider.dart';
 import '../services/offline_storage_service.dart';
 import '../services/log_service.dart';
 import '../services/biometric_service.dart';
+import '../services/diagnostics_snapshot.dart';
 import '../services/preferences_service.dart';
 import '../services/user_service.dart';
 import 'log_viewer_screen.dart';
@@ -118,6 +121,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e, stack) {
       debugPrint('SettingsScreen: failed to load custom headers: $e\n$stack');
     }
+  }
+
+  Future<void> _copyDiagnostics(AuthProvider authProvider) async {
+    if (_appVersion == null) {
+      await _loadAppVersion();
+    }
+
+    final snapshot = DiagnosticsSnapshot(
+      appVersion: _appVersion ?? 'unknown',
+      platform: defaultTargetPlatform.name,
+      backendUrl: ApiConfig.baseUrl,
+      authMode: authProvider.isApiKeyAuth ? 'API key' : 'OAuth token',
+      isAuthenticated: authProvider.isAuthenticated,
+      uiLayout: authProvider.user?.uiLayout,
+      aiEnabled: authProvider.user?.aiEnabled,
+      customProxyHeaderCount: _customHeaders.length,
+      biometricLockEnabled: _biometricEnabled,
+    );
+
+    await Clipboard.setData(ClipboardData(text: snapshot.toClipboardText()));
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Diagnostics copied')),
+    );
   }
 
   Future<void> _showCustomHeadersDialog() async {
@@ -448,6 +477,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   context,
                   MaterialPageRoute(builder: (_) => const LogViewerScreen()),
                 ),
+              ),
+            ),
+            Semantics(
+              label: 'Copy diagnostics',
+              button: true,
+              child: ListTile(
+                leading: const Icon(Icons.content_copy),
+                title: const Text('Copy Diagnostics'),
+                subtitle: const Text('Copy app, device, and connection details'),
+                onTap: () => _copyDiagnostics(authProvider),
               ),
             ),
           ],
