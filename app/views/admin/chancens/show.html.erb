@@ -1,0 +1,31 @@
+<%= content_for :page_title, t(".title") %>
+
+<%= settings_section title: t(".metabase") do %>
+  <div class="space-y-4">
+    <div>
+      <h2 class="font-medium mb-1"><%= t(".metabase_settings.title") %></h2>
+      <% if ENV["METABASE_URL"].present? && ENV["METABASE_API_KEY"].present? && ENV["METABASE_STUDENT_QUESTION_ID"].present? %>
+        <p class="text-sm text-secondary"><%= t(".metabase_settings.env_configured_message") %></p>
+      <% else %>
+        <p class="text-secondary text-sm mb-4"><%= t(".metabase_settings.description") %></p>
+      <% end %>
+    </div>
+
+    <% [
+      { name: :metabase_url, type: :text_field, label: t(".metabase_settings.url_label"), placeholder: t(".metabase_settings.url_placeholder"), value: ENV.fetch("METABASE_URL", Setting.metabase_url), disabled: ENV["METABASE_URL"].present?, options: { autocomplete: "off", autocapitalize: "none", spellcheck: "false", inputmode: "url" } },
+      { name: :metabase_api_key, type: :password_field, label: t(".metabase_settings.api_key_label"), placeholder: t(".metabase_settings.api_key_placeholder"), value: Setting.metabase_api_key.present? ? "********" : nil, disabled: ENV["METABASE_API_KEY"].present?, options: { autocomplete: "off", autocapitalize: "none", spellcheck: "false" } },
+      { name: :metabase_student_question_id, type: :text_field, label: t(".metabase_settings.question_id_label"), placeholder: t(".metabase_settings.question_id_placeholder"), value: ENV.fetch("METABASE_STUDENT_QUESTION_ID", Setting.metabase_student_question_id), disabled: ENV["METABASE_STUDENT_QUESTION_ID"].present?, options: { autocomplete: "off" } },
+      { name: :metabase_email_param, type: :text_field, label: t(".metabase_settings.email_param_label"), placeholder: t(".metabase_settings.email_param_placeholder"), value: ENV.fetch("METABASE_EMAIL_PARAM", Setting.metabase_email_param), disabled: ENV["METABASE_EMAIL_PARAM"].present?, options: { autocomplete: "off", autocapitalize: "none" } }
+    ].each do |field| %>
+      <%= styled_form_with model: Setting.new,
+                           url: admin_chancen_path,
+                           method: :patch,
+                           data: {
+                             controller: "auto-submit-form",
+                             "auto-submit-form-trigger-event-value": "blur"
+                           } do |form| %>
+        <%= form.public_send(field[:type], field[:name], **field[:options].merge(label: field[:label], placeholder: field[:placeholder], value: field[:value], disabled: field[:disabled], data: { "auto-submit-form-target": "auto" })) %>
+      <% end %>
+    <% end %>
+  </div>
+<% end %>
