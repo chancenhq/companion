@@ -3,12 +3,29 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/custom_proxy_header.dart';
 import 'custom_proxy_headers_service.dart';
 
+/// A known, named backend environment users can quick-switch to.
+class ApiEnvironment {
+  final String label;
+  final String baseUrl;
+
+  const ApiEnvironment({required this.label, required this.baseUrl});
+}
+
 class ApiConfig {
   // Base URL for the API - can be changed to point to different environments
   // For local development, use: http://10.0.2.2:3000 (Android emulator)
   // For iOS simulator, use: http://localhost:3000
-  // For production, use your actual server URL
-  static const String _defaultBaseUrl = 'https://companion-prod.chancen.tech';
+  static const String productionBaseUrl = 'https://companion-prod.chancen.tech';
+  static const String stagingBaseUrl = 'https://companion-staging.chancen.tech';
+
+  /// Preset environments surfaced in the backend config screen so testers can
+  /// switch between staging and production without typing the URL by hand.
+  static const List<ApiEnvironment> knownEnvironments = [
+    ApiEnvironment(label: 'Production', baseUrl: productionBaseUrl),
+    ApiEnvironment(label: 'Staging', baseUrl: stagingBaseUrl),
+  ];
+
+  static const String _defaultBaseUrl = productionBaseUrl;
   static const String _backendUrlKey = 'backend_url';
   static String _baseUrl = _defaultBaseUrl;
 
@@ -18,6 +35,11 @@ class ApiConfig {
   static void setBaseUrl(String url) {
     _baseUrl = url;
   }
+
+  /// Strips surrounding whitespace and trailing slashes so equivalent URLs
+  /// compare equal regardless of how they were entered or stored.
+  static String normalizeUrl(String url) =>
+      url.trim().replaceAll(RegExp(r'/+$'), '');
 
   // API key authentication mode
   static bool _isApiKeyAuth = false;
@@ -93,7 +115,7 @@ class ApiConfig {
 
       if (savedUrl != null && savedUrl.isNotEmpty) {
         _baseUrl = savedUrl;
-        _customProxyHeaders = await CustomProxyHeadersService.instance.loadHeaders();
+        _customProxyHeaders = await CustomProxyHeadersService.instance.loadHeaders(backendUrl: _baseUrl);
         return true;
       }
 
@@ -101,7 +123,7 @@ class ApiConfig {
       // go straight to login while still letting users override it later.
       _baseUrl = _defaultBaseUrl;
       await prefs.setString(_backendUrlKey, _defaultBaseUrl);
-      _customProxyHeaders = await CustomProxyHeadersService.instance.loadHeaders();
+      _customProxyHeaders = await CustomProxyHeadersService.instance.loadHeaders(backendUrl: _baseUrl);
       return true;
     } catch (e) {
       // If initialization fails, keep the default URL
