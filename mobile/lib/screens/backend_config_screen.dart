@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import '../models/custom_proxy_header.dart';
+import '../providers/categories_provider.dart';
 import '../services/api_config.dart';
 import '../services/custom_proxy_headers_service.dart';
+import '../services/log_service.dart';
+import '../services/offline_storage_service.dart';
 import '../widgets/custom_proxy_headers_editor.dart';
 
 class BackendConfigScreen extends StatefulWidget {
@@ -43,7 +47,7 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final savedUrl = prefs.getString('backend_url');
-      headers = await CustomProxyHeadersService.instance.loadHeaders();
+      headers = await CustomProxyHeadersService.instance.loadHeaders(backendUrl: ApiConfig.baseUrl);
       if (savedUrl != null && savedUrl.isNotEmpty) {
         urlToShow = savedUrl;
       }
@@ -74,10 +78,7 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
     final previousHeaders = ApiConfig.customProxyHeaders;
     try {
       // Normalize base URL by removing trailing slashes
-      final normalizedUrl = _urlController.text.trim().replaceAll(
-        RegExp(r'/+$'),
-        '',
-      );
+      final normalizedUrl = _normalizeUrl(_urlController.text);
 
       // Apply the unsaved edits only for the duration of this probe so the
       // test reflects what the user is about to save. Restored in `finally`.
@@ -138,18 +139,31 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
 
     try {
       // Normalize base URL by removing trailing slashes
-      final normalizedUrl = _urlController.text.trim().replaceAll(
-        RegExp(r'/+$'),
-        '',
-      );
+      final normalizedUrl = _normalizeUrl(_urlController.text);
+
+      final prefs = await SharedPreferences.getInstance();
+      final previousUrl = prefs.getString('backend_url');
+      final isSwitchingBackend =
+          previousUrl != null && _normalizeUrl(previousUrl) != normalizedUrl;
+
+      // Clear stale cache BEFORE activating the new backend so we never end
+      // up live on the new backend with old data. Let failures propagate so
+      // the switch aborts cleanly rather than silently leaving bad state.
+      if (isSwitchingBackend) {
+        await _clearLocalDataForBackendSwitch();
+      }
 
       // Save URL to SharedPreferences
-      final prefs = await SharedPreferences.getInstance();
       await prefs.setString('backend_url', normalizedUrl);
 
-      // Save custom proxy headers
-      await CustomProxyHeadersService.instance.saveHeaders(_customHeaders);
-      ApiConfig.setCustomProxyHeaders(_customHeaders);
+      // When switching to a different backend, persist empty headers for the
+      // new URL so headers that belong to the old backend are never written
+      // under the new one. The user can add headers for the new backend after
+      // switching. When staying on the same backend, persist whatever is in
+      // the editor (the user's explicit edits).
+      final headersToSave = isSwitchingBackend ? <CustomProxyHeader>[] : _customHeaders;
+      await CustomProxyHeadersService.instance.saveHeaders(headersToSave, backendUrl: normalizedUrl);
+      ApiConfig.setCustomProxyHeaders(headersToSave);
 
       // Update ApiConfig
       ApiConfig.setBaseUrl(normalizedUrl);
@@ -171,6 +185,24 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
         });
       }
     }
+  }
+
+  String _normalizeUrl(String value) => ApiConfig.normalizeUrl(value);
+
+  /// Wipes locally cached data when the backend URL actually changes, so
+  /// records from one environment (e.g. production) never linger on screen
+  /// after switching to another (e.g. staging). Mirrors the "Clear Local
+  /// Data" action in settings_screen.dart.
+  Future<void> _clearLocalDataForBackendSwitch() async {
+    final log = LogService.instance;
+    log.info('BackendConfigScreen', 'Backend changed, clearing local data...');
+    // Let exceptions propagate — caller aborts the switch rather than
+    // leaving the app live on the new backend with stale old-backend data.
+    await OfflineStorageService().clearAllData();
+    if (mounted) {
+      Provider.of<CategoriesProvider>(context, listen: false).clear();
+    }
+    log.info('BackendConfigScreen', 'Local data cleared after backend switch');
   }
 
   String? _validateUrl(String? value) {
@@ -264,7 +296,7 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
                       const SizedBox(height: 12),
                       Text(
                         '• https://companion-prod.chancen.tech\n'
-                        '• https://your-domain.com\n'
+                        '• https://companion-staging.chancen.tech\n'
                         '• http://localhost:3000',
                         style: TextStyle(
                           color: colorScheme.onSurface,
@@ -273,6 +305,46 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
                       ),
                     ],
                   ),
+                ),
+                const SizedBox(height: 24),
+
+                // Environment quick-switch
+                Text(
+                  'Quick switch',
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final env in ApiConfig.knownEnvironments)
+                      ChoiceChip(
+                        label: Text(env.label),
+                        selected: _normalizeUrl(_urlController.text) ==
+                            _normalizeUrl(env.baseUrl),
+                        onSelected: (_) async {
+                          final normalizedEnvUrl = _normalizeUrl(env.baseUrl);
+                          // Set URL immediately so the UI responds and so the
+                          // staleness check below is reliable if the user taps
+                          // a second chip before this load finishes.
+                          setState(() {
+                            _urlController.text = env.baseUrl;
+                            _customHeaders = [];
+                            _errorMessage = null;
+                            _successMessage = null;
+                          });
+                          final headers = await CustomProxyHeadersService.instance
+                              .loadHeaders(backendUrl: normalizedEnvUrl);
+                          // Discard if the user already selected a different URL.
+                          if (mounted && _normalizeUrl(_urlController.text) == normalizedEnvUrl) {
+                            setState(() => _customHeaders = headers);
+                          }
+                        },
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 24),
 
