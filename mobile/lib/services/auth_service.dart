@@ -644,6 +644,21 @@ class AuthService {
     }
   }
 
+  Future<void> updateCountry({
+    required String countryCode,
+    required String accessToken,
+  }) async {
+    final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/country');
+    await http.patch(
+      url,
+      headers: {
+        ...ApiConfig.getAuthHeaders(accessToken),
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({'country': countryCode}),
+    ).timeout(const Duration(seconds: 15));
+  }
+
   Future<void> logout() async {
     await _storage.delete(key: _tokenKey);
     await _storage.delete(key: _userKey);
