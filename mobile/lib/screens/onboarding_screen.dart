@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_config.dart';
+import '../services/auth_service.dart';
 import '../services/preferences_service.dart';
 import 'login_screen.dart';
 import 'web_page_screen.dart';
@@ -80,6 +81,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final prefs = PreferencesService.instance;
     await prefs.setUserCountry(_selectedCountryName);
     await prefs.setConsent(version: _consentVersion);
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final token = await authProvider.getValidAccessToken();
+      if (mounted && token != null) {
+        await AuthService().updateCountry(
+          countryCode: _selectedCountryCode,
+          accessToken: token,
+        );
+      }
+    } catch (_) {
+      // Silent fail — onboarding completes regardless; correctable via admin
+    }
     await prefs.setOnboardingComplete(true);
     widget.onComplete();
   }
