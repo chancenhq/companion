@@ -1,0 +1,118 @@
+name: Nightly Mobile Build
+
+on:
+  schedule:
+    # Runs at 02:00 UTC every night. The job dispatches a mobile build only
+    # when PRs were merged into the target branch during the lookback window.
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: Branch to inspect and build
+        required: true
+        default: companion
+      lookback_hours:
+        description: Hours to look back for merged PRs
+        required: true
+        default: '24'
+      dry_run:
+        description: Check recent merges without dispatching Mobile Build
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+jobs:
+  check-recent-merges:
+    name: Check recent merged PRs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      should_build: ${{ steps.merged_prs.outputs.should_build }}
+      merged_count: ${{ steps.merged_prs.outputs.merged_count }}
+
+    steps:
+      - name: Find merged PRs in lookback window
+        id: merged_prs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_BRANCH: ${{ github.event.inputs.target_branch || 'companion' }}
+          LOOKBACK_HOURS: ${{ github.event.inputs.lookback_hours || '24' }}
+        run: |
+          set -euo pipefail
+
+          if ! [[ "$LOOKBACK_HOURS" =~ ^[0-9]+$ ]] || [ "$LOOKBACK_HOURS" -lt 1 ]; then
+            echo "::error::lookback_hours must be a positive integer"
+            exit 1
+          fi
+
+          SINCE_EPOCH="$(date -u -d "${LOOKBACK_HOURS} hours ago" +%s)"
+          SINCE_ISO="$(date -u -d "@${SINCE_EPOCH}" +'%Y-%m-%dT%H:%M:%SZ')"
+
+          echo "Looking for PRs merged into ${TARGET_BRANCH} since ${SINCE_ISO}"
+
+          MERGED_PRS="$(
+            gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/pulls?state=closed&base=${TARGET_BRANCH}&sort=updated&direction=desc&per_page=100" \
+            | jq -s --argjson since "$SINCE_EPOCH" '
+                add
+                | map(select(.merged_at != null and (.merged_at | fromdateiso8601) >= $since))
+                | sort_by(.merged_at)
+                | reverse
+              '
+          )"
+
+          MERGED_COUNT="$(jq 'length' <<< "$MERGED_PRS")"
+          echo "merged_count=${MERGED_COUNT}" >> "$GITHUB_OUTPUT"
+
+          if [ "$MERGED_COUNT" -gt 0 ]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          {
+            echo "## Nightly mobile build check"
+            echo
+            echo "- Target branch: \${TARGET_BRANCH}\"
+            echo "- Lookback: ${LOOKBACK_HOURS} hours"
+            echo "- Since: ${SINCE_ISO}"
+            echo "- Merged PRs found: ${MERGED_COUNT}"
+            echo
+            if [ "$MERGED_COUNT" -gt 0 ]; then
+              jq -r '.[] | "- #\(.number): \(.title) (\(.merged_at))"' <<< "$MERGED_PRS"
+            else
+              echo "No merged PRs found. Mobile Build will not be dispatched."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  dispatch-mobile-build:
+    name: Dispatch Mobile Build
+    needs: check-recent-merges
+    if: needs.check-recent-merges.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Dispatch Mobile Build workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_BRANCH: ${{ github.event.inputs.target_branch || 'companion' }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: |
+          set -euo pipefail
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Dry run enabled. Would dispatch Mobile Build for ${TARGET_BRANCH}."
+            exit 0
+          fi
+
+          gh workflow run mobile-build.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$TARGET_BRANCH"
+
+          echo "Dispatched Mobile Build for ${TARGET_BRANCH} after finding ${{ needs.check-recent-merges.outputs.merged_count }} merged PR(s)."
