@@ -78,7 +78,7 @@ jobs:
           {
             echo "## Nightly mobile build check"
             echo
-            echo "- Target branch: \${TARGET_BRANCH}\"
+            echo "- Target branch: ${TARGET_BRANCH}"
             echo "- Lookback: ${LOOKBACK_HOURS} hours"
             echo "- Since: ${SINCE_ISO}"
             echo "- Merged PRs found: ${MERGED_COUNT}"
