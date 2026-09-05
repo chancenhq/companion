@@ -42,6 +42,9 @@ en:
       institution_domain_placeholder: e.g., chase.com
       notes_label: Notes
       notes_placeholder: Store additional information like account numbers, sort codes, IBAN, routing numbers, etc.
+      metadata_label: Metadata
+      metadata_placeholder: Enter a JSON object (for example {"external_id":"abc123"})
+      invalid_metadata_json: Metadata must be valid JSON object syntax.
     index:
       accounts: Accounts
       manual_accounts:

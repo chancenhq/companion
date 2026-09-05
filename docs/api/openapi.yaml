@@ -342,6 +342,7 @@ components:
       - classification
       - account_type
       - status
+      - metadata
       - created_at
       - updated_at
       properties:
@@ -383,6 +384,9 @@ components:
         institution_domain:
           type: string
           nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
         created_at:
           type: string
           format: date-time
@@ -2890,6 +2894,56 @@ paths:
       schema:
         type: string
         format: uuid
+    patch:
+      summary: Update account metadata
+      tags:
+      - Accounts
+      security:
+      - apiKeyAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: metadata updated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/AccountDetail"
+        '401':
+          description: unauthorized
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        '403':
+          description: insufficient scope
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        '404':
+          description: account not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - account
+              properties:
+                account:
+                  type: object
+                  required:
+                  - metadata
+                  properties:
+                    metadata:
+                      type: object
+                      additionalProperties: true
+                      description: Free-form account metadata JSON object
+        required: true
     get:
       summary: Retrieve an account
       tags:

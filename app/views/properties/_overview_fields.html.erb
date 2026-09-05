@@ -32,4 +32,10 @@
     </div>
   <% end %>
 
+  <%= form.text_area :metadata,
+                    label: t("accounts.form.metadata_label"),
+                    value: JSON.pretty_generate(form.object.metadata || {}),
+                    placeholder: t("accounts.form.metadata_placeholder"),
+                    rows: 6 %>
+
 </div>
