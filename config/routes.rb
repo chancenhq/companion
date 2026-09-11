@@ -487,6 +487,7 @@ Rails.application.routes.draw do
       post "auth/sso_link", to: "auth#sso_link"
       post "auth/sso_create_account", to: "auth#sso_create_account"
       patch "auth/enable_ai", to: "auth#enable_ai"
+      patch "auth/country", to: "auth#update_country"
 
       # Production API endpoints
       resources :accounts, only: [ :index, :show ]

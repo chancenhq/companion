@@ -6,10 +6,10 @@ module Api
       skip_before_action :authenticate_request!
       skip_before_action :check_api_key_rate_limit
       skip_before_action :log_api_access
-      before_action :authenticate_request!, only: :enable_ai
-      before_action :ensure_write_scope, only: :enable_ai
-      before_action :check_api_key_rate_limit, only: :enable_ai
-      before_action :log_api_access, only: :enable_ai
+      before_action :authenticate_request!, only: [ :enable_ai, :update_country ]
+      before_action :ensure_write_scope, only: [ :enable_ai, :update_country ]
+      before_action :check_api_key_rate_limit, only: [ :enable_ai, :update_country ]
+      before_action :log_api_access, only: [ :enable_ai, :update_country ]
 
       def signup
         # invite_code_required? consults @invitation, so resolve it before checking invite-code requirements.
@@ -272,6 +272,29 @@ module Api
       rescue AppleSignIn::Error => e
         Rails.logger.warn("[Auth] Apple Sign-In verification failed: #{e.message}")
         render json: { error: "Invalid Apple identity token" }, status: :unauthorized
+      end
+
+      def update_country
+        country_code = params[:country].to_s.upcase
+        allowed = %w[KE RW ZA GH]
+
+        unless allowed.include?(country_code)
+          render json: { error: "Unsupported country" }, status: :unprocessable_entity
+          return
+        end
+
+        hub = Family.find_by(country: country_code, country_hub: true)
+
+        if hub
+          old_family = Current.user.family
+          Current.user.update!(family: hub, role: :member)
+          old_family.destroy if old_family && old_family.id != hub.id &&
+                                old_family.users.none? && old_family.accounts.none?
+        else
+          Current.user.family.update!(country: country_code)
+        end
+
+        render json: { success: true, country: country_code }
       end
 
       def enable_ai
