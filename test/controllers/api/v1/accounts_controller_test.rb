@@ -303,6 +303,85 @@ class Api::V1::AccountsControllerTest < ActionDispatch::IntegrationTest
     assert_equal account_names.sort, account_names
   end
 
+  test "should update account metadata with write scope" do
+    account = accounts(:depository)
+    write_key = ApiKey.create!(
+      user: @user,
+      name: "Write Key",
+      scopes: [ "read_write" ],
+      source: "mobile",
+      display_key: "write_#{SecureRandom.hex(8)}"
+    )
+
+    patch "/api/v1/accounts/#{account.id}",
+          params: { account: { metadata: { "external_id" => "abc123", "tags" => [ "vip" ] } } },
+          headers: api_headers(write_key),
+          as: :json
+
+    assert_response :success
+    response_body = JSON.parse(response.body)
+    assert_equal({ "external_id" => "abc123", "tags" => [ "vip" ] }, response_body["metadata"])
+    assert_equal({ "external_id" => "abc123", "tags" => [ "vip" ] }, account.reload.metadata)
+  end
+
+  test "should reject metadata update with read-only scope" do
+    account = accounts(:depository)
+
+    patch "/api/v1/accounts/#{account.id}",
+          params: { account: { metadata: { "external_id" => "abc123" } } },
+          headers: api_headers(@api_key),
+          as: :json
+
+    assert_response :forbidden
+    response_body = JSON.parse(response.body)
+    assert_equal "insufficient_scope", response_body["error"]
+  end
+
+
+  test "should reject non-object account metadata via API update" do
+    account = accounts(:depository)
+    write_key = ApiKey.create!(
+      user: @user,
+      name: "Write Key Invalid Metadata",
+      scopes: [ "read_write" ],
+      source: "mobile",
+      display_key: "write_invalid_metadata_#{SecureRandom.hex(8)}"
+    )
+
+    patch "/api/v1/accounts/#{account.id}",
+          params: { account: { metadata: [ "not", "an", "object" ] } },
+          headers: api_headers(write_key),
+          as: :json
+
+    assert_response :unprocessable_entity
+    response_body = JSON.parse(response.body)
+    assert_equal "validation_error", response_body["error"]
+    assert_includes response_body["message"], "Metadata must be a JSON object"
+  end
+
+  test "should not update non-metadata attributes via API update" do
+    account = accounts(:depository)
+    write_key = ApiKey.create!(
+      user: @user,
+      name: "Write Key Limited",
+      scopes: [ "read_write" ],
+      source: "mobile",
+      display_key: "write_limited_#{SecureRandom.hex(8)}"
+    )
+
+    original_name = account.name
+
+    patch "/api/v1/accounts/#{account.id}",
+          params: { account: { name: "Hacked Name", metadata: { "source" => "api" } } },
+          headers: api_headers(write_key),
+          as: :json
+
+    assert_response :success
+    assert_equal original_name, account.reload.name
+    assert_equal({ "source" => "api" }, account.metadata)
+  end
+
+
   private
 
     def api_headers(api_key)

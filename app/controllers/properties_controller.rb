@@ -9,12 +9,18 @@ class PropertiesController < ApplicationController
   end
 
   def create
+    permitted_property_params = property_params
+    if @error_message.present?
+      render :new, status: :unprocessable_entity
+      return
+    end
+
     @account = Current.family.accounts.create!(
-      property_params.merge(
+      permitted_property_params.merge(
         balance: 0,
         status: "draft",
         owner: Current.user,
-        currency: property_params[:currency].presence || Current.family.currency
+        currency: permitted_property_params[:currency].presence || Current.family.currency
       )
     )
     @account.auto_share_with_family! if Current.family.share_all_by_default?
@@ -23,7 +29,13 @@ class PropertiesController < ApplicationController
   end
 
   def update
-    if @account.update(property_params)
+    permitted_property_params = property_params
+    if @error_message.present?
+      render :edit, status: :unprocessable_entity
+      return
+    end
+
+    if @account.update(permitted_property_params)
       @success_message = "Property details updated successfully."
 
       if @account.active?
@@ -100,16 +112,20 @@ class PropertiesController < ApplicationController
     end
 
     def property_params
-      params.require(:account)
-            .permit(
-              :name,
-              :currency,
-              :accountable_type,
-              :institution_name,
-              :institution_domain,
-              :notes,
-              accountable_attributes: [ :id, :subtype, :year_built, :area_unit, :area_value ]
-            )
+      permitted = params.require(:account)
+                        .permit(
+                          :name,
+                          :currency,
+                          :accountable_type,
+                          :institution_name,
+                          :institution_domain,
+                          :notes,
+                          :metadata,
+                          accountable_attributes: [ :id, :subtype, :year_built, :area_unit, :area_value ]
+                        )
+
+      normalize_metadata_param!(permitted)
+      permitted.to_unsafe_h
     end
 
     def set_property

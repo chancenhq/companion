@@ -6,6 +6,7 @@ class Account < ApplicationRecord
   after_destroy_commit :move_account_statements_to_inbox
 
   validates :name, :balance, :currency, presence: true
+  validate :metadata_must_be_object
   validate :owner_belongs_to_family, if: -> { owner_id.present? && family_id.present? }
 
   belongs_to :family
@@ -92,6 +93,12 @@ class Account < ApplicationRecord
   end
 
   accepts_nested_attributes_for :accountable, update_only: true
+
+  def metadata_must_be_object
+    return if metadata.is_a?(Hash)
+
+    errors.add(:metadata, "must be a JSON object")
+  end
 
   # Account state machine
   aasm column: :status, timestamps: true do

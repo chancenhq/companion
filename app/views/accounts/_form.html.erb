@@ -43,6 +43,12 @@
             label: t(".notes_label"),
             placeholder: t(".notes_placeholder"),
             rows: 4 %>
+
+        <%= form.text_area :metadata,
+            label: t(".metadata_label"),
+            value: JSON.pretty_generate(account.metadata || {}),
+            placeholder: t(".metadata_placeholder"),
+            rows: 6 %>
       </div>
     </details>
   </div>
