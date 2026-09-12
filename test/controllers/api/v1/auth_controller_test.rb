@@ -452,6 +452,33 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     assert existing_token.revoked?
   end
 
+  test "should keep tokens for other mobile devices active on login" do
+    user = users(:family_admin)
+    password = user_password_test
+    other_device_info = @device_info.merge(
+      device_id: "test-device-other",
+      device_name: "Other iPhone"
+    )
+
+    other_device = user.mobile_devices.create!(other_device_info)
+    other_device_token = Doorkeeper::AccessToken.create!(
+      application: @shared_app,
+      resource_owner_id: user.id,
+      mobile_device_id: other_device.id,
+      expires_in: 30.days.to_i,
+      scopes: "read_write"
+    )
+
+    post "/api/v1/auth/login", params: {
+      email: user.email,
+      password: password,
+      device: @device_info
+    }
+
+    assert_response :success
+    assert other_device_token.reload.accessible?, "Current behavior allows another device session to remain active"
+  end
+
   test "should not login with invalid password" do
     user = users(:family_admin)
 
@@ -466,6 +493,24 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     assert_response :unauthorized
     response_data = JSON.parse(response.body)
     assert_equal "Invalid email or password", response_data["error"]
+  end
+
+  test "repeated wrong password attempts do not issue tokens or register devices" do
+    user = users(:family_admin)
+    user.mobile_devices.destroy_all
+
+    assert_no_difference([ "Doorkeeper::AccessToken.count", "MobileDevice.count" ]) do
+      3.times do
+        post "/api/v1/auth/login", params: {
+          email: user.email,
+          password: "wrong_password",
+          device: @device_info
+        }
+
+        assert_response :unauthorized
+        assert_equal "Invalid email or password", JSON.parse(response.body)["error"]
+      end
+    end
   end
 
   test "should not login with non-existent email" do
@@ -511,6 +556,23 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
       post "/api/v1/auth/login", params: {
         email: user.email,
         password: user_password_test
+      }
+    end
+
+    assert_response :bad_request
+    response_data = JSON.parse(response.body)
+    assert_equal "Device information is required", response_data["error"]
+  end
+
+  test "should reject login with invalid device_type before issuing tokens" do
+    user = users(:family_admin)
+    invalid_device = @device_info.merge(device_type: "desktop")
+
+    assert_no_difference([ "MobileDevice.count", "Doorkeeper::AccessToken.count" ]) do
+      post "/api/v1/auth/login", params: {
+        email: user.email,
+        password: user_password_test,
+        device: invalid_device
       }
     end
 
@@ -620,6 +682,71 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     patch "/api/v1/auth/enable_ai", headers: { "Content-Type" => "application/json" }
 
     assert_response :unauthorized
+  end
+
+  # SSO Exchange tests
+  test "sso_exchange returns cached mobile tokens and consumes authorization code" do
+    user = users(:family_admin)
+    code = SecureRandom.urlsafe_base64(32)
+    Rails.cache.write("mobile_sso:#{code}", {
+      access_token: "cached-access-token",
+      refresh_token: "cached-refresh-token",
+      token_type: "Bearer",
+      expires_in: 30.days.to_i,
+      created_at: Time.current.to_i,
+      user_id: user.id,
+      user_email: user.email,
+      user_first_name: user.first_name,
+      user_last_name: user.last_name,
+      user_ui_layout: user.ui_layout,
+      user_ai_enabled: user.ai_enabled?
+    }, expires_in: 10.minutes)
+
+    post "/api/v1/auth/sso_exchange", params: { code: code }, as: :json
+
+    assert_response :success
+    response_data = JSON.parse(response.body)
+    assert_equal "cached-access-token", response_data["access_token"]
+    assert_equal "cached-refresh-token", response_data["refresh_token"]
+    assert_equal user.id, response_data.dig("user", "id")
+    assert_nil Rails.cache.read("mobile_sso:#{code}")
+  end
+
+  test "sso_exchange rejects missing blank invalid and reused authorization codes" do
+    user = users(:family_admin)
+
+    post "/api/v1/auth/sso_exchange", params: {}, as: :json
+    assert_response :bad_request
+
+    post "/api/v1/auth/sso_exchange", params: { code: "" }, as: :json
+    assert_response :bad_request
+    assert_equal "bad_request", JSON.parse(response.body)["error"]
+
+    post "/api/v1/auth/sso_exchange", params: { code: "missing-code" }, as: :json
+    assert_response :unauthorized
+    assert_equal "invalid_or_expired_code", JSON.parse(response.body)["error"]
+
+    code = SecureRandom.urlsafe_base64(32)
+    Rails.cache.write("mobile_sso:#{code}", {
+      access_token: "one-time-access-token",
+      refresh_token: "one-time-refresh-token",
+      token_type: "Bearer",
+      expires_in: 30.days.to_i,
+      created_at: Time.current.to_i,
+      user_id: user.id,
+      user_email: user.email,
+      user_first_name: user.first_name,
+      user_last_name: user.last_name,
+      user_ui_layout: user.ui_layout,
+      user_ai_enabled: user.ai_enabled?
+    }, expires_in: 10.minutes)
+
+    post "/api/v1/auth/sso_exchange", params: { code: code }, as: :json
+    assert_response :success
+
+    post "/api/v1/auth/sso_exchange", params: { code: code }, as: :json
+    assert_response :unauthorized
+    assert_equal "invalid_or_expired_code", JSON.parse(response.body)["error"]
   end
 
   # SSO Link tests
