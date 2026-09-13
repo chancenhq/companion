@@ -287,6 +287,11 @@ module Api
       end
 
       def reset_password
+        unless AuthConfig.password_features_enabled?
+          render json: { error: "Password reset is not available." }, status: :forbidden
+          return
+        end
+
         user = User.find_by_token_for(:password_reset, params[:token].to_s)
 
         unless user
