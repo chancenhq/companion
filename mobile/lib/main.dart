@@ -13,6 +13,7 @@ import 'screens/login_screen.dart';
 import 'screens/biometric_lock_screen.dart';
 import 'screens/main_navigation_screen.dart';
 import 'screens/onboarding_screen.dart';
+import 'screens/reset_password_screen.dart';
 import 'screens/sso_onboarding_screen.dart';
 import 'services/api_config.dart';
 import 'services/connectivity_service.dart';
@@ -262,6 +263,13 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
     if (uri.scheme == 'sureapp' && uri.host == 'oauth') {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       authProvider.handleSsoCallback(uri);
+    } else if (uri.scheme == 'sureapp' && uri.host == 'password-reset') {
+      final token = uri.queryParameters['token'];
+      if (token != null && token.isNotEmpty) {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => ResetPasswordScreen(token: token)),
+        );
+      }
     }
   }
 
