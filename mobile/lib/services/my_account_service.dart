@@ -7,6 +7,10 @@ class AccountNotFoundException implements Exception {
   const AccountNotFoundException();
 }
 
+class AccountServiceUnavailableException implements Exception {
+  const AccountServiceUnavailableException();
+}
+
 class MyAccountService {
   Future<StudentAccount?> fetchMyAccount(String accessToken) async {
     try {
@@ -22,10 +26,11 @@ class MyAccountService {
         );
       }
       if (response.statusCode == 404) throw const AccountNotFoundException();
-      // 503 = Metabase not configured on server
+      if (response.statusCode == 503) throw const AccountServiceUnavailableException();
       return null;
     } catch (e) {
       if (e is AccountNotFoundException) rethrow;
+      if (e is AccountServiceUnavailableException) rethrow;
       return null;
     }
   }

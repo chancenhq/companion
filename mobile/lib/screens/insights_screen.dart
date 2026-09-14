@@ -156,7 +156,9 @@ class _AccountSummaryView extends StatelessWidget {
               const SizedBox(height: 20),
               _SectionHeaderTile(theme: theme, isaStatus: isaStatus),
               const SizedBox(height: 16),
-              switch (isaStatus) {
+              if (provider.unavailable && !loading)
+                _ServiceUnavailableCard(theme: theme)
+              else switch (isaStatus) {
                 // Still applying / no ISA contract on file yet — just the
                 // progress explainer. ISA Status badge above already shows.
                 IsaStatus.applicationStage =>
@@ -506,6 +508,61 @@ class _InfoRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─── Service unavailable card ─────────────────────────────────────────────────
+
+class _ServiceUnavailableCard extends StatelessWidget {
+  const _ServiceUnavailableCard({required this.theme});
+
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.brightness == Brightness.light ? Colors.white : Colors.black,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: _kPurple.withValues(alpha: 0.18),
+            blurRadius: 0,
+            offset: const Offset(4, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: _kPurple.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.cloud_off_rounded, color: _kPurple, size: 24),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Account data temporarily unavailable',
+            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'We\'re having trouble reaching the Chancen data service right now. '
+            'Your ISA details will appear once the connection is restored. '
+            'Pull down to refresh and try again.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
