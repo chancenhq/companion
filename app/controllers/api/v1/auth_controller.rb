@@ -274,6 +274,44 @@ module Api
         render json: { error: "Invalid Apple identity token" }, status: :unauthorized
       end
 
+      def request_password_reset
+        email = params[:email].to_s.strip.downcase
+        user = User.find_by(email: email)
+
+        if user && !user.sso_only? && AuthConfig.password_features_enabled?
+          token = user.generate_token_for(:password_reset)
+          PasswordMailer.with(user: user, token: token).mobile_password_reset.deliver_later
+        end
+
+        render json: { message: "If an account exists, you'll receive a reset link shortly." }
+      end
+
+      def reset_password
+        unless AuthConfig.password_features_enabled?
+          render json: { error: "Password reset is not available." }, status: :forbidden
+          return
+        end
+
+        user = User.find_by_token_for(:password_reset, params[:token].to_s)
+
+        unless user
+          render json: { error: "Reset link is invalid or has expired." }, status: :unprocessable_entity
+          return
+        end
+
+        if user.sso_only?
+          render json: { error: "This account uses social sign-in. Password reset is not available." }, status: :unprocessable_entity
+          return
+        end
+
+        unless user.update(password: params[:password], password_confirmation: params[:password_confirmation])
+          render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
+          return
+        end
+
+        render json: { message: "Password updated successfully." }
+      end
+
       def enable_ai
         user = current_resource_owner
 
