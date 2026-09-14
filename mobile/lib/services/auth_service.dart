@@ -716,4 +716,44 @@ class AuthService {
   Future<String?> getStoredAuthMode() async {
     return await _storage.read(key: _authModeKey);
   }
+
+  Future<void> requestPasswordReset({required String email}) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/password_reset');
+      await http.post(
+        url,
+        headers: ApiConfig.jsonHeaders(),
+        body: jsonEncode({'email': email}),
+      ).timeout(const Duration(seconds: 15));
+    } catch (_) {
+      // Silent fail — caller shows generic confirmation regardless
+    }
+  }
+
+  Future<Map<String, dynamic>> resetPassword({
+    required String token,
+    required String password,
+    required String passwordConfirmation,
+  }) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/password_reset');
+      final response = await http.patch(
+        url,
+        headers: ApiConfig.jsonHeaders(),
+        body: jsonEncode({
+          'token': token,
+          'password': password,
+          'password_confirmation': passwordConfirmation,
+        }),
+      ).timeout(const Duration(seconds: 15));
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200) {
+        return {'success': true};
+      }
+      return {'success': false, 'error': data['error'] ?? data['errors']?.join(', ') ?? 'Something went wrong'};
+    } catch (e) {
+      return {'success': false, 'error': 'Network error. Please try again.'};
+    }
+  }
 }
