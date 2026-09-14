@@ -8,21 +8,28 @@ class MyAccountProvider with ChangeNotifier {
   StudentAccount? _account;
   bool _isLoading = false;
   bool _loaded = false;
+  bool _notFound = false;
   String? _error;
 
   StudentAccount? get account => _account;
   bool get isLoading => _isLoading;
   bool get loaded => _loaded;
+  /// True when the API returned 404 — email is not in the Chancen ISA database.
+  bool get notFound => _notFound;
   String? get error => _error;
 
   Future<void> load(String apiKey) async {
     if (_isLoading) return;
     _isLoading = true;
     _error = null;
+    _notFound = false;
     notifyListeners();
 
     try {
       _account = await _service.fetchMyAccount(apiKey);
+      _loaded = true;
+    } on AccountNotFoundException {
+      _notFound = true;
       _loaded = true;
     } catch (e) {
       _error = e.toString();

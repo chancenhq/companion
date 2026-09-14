@@ -160,7 +160,11 @@ class _AccountSummaryView extends StatelessWidget {
                 // Still applying / no ISA contract on file yet — just the
                 // progress explainer. ISA Status badge above already shows.
                 IsaStatus.applicationStage =>
-                  _ApplicationStageCard(theme: theme, loading: loading),
+                  _ApplicationStageCard(
+                    theme: theme,
+                    loading: loading,
+                    notFound: provider.notFound,
+                  ),
 
                 // Contract signed but not graduated: show financing so far.
                 // Instalment tracking isn't relevant until repayment starts —
@@ -391,10 +395,15 @@ class _SectionHeaderTile extends StatelessWidget {
 // ─── Application Stage card ───────────────────────────────────────────────────
 
 class _ApplicationStageCard extends StatelessWidget {
-  const _ApplicationStageCard({required this.theme, required this.loading});
+  const _ApplicationStageCard({
+    required this.theme,
+    required this.loading,
+    required this.notFound,
+  });
 
   final ThemeData theme;
   final bool loading;
+  final bool notFound;
 
   @override
   Widget build(BuildContext context) {
@@ -449,6 +458,34 @@ class _ApplicationStageCard extends StatelessWidget {
                     height: 1.5,
                   ),
                 ),
+                if (notFound) ...[
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _kPurple.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: _kPurple.withValues(alpha: 0.25)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.info_outline_rounded, color: _kPurple, size: 18),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'We couldn\'t find an ISA linked to this email. '
+                            'Try signing in with the email address you used when you applied to Chancen.',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: _kPurple,
+                              height: 1.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 20),
                 Divider(height: 1, color: theme.dividerColor),
                 const SizedBox(height: 16),
