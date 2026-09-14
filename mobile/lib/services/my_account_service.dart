@@ -24,7 +24,8 @@ class MyAccountService {
       if (response.statusCode == 404) throw const AccountNotFoundException();
       // 503 = Metabase not configured on server
       return null;
-    } catch (_) {
+    } catch (e) {
+      if (e is AccountNotFoundException) rethrow;
       return null;
     }
   }

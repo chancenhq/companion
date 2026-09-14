@@ -427,7 +427,9 @@ class _ApplicationStageCard extends StatelessWidget {
                 child: CircularProgressIndicator(),
               ),
             )
-          : Column(
+          : notFound
+              ? _NotFoundBody(theme: theme)
+              : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
@@ -458,34 +460,6 @@ class _ApplicationStageCard extends StatelessWidget {
                     height: 1.5,
                   ),
                 ),
-                if (notFound) ...[
-                  const SizedBox(height: 20),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: _kPurple.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: _kPurple.withValues(alpha: 0.25)),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.info_outline_rounded, color: _kPurple, size: 18),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'We couldn\'t find an ISA linked to this email. '
-                            'Try signing in with the email address you used when you applied to Chancen.',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: _kPurple,
-                              height: 1.5,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
                 const SizedBox(height: 20),
                 Divider(height: 1, color: theme.dividerColor),
                 const SizedBox(height: 16),
@@ -532,6 +506,113 @@ class _InfoRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─── Not-found body ───────────────────────────────────────────────────────────
+
+class _NotFoundBody extends StatelessWidget {
+  const _NotFoundBody({required this.theme});
+
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: _kPurple.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.search_off_rounded, color: _kPurple, size: 24),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'We couldn\'t find your ISA',
+          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'This could be one of two things:',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 20),
+        _ReasonTile(
+          theme: theme,
+          icon: Icons.schedule_rounded,
+          title: 'Check back later',
+          body: 'If you just applied or signed your contract or recently requested to change your email, your data may not be available yet — check back tomorrow.',
+        ),
+        const SizedBox(height: 12),
+        _ReasonTile(
+          theme: theme,
+          icon: Icons.alternate_email_rounded,
+          title: 'Different email',
+          body: 'You may have signed up with a different email than the one you used to apply. Try signing in with your Chancen application email.',
+        ),
+      ],
+    );
+  }
+}
+
+class _ReasonTile extends StatelessWidget {
+  const _ReasonTile({
+    required this.theme,
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  final ThemeData theme;
+  final IconData icon;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _kPurple.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _kPurple.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: _kPurple, size: 18),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: _kPurple,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  body,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
