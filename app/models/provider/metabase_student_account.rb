@@ -47,8 +47,8 @@ class Provider::MetabaseStudentAccount < Provider
       total_financed:      def_at.("total_financed")&.to_f,
       repayments_received: def_at.("total_repayments")&.to_f,
       max_amount:          def_at.("total_financed")&.to_f,
-      installments_paid:   nil,
-      max_installments:    nil,
+      installments_paid:   def_at.("installments_paid")&.to_i,
+      max_installments:    def_at.("max_installments")&.to_i,
       currency:            "KES"
     )
   rescue Faraday::Error => e
