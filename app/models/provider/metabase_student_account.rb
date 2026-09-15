@@ -45,11 +45,11 @@ class Provider::MetabaseStudentAccount < Provider
       email:               strip_pii(def_at.("email")).to_s,
       status:              (def_at.("isa_status") || def_at.("status")).to_s,
       total_financed:      def_at.("total_financed")&.to_f,
-      repayments_received: def_at.("total_repayments")&.to_f,
-      max_amount:          def_at.("total_financed")&.to_f,
-      installments_paid:   nil,
-      max_installments:    nil,
-      currency:            "KES"
+      repayments_received: def_at.("repayments_received")&.to_f,
+      max_amount:          def_at.("max_amount")&.to_f,
+      installments_paid:   def_at.("installments_paid")&.to_i,
+      max_installments:    def_at.("max_installments")&.to_i,
+      currency:            def_at.("currency") || "KES"
     )
   rescue Faraday::Error => e
     raise Error, "Metabase connection error: #{e.message}"
