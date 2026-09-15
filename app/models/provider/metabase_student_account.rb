@@ -43,7 +43,7 @@ class Provider::MetabaseStudentAccount < Provider
 
     StudentAccountData.new(
       email:               strip_pii(def_at.("email")).to_s,
-      status:              def_at.("isa_status").to_s,
+      status:              (def_at.("isa_status") || def_at.("status")).to_s,
       total_financed:      def_at.("total_financed")&.to_f,
       repayments_received: def_at.("total_repayments")&.to_f,
       max_amount:          def_at.("total_financed")&.to_f,
