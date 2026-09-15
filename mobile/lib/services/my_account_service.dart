@@ -3,6 +3,14 @@ import 'package:http/http.dart' as http;
 import '../models/student_account.dart';
 import 'api_config.dart';
 
+class AccountNotFoundException implements Exception {
+  const AccountNotFoundException();
+}
+
+class AccountServiceUnavailableException implements Exception {
+  const AccountServiceUnavailableException();
+}
+
 class MyAccountService {
   Future<StudentAccount?> fetchMyAccount(String accessToken) async {
     try {
@@ -17,10 +25,12 @@ class MyAccountService {
           jsonDecode(response.body) as Map<String, dynamic>,
         );
       }
-      // 404 = no ISA record for this user (application stage / not yet in system)
-      // 503 = Metabase not configured on server
+      if (response.statusCode == 404) throw const AccountNotFoundException();
+      if (response.statusCode == 503) throw const AccountServiceUnavailableException();
       return null;
-    } catch (_) {
+    } catch (e) {
+      if (e is AccountNotFoundException) rethrow;
+      if (e is AccountServiceUnavailableException) rethrow;
       return null;
     }
   }
