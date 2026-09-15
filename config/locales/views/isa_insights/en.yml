@@ -1,0 +1,48 @@
+en:
+  isa_insights:
+    show:
+      page_title: "ISA Insights"
+      greeting: "Hi, %{name}!"
+      tagline: "Your partner from learning to earning."
+      ask_anything: "Ask me anything"
+      ask_anything_subtitle: "Get instant answers about your ISA"
+      my_account: "My Account"
+
+      status:
+        application: "Application"
+        contract_signed: "ISA Contract Signed"
+        graduated: "Graduated"
+        dropped_out: "Drop out"
+
+      application_card:
+        title: "Your application is in progress"
+        body: "Once your ISA is active, your financing details and repayment progress will appear here."
+        step_studies: "Complete your studies"
+        step_contract: "Sign your ISA contract"
+        step_repayment: "Start your repayment journey"
+
+      not_found_card:
+        title: "We couldn't find your ISA"
+        intro: "This could be one of two things:"
+        check_back_title: "Check back later"
+        check_back_body: "If you just applied or signed your contract, your data may not be available yet — check back tomorrow."
+        email_title: "Different email"
+        email_body: "You may have signed up with a different email than the one you used to apply. Try signing in with your Chancen application email."
+
+      unavailable_card:
+        title: "Account data temporarily unavailable"
+        body: "We're having trouble reaching the Chancen data service right now. Your ISA details will appear once the connection is restored."
+
+      unconfigured_card:
+        title: "ISA data not configured"
+        body: "The Metabase integration hasn't been set up yet. Contact your administrator."
+
+      financing_card:
+        title: "ISA Financing"
+        total_financed: "Total Financed"
+        repayments_received: "Repayments Received"
+
+      instalments_card:
+        title: "Instalments"
+        paid_so_far: "Paid So Far"
+        max_instalments: "Maximum No. of Instalments"

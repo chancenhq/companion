@@ -7,6 +7,7 @@ en:
         assistant: Assistant
         budgets: Budgets
         home: Home
+        isa: ISA
         reports: Reports
         transactions: Transactions
     auth:

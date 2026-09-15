@@ -12,7 +12,10 @@ else
     { name: t(".nav.reports"), path: reports_path, icon: "chart-bar", icon_custom: false, active: page_active?(reports_path) },
     { name: t(".nav.budgets"), path: budgets_path, icon: "map", icon_custom: false, active: page_active?(budgets_path) },
     { name: t(".nav.assistant"), path: chats_path, icon: "icon-assistant", icon_custom: true, active: page_active?(chats_path), mobile_only: true }
-  ]
+  ].then { |items|
+    isa_configured = Setting.metabase_url.present? && Setting.metabase_api_key.present? && Setting.metabase_student_question_id.present?
+    isa_configured ? items + [ { name: t(".nav.isa"), path: isa_path, icon: "landmark", icon_custom: false, active: page_active?(isa_path) } ] : items
+  }
 end %>
 
 <% desktop_nav_items = mobile_nav_items.reject { |item| item[:mobile_only] } %>

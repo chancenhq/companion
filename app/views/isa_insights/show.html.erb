@@ -1,0 +1,216 @@
+<%= content_for :page_title, t(".page_title") %>
+
+<%
+  STATUS_COLORS = {
+    application:      "#986EF9",
+    contract_signed:  "#1F4834",
+    graduated:        "#10A861",
+    dropped_out:      "#E53935",
+    not_found:        "#986EF9",
+    unavailable:      "#986EF9",
+    unconfigured:     "#737373"
+  }.freeze
+
+  STATUS_ICONS = {
+    application:     "hourglass",
+    contract_signed: "badge-check",
+    graduated:       "graduation-cap",
+    dropped_out:     "triangle-alert",
+    not_found:       "search-x",
+    unavailable:     "cloud-off",
+    unconfigured:    "settings"
+  }.freeze
+
+  badge_status  = @isa_status.in?([:not_found, :unavailable, :unconfigured]) ? :application : @isa_status
+  badge_color   = STATUS_COLORS[badge_status] || STATUS_COLORS[:application]
+  badge_icon    = STATUS_ICONS[badge_status]  || STATUS_ICONS[:application]
+  badge_label   = t(".status.#{badge_status}", default: badge_status.to_s.humanize)
+
+  currency_sym  = @account&.currency == "KES" ? "KSh" : (@account&.currency || "KES")
+  fmt           = ->(val) { val.nil? ? nil : "#{currency_sym} #{ActiveSupport::NumberHelper.number_to_delimited(val.to_i)}" }
+%>
+
+<div class="max-w-2xl mx-auto px-4 py-6 space-y-3">
+
+  <%# ── Greeting ──────────────────────────────────────────────────────────── %>
+  <div class="bg-container rounded-xl border border-primary p-6">
+    <h1 class="text-3xl font-extrabold tracking-tight text-primary">
+      <%= t(".greeting", name: Current.user.first_name.presence || t("shared.there")) %>
+    </h1>
+    <p class="mt-1 text-sm text-secondary"><%= t(".tagline") %></p>
+  </div>
+
+  <%# ── Ask anything CTA ──────────────────────────────────────────────────── %>
+  <%= link_to chats_path, class: "group flex items-center gap-4 bg-container rounded-xl border border-primary p-4 hover:bg-container-hover transition-colors shadow-[4px_4px_0px_0px_color-mix(in_oklab,#986EF9_25%,transparent)]" do %>
+    <div class="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style="background-color: color-mix(in oklab, #986EF9 12%, transparent)">
+      <%= icon("message-circle", style: "color: #986EF9") %>
+    </div>
+    <div class="flex-1 min-w-0">
+      <p class="text-sm font-semibold" style="color: #986EF9"><%= t(".ask_anything") %></p>
+      <p class="text-sm text-secondary"><%= t(".ask_anything_subtitle") %></p>
+    </div>
+    <%= icon("chevron-right", class: "text-secondary shrink-0") %>
+  <% end %>
+
+  <%# ── My Account + status badge ─────────────────────────────────────────── %>
+  <div class="bg-container rounded-xl border border-primary px-6 py-5 flex items-center justify-between gap-4">
+    <h2 class="text-base font-bold text-primary"><%= t(".my_account") %></h2>
+    <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold shrink-0"
+          style="color: <%= badge_color %>; background-color: color-mix(in oklab, <%= badge_color %> 12%, transparent)">
+      <%= icon(badge_icon, size: "xs", style: "color: #{badge_color}") %>
+      <%= badge_label %>
+    </span>
+  </div>
+
+  <%# ── Status-specific card ──────────────────────────────────────────────── %>
+  <% case @isa_status %>
+
+  <% when :unconfigured %>
+    <div class="bg-container rounded-xl border border-primary p-6">
+      <div class="w-12 h-12 rounded-full flex items-center justify-center mb-4" style="background-color: color-mix(in oklab, #737373 12%, transparent)">
+        <%= icon("settings", class: "text-secondary") %>
+      </div>
+      <p class="font-semibold text-primary"><%= t(".unconfigured_card.title") %></p>
+      <p class="mt-1 text-sm text-secondary leading-relaxed"><%= t(".unconfigured_card.body") %></p>
+    </div>
+
+  <% when :unavailable %>
+    <div class="bg-container rounded-xl border border-primary p-6 shadow-[4px_4px_0px_0px_color-mix(in_oklab,#986EF9_18%,transparent)]">
+      <div class="w-12 h-12 rounded-full flex items-center justify-center mb-4" style="background-color: color-mix(in oklab, #986EF9 12%, transparent)">
+        <%= icon("cloud-off", style: "color: #986EF9") %>
+      </div>
+      <p class="font-semibold text-primary"><%= t(".unavailable_card.title") %></p>
+      <p class="mt-1 text-sm text-secondary leading-relaxed"><%= t(".unavailable_card.body") %></p>
+    </div>
+
+  <% when :not_found %>
+    <div class="bg-container rounded-xl border border-primary p-6 shadow-[4px_4px_0px_0px_color-mix(in_oklab,#986EF9_18%,transparent)]">
+      <div class="w-12 h-12 rounded-full flex items-center justify-center mb-4" style="background-color: color-mix(in oklab, #986EF9 12%, transparent)">
+        <%= icon("search-x", style: "color: #986EF9") %>
+      </div>
+      <p class="font-semibold text-primary"><%= t(".not_found_card.title") %></p>
+      <p class="mt-1 mb-4 text-sm text-secondary"><%= t(".not_found_card.intro") %></p>
+
+      <div class="space-y-3">
+        <div class="rounded-lg border p-4 flex gap-3" style="border-color: color-mix(in oklab, #986EF9 20%, transparent); background-color: color-mix(in oklab, #986EF9 7%, transparent)">
+          <%= icon("clock", size: "sm", class: "shrink-0 mt-0.5", style: "color: #986EF9") %>
+          <div>
+            <p class="text-sm font-semibold" style="color: #986EF9"><%= t(".not_found_card.check_back_title") %></p>
+            <p class="mt-1 text-xs text-secondary leading-relaxed"><%= t(".not_found_card.check_back_body") %></p>
+          </div>
+        </div>
+        <div class="rounded-lg border p-4 flex gap-3" style="border-color: color-mix(in oklab, #986EF9 20%, transparent); background-color: color-mix(in oklab, #986EF9 7%, transparent)">
+          <%= icon("at-sign", size: "sm", class: "shrink-0 mt-0.5", style: "color: #986EF9") %>
+          <div>
+            <p class="text-sm font-semibold" style="color: #986EF9"><%= t(".not_found_card.email_title") %></p>
+            <p class="mt-1 text-xs text-secondary leading-relaxed"><%= t(".not_found_card.email_body") %></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  <% when :application %>
+    <div class="bg-container rounded-xl border border-primary p-6 shadow-[4px_4px_0px_0px_color-mix(in_oklab,#986EF9_18%,transparent)]">
+      <div class="w-12 h-12 rounded-full flex items-center justify-center mb-4" style="background-color: color-mix(in oklab, #986EF9 12%, transparent)">
+        <%= icon("hourglass", style: "color: #986EF9") %>
+      </div>
+      <p class="font-semibold text-primary"><%= t(".application_card.title") %></p>
+      <p class="mt-1 text-sm text-secondary leading-relaxed"><%= t(".application_card.body") %></p>
+
+      <hr class="my-5 border-primary">
+
+      <ul class="space-y-3">
+        <% [
+          ["school",       t(".application_card.step_studies")],
+          ["file-text",    t(".application_card.step_contract")],
+          ["trending-up",  t(".application_card.step_repayment")]
+        ].each do |ico, label| %>
+          <li class="flex items-center gap-3 text-sm text-secondary">
+            <%= icon(ico, size: "sm", style: "color: #986EF9") %>
+            <%= label %>
+          </li>
+        <% end %>
+      </ul>
+    </div>
+
+  <% when :contract_signed, :graduated, :dropped_out %>
+    <%# ISA Financing card %>
+    <%
+      financing_color = "#84BD00"
+      financing_shadow = "shadow-[4px_4px_0px_0px_color-mix(in_oklab,#1F4834_18%,transparent)]"
+    %>
+    <div class="bg-container rounded-xl border border-primary p-6 <%= financing_shadow %>">
+      <div class="flex items-center gap-3 mb-5">
+        <div class="p-2 rounded-lg" style="background-color: color-mix(in oklab, <%= financing_color %> 12%, transparent)">
+          <%= icon("landmark", size: "sm", style: "color: #{financing_color}") %>
+        </div>
+        <h3 class="font-bold text-primary"><%= t(".financing_card.title") %></h3>
+      </div>
+
+      <p class="text-xs text-secondary"><%= t(".financing_card.total_financed") %></p>
+      <p class="mt-1 text-4xl font-extrabold tracking-tight text-primary">
+        <%= fmt.call(@account&.total_financed) || "—" %>
+      </p>
+
+      <hr class="my-5 border-primary">
+
+      <div class="flex justify-end">
+        <div class="text-right">
+          <p class="text-xs text-secondary leading-snug"><%= t(".financing_card.repayments_received") %></p>
+          <p class="mt-1 text-base font-semibold text-primary">
+            <%= fmt.call(@account&.repayments_received) || "—" %>
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <% if @isa_status.in?([:graduated, :dropped_out]) %>
+      <%# ISA Instalments card with SVG progress ring %>
+      <%
+        paid     = @account&.installments_paid
+        max      = (@account&.max_installments || 1).to_i.then { |v| v > 0 ? v : 1 }
+        progress = paid ? [(paid.to_f / max * 100).round, 100].min : 0
+        pct_label = paid ? "#{progress}%" : "—"
+      %>
+      <div class="bg-container rounded-xl border border-primary p-6 <%= financing_shadow %>">
+        <div class="flex gap-5 items-start">
+          <%# Circular progress ring — circumference of r=15.9 ≈ 100 %>
+          <div class="relative shrink-0 w-20 h-20">
+            <svg viewBox="0 0 36 36" class="w-full h-full -rotate-90" aria-hidden="true">
+              <circle cx="18" cy="18" r="15.9" fill="none" class="stroke-border" stroke-width="3.8"/>
+              <circle cx="18" cy="18" r="15.9" fill="none" stroke="<%= financing_color %>"
+                      stroke-width="3.8" stroke-linecap="round"
+                      stroke-dasharray="<%= progress %> 100"/>
+            </svg>
+            <span class="absolute inset-0 flex items-center justify-center text-xs font-semibold text-primary">
+              <%= pct_label %>
+            </span>
+          </div>
+
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="p-2 rounded-lg" style="background-color: color-mix(in oklab, <%= financing_color %> 12%, transparent)">
+                <%= icon("calendar", size: "sm", style: "color: #{financing_color}") %>
+              </div>
+              <h3 class="font-bold text-primary"><%= t(".instalments_card.title") %></h3>
+            </div>
+
+            <hr class="mb-4 border-primary">
+
+            <dl class="space-y-3">
+              <div>
+                <dt class="text-xs text-secondary"><%= t(".instalments_card.paid_so_far") %></dt>
+                <dd class="mt-0.5 text-base font-semibold text-primary"><%= paid&.to_s || "—" %></dd>
+              </div>
+              <div>
+                <dt class="text-xs text-secondary leading-snug"><%= t(".instalments_card.max_instalments") %></dt>
+                <dd class="mt-0.5 text-base font-semibold text-primary"><%= @account&.max_installments&.to_s || "—" %></dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+      </div>
+    <% end %>
+
+  <% end %>
+</div>

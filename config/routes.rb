@@ -165,6 +165,8 @@ Rails.application.routes.draw do
 
   get "exports/archive/:token", to: "archived_exports#show", as: :archived_export
 
+  resource :isa, only: :show, controller: "isa_insights"
+
   get "changelog", to: "pages#changelog"
   get "feedback", to: "pages#feedback"
   patch "dashboard/preferences", to: "pages#update_preferences"
