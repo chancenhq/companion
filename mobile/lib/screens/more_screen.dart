@@ -3,13 +3,10 @@ import 'package:share_plus/share_plus.dart';
 import 'calendar_screen.dart';
 import 'recent_transactions_screen.dart';
 
-// Update these once the app is live on the stores.
-const _kAppStoreUrl    = 'https://apps.apple.com/app/chancen-companion/id0000000000';
-const _kPlayStoreUrl   = 'https://play.google.com/store/apps/details?id=io.chancen.companion';
-const _kShareMessage   =
+const _kPlayStoreUrl = 'https://play.google.com/store/apps/details?id=tech.chancen.companion';
+const _kShareMessage =
     "I've been using Chancen Companion to track my ISA and stay on top of my finances. "
     "Check it out!\n\n"
-    "📱 iOS: $_kAppStoreUrl\n"
     "🤖 Android: $_kPlayStoreUrl";
 
 class MoreScreen extends StatelessWidget {
