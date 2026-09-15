@@ -68,6 +68,22 @@
                          controller: "auto-submit-form",
                          "auto-submit-form-trigger-event-value": "blur"
                        } do |form| %>
+    <%= form.text_field :metabase_transactions_question_id,
+                        label: t(".transactions_question_id_label"),
+                        placeholder: t(".transactions_question_id_placeholder"),
+                        value: ENV.fetch("METABASE_TRANSACTIONS_QUESTION_ID", Setting.metabase_transactions_question_id),
+                        autocomplete: "off",
+                        disabled: ENV["METABASE_TRANSACTIONS_QUESTION_ID"].present?,
+                        data: { "auto-submit-form-target": "auto" } %>
+  <% end %>
+
+  <%= styled_form_with model: Setting.new,
+                       url: settings_hosting_path,
+                       method: :patch,
+                       data: {
+                         controller: "auto-submit-form",
+                         "auto-submit-form-trigger-event-value": "blur"
+                       } do |form| %>
     <%= form.text_field :metabase_email_param,
                         label: t(".email_param_label"),
                         placeholder: t(".email_param_placeholder"),
