@@ -109,6 +109,74 @@ RSpec.describe 'API V1 Accounts', type: :request do
     parameter name: :id, in: :path, required: true, description: 'Account ID',
               schema: { type: :string, format: :uuid }
 
+
+
+    patch 'Update account metadata' do
+      tags 'Accounts'
+      security [ { apiKeyAuth: [] } ]
+      consumes 'application/json'
+      produces 'application/json'
+      parameter name: :account_update, in: :body, required: true, schema: {
+        type: :object,
+        required: %w[account],
+        properties: {
+          account: {
+            type: :object,
+            required: %w[metadata],
+            properties: {
+              metadata: {
+                type: :object,
+                additionalProperties: true,
+                description: 'Free-form account metadata JSON object'
+              }
+            }
+          }
+        }
+      }
+
+      let(:id) { checking_account.id }
+      let(:account_update) do
+        {
+          account: {
+            metadata: {
+              external_id: 'acct_123',
+              source: 'api'
+            }
+          }
+        }
+      end
+
+      response '200', 'metadata updated' do
+        schema '$ref' => '#/components/schemas/AccountDetail'
+
+        run_test!
+      end
+
+      response '401', 'unauthorized' do
+        schema '$ref' => '#/components/schemas/ErrorResponse'
+
+        let(:'X-Api-Key') { nil }
+
+        run_test!
+      end
+
+      response '403', 'insufficient scope' do
+        schema '$ref' => '#/components/schemas/ErrorResponse'
+
+        let(:'X-Api-Key') { api_key_without_read_scope.plain_key }
+
+        run_test!
+      end
+
+      response '404', 'account not found' do
+        schema '$ref' => '#/components/schemas/ErrorResponse'
+
+        let(:id) { SecureRandom.uuid }
+
+        run_test!
+      end
+    end
+
     get 'Retrieve an account' do
       tags 'Accounts'
       security [ { apiKeyAuth: [] } ]
