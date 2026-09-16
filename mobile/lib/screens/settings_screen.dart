@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../providers/auth_provider.dart';
 import '../providers/categories_provider.dart';
@@ -447,6 +448,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             onTap: () => _launchContactUrl(context),
+          ),
+
+          ListTile(
+            leading: const Icon(Icons.share_rounded),
+            title: const Text('Share Companion'),
+            subtitle: const Text('Invite friends and colleagues'),
+            onTap: () {
+              final box = context.findRenderObject() as RenderBox?;
+              Share.share(
+                "I've been using Chancen Companion to track my ISA and stay on top of my finances. Check it out!\n\n"
+                "https://play.google.com/store/apps/details?id=tech.chancen.companion",
+                subject: 'Try Chancen Companion',
+                sharePositionOrigin: box == null ? null : box.localToGlobal(Offset.zero) & box.size,
+              );
+            },
           ),
 
           ListTile(
