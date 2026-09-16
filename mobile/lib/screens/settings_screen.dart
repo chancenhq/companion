@@ -458,7 +458,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               final box = context.findRenderObject() as RenderBox?;
               Share.share(
                 "I've been using Chancen Companion to track my ISA and stay on top of my finances. Check it out!\n\n"
-                "🤖 Android: https://play.google.com/store/apps/details?id=tech.chancen.companion",
+                "https://play.google.com/store/apps/details?id=tech.chancen.companion",
                 subject: 'Try Chancen Companion',
                 sharePositionOrigin: box == null ? null : box.localToGlobal(Offset.zero) & box.size,
               );

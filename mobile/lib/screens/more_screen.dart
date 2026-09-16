@@ -7,7 +7,7 @@ const _kPlayStoreUrl = 'https://play.google.com/store/apps/details?id=tech.chanc
 const _kShareMessage =
     "I've been using Chancen Companion to track my ISA and stay on top of my finances. "
     "Check it out!\n\n"
-    "🤖 Android: $_kPlayStoreUrl";
+    "$_kPlayStoreUrl";
 
 class MoreScreen extends StatelessWidget {
   const MoreScreen({super.key});
