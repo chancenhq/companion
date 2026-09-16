@@ -319,7 +319,7 @@ class AuthProvider with ChangeNotifier {
         deviceInfo: deviceInfo,
       );
 
-      final launched = await launchUrl(Uri.parse(ssoUrl), mode: LaunchMode.externalApplication);
+      final launched = await launchUrl(Uri.parse(ssoUrl), mode: LaunchMode.inAppBrowserView);
       if (!launched) {
         _errorMessage = 'Unable to open browser for sign-in.';
       }
