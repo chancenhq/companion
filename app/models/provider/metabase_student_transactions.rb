@@ -1,16 +1,7 @@
-class Provider::MetabaseStudentAccount < Provider
+class Provider::MetabaseStudentTransactions < Provider
   Error = Class.new(Provider::Error)
 
-  StudentAccountData = Data.define(
-    :email,
-    :status,
-    :total_financed,
-    :repayments_received,
-    :max_amount,
-    :installments_paid,
-    :max_installments,
-    :currency
-  )
+  TransactionData = Data.define(:payment_type, :amount, :currency, :payment_date)
 
   def initialize(url:, api_key:, question_id:, email_param: "email")
     @url         = url.chomp("/")
@@ -36,30 +27,23 @@ class Provider::MetabaseStudentAccount < Provider
 
     body = JSON.parse(response.body)
     cols = body.dig("data", "cols")&.map { |c| c["name"] } || []
-    row  = body.dig("data", "rows")&.first
-    return nil unless row
+    rows = body.dig("data", "rows") || []
 
-    def_at = ->(col) { idx = cols.index(col); idx && row[idx] }
+    rows.map do |row|
+      def_at = ->(col) { idx = cols.index(col); idx && row[idx] }
 
-    StudentAccountData.new(
-      email:               strip_pii(def_at.("email")).to_s,
-      status:              def_at.("isa_status").to_s,
-      total_financed:      def_at.("total_financed")&.to_f,
-      repayments_received: def_at.("total_repayments")&.to_f,
-      max_amount:          def_at.("total_financed")&.to_f,
-      installments_paid:   def_at.("installments_paid")&.to_i,
-      max_installments:    def_at.("max_installments")&.to_i,
-      currency:            "KES"
-    )
+      TransactionData.new(
+        payment_type: def_at.("payment_type").to_s,
+        amount:       def_at.("amount")&.to_f || 0.0,
+        currency:     def_at.("currency").to_s,
+        payment_date: def_at.("payment_date").to_s
+      )
+    end
   rescue Faraday::Error => e
     raise Error, "Metabase connection error: #{e.message}"
   end
 
   private
-
-    def strip_pii(value)
-      value.to_s.sub(/\A<TODO-MASK-PII>/i, "").downcase
-    end
 
     def connection
       raise Error, "Metabase URL must use HTTPS" unless @url.start_with?("https://")

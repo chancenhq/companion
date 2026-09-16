@@ -156,11 +156,17 @@ class _AccountSummaryView extends StatelessWidget {
               const SizedBox(height: 20),
               _SectionHeaderTile(theme: theme, isaStatus: isaStatus),
               const SizedBox(height: 16),
-              switch (isaStatus) {
+              if (provider.unavailable && !loading)
+                _ServiceUnavailableCard(theme: theme)
+              else switch (isaStatus) {
                 // Still applying / no ISA contract on file yet — just the
                 // progress explainer. ISA Status badge above already shows.
                 IsaStatus.applicationStage =>
-                  _ApplicationStageCard(theme: theme, loading: loading),
+                  _ApplicationStageCard(
+                    theme: theme,
+                    loading: loading,
+                    notFound: provider.notFound,
+                  ),
 
                 // Contract signed but not graduated: show financing so far.
                 // Instalment tracking isn't relevant until repayment starts —
@@ -391,10 +397,15 @@ class _SectionHeaderTile extends StatelessWidget {
 // ─── Application Stage card ───────────────────────────────────────────────────
 
 class _ApplicationStageCard extends StatelessWidget {
-  const _ApplicationStageCard({required this.theme, required this.loading});
+  const _ApplicationStageCard({
+    required this.theme,
+    required this.loading,
+    required this.notFound,
+  });
 
   final ThemeData theme;
   final bool loading;
+  final bool notFound;
 
   @override
   Widget build(BuildContext context) {
@@ -418,7 +429,9 @@ class _ApplicationStageCard extends StatelessWidget {
                 child: CircularProgressIndicator(),
               ),
             )
-          : Column(
+          : notFound
+              ? _NotFoundBody(theme: theme)
+              : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
@@ -495,6 +508,168 @@ class _InfoRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─── Service unavailable card ─────────────────────────────────────────────────
+
+class _ServiceUnavailableCard extends StatelessWidget {
+  const _ServiceUnavailableCard({required this.theme});
+
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.brightness == Brightness.light ? Colors.white : Colors.black,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: _kPurple.withValues(alpha: 0.18),
+            blurRadius: 0,
+            offset: const Offset(4, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: _kPurple.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.cloud_off_rounded, color: _kPurple, size: 24),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Account data temporarily unavailable',
+            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'We\'re having trouble reaching the Chancen data service right now. '
+            'Your ISA details will appear once the connection is restored. '
+            'Pull down to refresh and try again.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Not-found body ───────────────────────────────────────────────────────────
+
+class _NotFoundBody extends StatelessWidget {
+  const _NotFoundBody({required this.theme});
+
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: _kPurple.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.search_off_rounded, color: _kPurple, size: 24),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'We couldn\'t find your ISA',
+          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'This could be one of two things:',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 20),
+        _ReasonTile(
+          theme: theme,
+          icon: Icons.schedule_rounded,
+          title: 'Check back later',
+          body: 'If you just applied or signed your contract or recently requested to change your email, your data may not be available yet — check back tomorrow.',
+        ),
+        const SizedBox(height: 12),
+        _ReasonTile(
+          theme: theme,
+          icon: Icons.alternate_email_rounded,
+          title: 'Different email',
+          body: 'You may have signed up with a different email than the one you used to apply. Try signing in with your Chancen application email.',
+        ),
+      ],
+    );
+  }
+}
+
+class _ReasonTile extends StatelessWidget {
+  const _ReasonTile({
+    required this.theme,
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  final ThemeData theme;
+  final IconData icon;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _kPurple.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _kPurple.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: _kPurple, size: 18),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: _kPurple,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  body,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
