@@ -22,7 +22,6 @@ on:
         default: false
 
 permissions:
-  actions: write
   contents: read
   pull-requests: read
 
@@ -55,16 +54,47 @@ jobs:
 
           echo "Looking for PRs merged into ${TARGET_BRANCH} since ${SINCE_ISO}"
 
-          MERGED_PRS="$(
-            gh api --paginate \
-              "repos/${GITHUB_REPOSITORY}/pulls?state=closed&base=${TARGET_BRANCH}&sort=updated&direction=desc&per_page=100" \
-            | jq -s --argjson since "$SINCE_EPOCH" '
-                add
-                | map(select(.merged_at != null and (.merged_at | fromdateiso8601) >= $since))
-                | sort_by(.merged_at)
-                | reverse
-              '
-          )"
+          MERGED_PRS='[]'
+          PAGE=1
+          while true; do
+            PAGE_PRS="$(
+              gh api --method GET \
+                "repos/${GITHUB_REPOSITORY}/pulls" \
+                -f state=closed \
+                -f "base=${TARGET_BRANCH}" \
+                -f sort=updated \
+                -f direction=desc \
+                -F per_page=100 \
+                -F "page=${PAGE}"
+            )"
+
+            if [ "$(jq 'length' <<< "$PAGE_PRS")" -eq 0 ]; then
+              break
+            fi
+
+            MERGED_PRS="$(
+              jq -cn \
+                --argjson merged_prs "$MERGED_PRS" \
+                --argjson page_prs "$PAGE_PRS" \
+                --argjson since "$SINCE_EPOCH" \
+                '$merged_prs + [
+                  $page_prs[]
+                  | select(.merged_at != null and (.merged_at | fromdateiso8601) >= $since)
+                ]'
+            )"
+
+            # Results are ordered by updated_at descending. Once the oldest PR
+            # on a page predates the window, later pages cannot contain a PR
+            # merged during the window because merging updates the PR.
+            OLDEST_UPDATED_EPOCH="$(jq -r '.[-1].updated_at | fromdateiso8601' <<< "$PAGE_PRS")"
+            if [ "$OLDEST_UPDATED_EPOCH" -lt "$SINCE_EPOCH" ]; then
+              break
+            fi
+
+            PAGE=$((PAGE + 1))
+          done
+
+          MERGED_PRS="$(jq 'sort_by(.merged_at) | reverse' <<< "$MERGED_PRS")"
 
           MERGED_COUNT="$(jq 'length' <<< "$MERGED_PRS")"
           echo "merged_count=${MERGED_COUNT}" >> "$GITHUB_OUTPUT"
@@ -96,6 +126,9 @@ jobs:
     if: needs.check-recent-merges.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
 
     steps:
       - name: Dispatch full build workflow
@@ -103,6 +136,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TARGET_BRANCH: ${{ github.event.inputs.target_branch || 'companion' }}
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          MERGED_COUNT: ${{ needs.check-recent-merges.outputs.merged_count }}
         run: |
           set -euo pipefail
 
@@ -114,6 +148,7 @@ jobs:
           gh workflow run publish.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref "$TARGET_BRANCH" \
-            -f ref="$TARGET_BRANCH"
+            -f ref="$TARGET_BRANCH" \
+            -f push=true
 
-          echo "Dispatched Publish Docker image (publish.yml) build for ${TARGET_BRANCH} after finding ${{ needs.check-recent-merges.outputs.merged_count }} merged PR(s)."
+          echo "Dispatched Publish Docker image (publish.yml) build for ${TARGET_BRANCH} after finding ${MERGED_COUNT} merged PR(s)."
