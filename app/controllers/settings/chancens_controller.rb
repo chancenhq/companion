@@ -21,6 +21,10 @@ class Settings::ChancensController < ApplicationController
       Setting.metabase_student_question_id = chancen_params[:metabase_student_question_id]
     end
 
+    if chancen_params.key?(:metabase_transactions_question_id)
+      Setting.metabase_transactions_question_id = chancen_params[:metabase_transactions_question_id]
+    end
+
     if chancen_params.key?(:metabase_email_param)
       Setting.metabase_email_param = chancen_params[:metabase_email_param].presence || "email"
     end
@@ -32,7 +36,7 @@ class Settings::ChancensController < ApplicationController
     def chancen_params
       return ActionController::Parameters.new unless params.key?(:setting)
 
-      params.require(:setting).permit(:metabase_url, :metabase_api_key, :metabase_student_question_id, :metabase_email_param)
+      params.require(:setting).permit(:metabase_url, :metabase_api_key, :metabase_student_question_id, :metabase_transactions_question_id, :metabase_email_param)
     end
 
     def ensure_super_admin
