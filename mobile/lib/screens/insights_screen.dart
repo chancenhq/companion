@@ -156,7 +156,11 @@ class _AccountSummaryView extends StatelessWidget {
               const SizedBox(height: 20),
               _SectionHeaderTile(theme: theme, isaStatus: isaStatus),
               const SizedBox(height: 16),
-              if (provider.unavailable && !loading)
+              if (provider.networkError && !loading)
+                _NetworkErrorCard(theme: theme, onRetry: onRefresh)
+              else if (provider.upstreamError && !loading)
+                _UpstreamErrorCard(theme: theme, onRetry: onRefresh)
+              else if (provider.unavailable && !loading)
                 _ServiceUnavailableCard(theme: theme)
               else switch (isaStatus) {
                 // Still applying / no ISA contract on file yet — just the
@@ -560,6 +564,121 @@ class _ServiceUnavailableCard extends StatelessWidget {
               color: theme.colorScheme.onSurfaceVariant,
               height: 1.5,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Network error card ───────────────────────────────────────────────────────
+
+class _NetworkErrorCard extends StatelessWidget {
+  const _NetworkErrorCard({required this.theme, required this.onRetry});
+
+  final ThemeData theme;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return _ErrorCard(
+      theme: theme,
+      icon: Icons.wifi_off_rounded,
+      iconColor: const Color(0xFFE53935),
+      title: 'No internet connection',
+      body: 'Your ISA details will load once you\'re back online. '
+            'Pull down or tap Retry to try again.',
+      onRetry: onRetry,
+    );
+  }
+}
+
+// ─── Upstream error card ──────────────────────────────────────────────────────
+
+class _UpstreamErrorCard extends StatelessWidget {
+  const _UpstreamErrorCard({required this.theme, required this.onRetry});
+
+  final ThemeData theme;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return _ErrorCard(
+      theme: theme,
+      icon: Icons.error_outline_rounded,
+      iconColor: const Color(0xFFE53935),
+      title: 'Unable to load account data',
+      body: 'The data service returned an unexpected error. '
+            'This is usually temporary — pull down or tap Retry to try again.',
+      onRetry: onRetry,
+    );
+  }
+}
+
+// ─── Shared error card layout ─────────────────────────────────────────────────
+
+class _ErrorCard extends StatelessWidget {
+  const _ErrorCard({
+    required this.theme,
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.body,
+    required this.onRetry,
+  });
+
+  final ThemeData theme;
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String body;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.brightness == Brightness.light ? Colors.white : Colors.black,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: iconColor.withValues(alpha: 0.18),
+            blurRadius: 0,
+            offset: const Offset(4, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: iconColor, size: 24),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            title,
+            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            body,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextButton.icon(
+            onPressed: onRetry,
+            icon: Icon(Icons.refresh_rounded, size: 16, color: iconColor),
+            label: Text('Retry', style: TextStyle(color: iconColor)),
           ),
         ],
       ),

@@ -10,23 +10,26 @@ class MyAccountProvider with ChangeNotifier {
   bool _loaded = false;
   bool _notFound = false;
   bool _unavailable = false;
-  String? _error;
+  bool _networkError = false;
+  bool _upstreamError = false;
 
   StudentAccount? get account => _account;
   bool get isLoading => _isLoading;
   bool get loaded => _loaded;
-  /// True when the API returned 404 — email is not in the Chancen ISA database.
   bool get notFound => _notFound;
-  /// True when the API returned 503 — Metabase is not configured or is down.
   bool get unavailable => _unavailable;
-  String? get error => _error;
+  /// True when the device has no network or the request timed out.
+  bool get networkError => _networkError;
+  /// True when the server returned an unexpected error (e.g. 502 from Metabase).
+  bool get upstreamError => _upstreamError;
 
   Future<void> load(String apiKey) async {
     if (_isLoading) return;
     _isLoading = true;
-    _error = null;
     _notFound = false;
     _unavailable = false;
+    _networkError = false;
+    _upstreamError = false;
     notifyListeners();
 
     try {
@@ -38,8 +41,15 @@ class MyAccountProvider with ChangeNotifier {
     } on AccountServiceUnavailableException {
       _unavailable = true;
       _loaded = true;
+    } on AccountNetworkException {
+      _networkError = true;
+      _loaded = true;
+    } on AccountUpstreamException {
+      _upstreamError = true;
+      _loaded = true;
     } catch (e) {
-      _error = e.toString();
+      _upstreamError = true;
+      _loaded = true;
       debugPrint('MyAccountProvider.load error: $e');
     } finally {
       _isLoading = false;

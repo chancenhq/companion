@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../models/student_account.dart';
 import 'api_config.dart';
@@ -9,6 +10,15 @@ class AccountNotFoundException implements Exception {
 
 class AccountServiceUnavailableException implements Exception {
   const AccountServiceUnavailableException();
+}
+
+class AccountNetworkException implements Exception {
+  const AccountNetworkException();
+}
+
+class AccountUpstreamException implements Exception {
+  final int statusCode;
+  const AccountUpstreamException(this.statusCode);
 }
 
 class MyAccountService {
@@ -27,11 +37,17 @@ class MyAccountService {
       }
       if (response.statusCode == 404) throw const AccountNotFoundException();
       if (response.statusCode == 503) throw const AccountServiceUnavailableException();
-      return null;
-    } catch (e) {
-      if (e is AccountNotFoundException) rethrow;
-      if (e is AccountServiceUnavailableException) rethrow;
-      return null;
+      throw AccountUpstreamException(response.statusCode);
+    } on AccountNotFoundException {
+      rethrow;
+    } on AccountServiceUnavailableException {
+      rethrow;
+    } on AccountUpstreamException {
+      rethrow;
+    } on SocketException {
+      throw const AccountNetworkException();
+    } catch (_) {
+      throw const AccountNetworkException();
     }
   }
 }
