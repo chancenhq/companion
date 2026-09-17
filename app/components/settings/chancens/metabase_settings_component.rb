@@ -49,6 +49,17 @@ class Settings::Chancens::MetabaseSettingsComponent < ApplicationComponent
         }
       ),
       Field.new(
+        name: :metabase_transactions_question_id,
+        type: :text_field,
+        label: t("transactions_question_id_label"),
+        placeholder: t("transactions_question_id_placeholder"),
+        value: ENV.fetch("METABASE_TRANSACTIONS_QUESTION_ID", Setting.metabase_transactions_question_id),
+        disabled: ENV["METABASE_TRANSACTIONS_QUESTION_ID"].present?,
+        options: {
+          autocomplete: "off"
+        }
+      ),
+      Field.new(
         name: :metabase_email_param,
         type: :text_field,
         label: t("email_param_label"),
