@@ -24,8 +24,9 @@ class Provider::MetabaseStudentAccount < Provider
       "/api/card/#{@question_id}/query",
       {
         parameters: [ {
+          id:     email_tag_uuid,
           type:   "text",
-          target: [ "variable", [ "template-tag", "email" ] ],
+          target: [ "variable", [ "template-tag", @email_param ] ],
           value:  email.downcase
         } ]
       }.to_json,
@@ -56,6 +57,22 @@ class Provider::MetabaseStudentAccount < Provider
   end
 
   private
+
+    def email_tag_uuid
+      @email_tag_uuid ||= begin
+        card = JSON.parse(
+          connection.get("/api/card/#{@question_id}") { |req| req.headers["X-API-KEY"] = @api_key }.body
+        )
+        # Metabase ≥0.47 stores the query in MBQL stages; older versions use native.template-tags directly.
+        tags = card.dig("dataset_query", "stages", 0, "template-tags") ||
+               card.dig("dataset_query", "native", "template-tags")
+        tag  = case tags
+               when Hash  then tags[@email_param]
+               when Array then tags.find { |t| t["name"] == @email_param }
+               end
+        tag&.fetch("id") or raise Error, "Could not resolve template tag UUID for '#{@email_param}'"
+      end
+    end
 
     def strip_pii(value)
       value.to_s.sub(/\A<TODO-MASK-PII>/i, "").downcase
