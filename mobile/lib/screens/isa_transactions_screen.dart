@@ -31,7 +31,11 @@ class _IsaTransactionsScreenState extends State<IsaTransactionsScreen> {
       final token = await context.read<AuthProvider>().getValidAccessToken();
       if (token == null) { if (mounted) setState(() { _loading = false; }); return; }
       final result = await _service.fetchTransactions(token);
-      if (mounted) setState(() { _transactions = result; _loading = false; });
+      final filtered = result.where((t) {
+        final type = t.paymentType.toLowerCase();
+        return type.contains('repayment') || type.contains('commitment');
+      }).toList();
+      if (mounted) setState(() { _transactions = filtered; _loading = false; });
     } on IsaTransactionsUnavailableException {
       if (mounted) setState(() { _error = 'Repayment data is not configured yet.'; _loading = false; });
     } catch (_) {
