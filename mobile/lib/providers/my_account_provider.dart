@@ -12,6 +12,7 @@ class MyAccountProvider with ChangeNotifier {
   bool _unavailable = false;
   bool _networkError = false;
   bool _upstreamError = false;
+  DateTime? _lastSyncedAt;
 
   StudentAccount? get account => _account;
   bool get isLoading => _isLoading;
@@ -22,6 +23,8 @@ class MyAccountProvider with ChangeNotifier {
   bool get networkError => _networkError;
   /// True when the server returned an unexpected error (e.g. 502 from Metabase).
   bool get upstreamError => _upstreamError;
+  /// UTC timestamp of the last successful data fetch, null if never loaded.
+  DateTime? get lastSyncedAt => _lastSyncedAt;
 
   Future<void> load(String apiKey) async {
     if (_isLoading) return;
@@ -35,6 +38,7 @@ class MyAccountProvider with ChangeNotifier {
     try {
       _account = await _service.fetchMyAccount(apiKey);
       _loaded = true;
+      _lastSyncedAt = DateTime.now();
     } on AccountNotFoundException {
       _notFound = true;
       _loaded = true;

@@ -156,11 +156,22 @@ class _AccountSummaryView extends StatelessWidget {
               const SizedBox(height: 20),
               _SectionHeaderTile(theme: theme, isaStatus: isaStatus),
               const SizedBox(height: 16),
-              if (provider.networkError && !loading)
+              if ((provider.networkError || provider.upstreamError || provider.unavailable) &&
+                  !loading &&
+                  account != null) ...[
+                _StaleDataBanner(
+                  theme: theme,
+                  lastSyncedAt: provider.lastSyncedAt,
+                  onRetry: onRefresh,
+                  isNetworkError: provider.networkError,
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (provider.networkError && !loading && account == null)
                 _NetworkErrorCard(theme: theme, onRetry: onRefresh)
-              else if (provider.upstreamError && !loading)
+              else if (provider.upstreamError && !loading && account == null)
                 _UpstreamErrorCard(theme: theme, onRetry: onRefresh)
-              else if (provider.unavailable && !loading)
+              else if (provider.unavailable && !loading && account == null)
                 _ServiceUnavailableCard(theme: theme)
               else switch (isaStatus) {
                 // Still applying / no ISA contract on file yet — just the
@@ -611,6 +622,95 @@ class _UpstreamErrorCard extends StatelessWidget {
       body: 'The data service returned an unexpected error. '
             'This is usually temporary — pull down or tap Retry to try again.',
       onRetry: onRetry,
+    );
+  }
+}
+
+// ─── Stale data banner ────────────────────────────────────────────────────────
+
+class _StaleDataBanner extends StatelessWidget {
+  const _StaleDataBanner({
+    required this.theme,
+    required this.lastSyncedAt,
+    required this.onRetry,
+    required this.isNetworkError,
+  });
+
+  final ThemeData theme;
+  final DateTime? lastSyncedAt;
+  final Future<void> Function() onRetry;
+  final bool isNetworkError;
+
+  String _timeAgo(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return DateFormat('d MMM').format(dt);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const color = Color(0xFFE53935);
+    final syncText = lastSyncedAt != null
+        ? 'Last synced ${_timeAgo(lastSyncedAt!)}'
+        : 'Showing saved data';
+    final statusText = isNetworkError
+        ? 'No internet connection'
+        : 'Could not refresh — showing saved data';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isNetworkError ? Icons.wifi_off_rounded : Icons.error_outline_rounded,
+            size: 16,
+            color: color,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  syncText,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  statusText,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: onRetry,
+            style: TextButton.styleFrom(
+              minimumSize: Size.zero,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(
+              'Retry',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
