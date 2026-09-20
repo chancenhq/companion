@@ -272,6 +272,12 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
           MaterialPageRoute(builder: (_) => ResetPasswordScreen(token: token)),
         );
       }
+    } else if (uri.scheme == 'sureapp' && uri.host == 'invite') {
+      final token = uri.queryParameters['token'];
+      if (token != null && token.isNotEmpty) {
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        authProvider.setPendingInvitationToken(token);
+      }
     }
   }
 

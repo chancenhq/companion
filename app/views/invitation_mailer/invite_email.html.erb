@@ -12,4 +12,9 @@
 
 <%= link_to t(".accept_button"), @accept_url, class: "button" %>
 
+<p style="margin-top: 16px;">
+  <%= t(".mobile_app_prompt") %>
+  <%= link_to t(".mobile_accept_button"), @mobile_accept_url %>
+</p>
+
 <p class="footer"><%= t(".expiry_notice", days: 3) %></p>

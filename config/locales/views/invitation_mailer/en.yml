@@ -6,3 +6,5 @@ en:
       body: "%{inviter} has invited you to join the %{family} %{moniker} on %{product_name}!"
       expiry_notice: This invitation will expire in %{days} days
       greeting: Welcome to %{product_name}!
+      mobile_app_prompt: Have the Companion app? Open your invitation directly in the app:
+      mobile_accept_button: Open in Companion
