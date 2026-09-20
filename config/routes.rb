@@ -527,6 +527,7 @@ Rails.application.routes.draw do
       resources :provider_connections, only: [ :index ]
 
       resource :my_account, only: [ :show ], controller: :my_account
+      resources :my_account_transactions, only: [ :index ], controller: :my_account_transactions
 
       resources :chats, only: [ :index, :show, :create, :update, :destroy ] do
         resources :messages, only: [ :create ] do
@@ -668,6 +669,7 @@ Rails.application.routes.draw do
       end
     end
     resources :users, only: [ :index, :update ]
+    resource :bulk_invitations, only: [ :new, :create ]
     resources :invitations, only: [ :destroy ]
     resources :families, only: [] do
       member do
