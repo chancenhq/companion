@@ -19,5 +19,7 @@ en:
         api_key_placeholder: Enter API key
         question_id_label: Student Question ID
         question_id_placeholder: "1329"
+        transactions_question_id_label: Transactions Question ID
+        transactions_question_id_placeholder: "1432"
         email_param_label: Email Template Tag
         email_param_placeholder: email
