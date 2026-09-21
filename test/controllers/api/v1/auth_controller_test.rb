@@ -1276,4 +1276,153 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     data = JSON.parse(response.body)
     assert_equal "identity_token is required", data["error"]
   end
+
+  # ── Password reset ────────────────────────────────────────────────────────
+
+  test "request_password_reset returns 200 and queues email for known user" do
+    user = User.create!(
+      email: "resetme@example.com",
+      password: "SecurePass123!",
+      first_name: "Reset",
+      last_name: "Me",
+      family: Family.create!(name: "Reset Family", currency: "USD")
+    )
+
+    assert_enqueued_emails 1 do
+      post "/api/v1/auth/password_reset", params: { email: user.email }
+    end
+
+    assert_response :ok
+    data = JSON.parse(response.body)
+    assert_includes data["message"], "reset link"
+  end
+
+  test "request_password_reset returns 200 for unknown email without sending email" do
+    assert_enqueued_emails 0 do
+      post "/api/v1/auth/password_reset", params: { email: "nobody@example.com" }
+    end
+
+    assert_response :ok
+  end
+
+  test "request_password_reset does not send email for SSO-only user" do
+    user = User.create!(
+      email: "ssouser@example.com",
+      first_name: "SSO",
+      last_name: "User",
+      skip_password_validation: true,
+      family: Family.create!(name: "SSO Family", currency: "USD")
+    )
+    OidcIdentity.create!(
+      user: user,
+      provider: "google_oauth2",
+      uid: "google-uid-999",
+      issuer: "https://accounts.google.com",
+      info: { email: user.email },
+      last_authenticated_at: Time.current
+    )
+
+    assert_enqueued_emails 0 do
+      post "/api/v1/auth/password_reset", params: { email: user.email }
+    end
+
+    assert_response :ok
+  end
+
+  test "request_password_reset does not send email when password features disabled" do
+    Rails.configuration.x.auth.local_login_enabled = false
+
+    user = User.create!(
+      email: "disabled@example.com",
+      password: "SecurePass123!",
+      first_name: "Dis",
+      last_name: "Abled",
+      family: Family.create!(name: "Disabled Family", currency: "USD")
+    )
+
+    assert_enqueued_emails 0 do
+      post "/api/v1/auth/password_reset", params: { email: user.email }
+    end
+
+    assert_response :ok
+  ensure
+    Rails.configuration.x.auth.local_login_enabled = nil
+  end
+
+  test "reset_password updates password with valid token" do
+    user = User.create!(
+      email: "validtoken@example.com",
+      password: "OldPass123!",
+      first_name: "Valid",
+      last_name: "Token",
+      family: Family.create!(name: "Valid Family", currency: "USD")
+    )
+    token = user.generate_token_for(:password_reset)
+
+    patch "/api/v1/auth/password_reset", params: {
+      token: token,
+      password: "NewPass456!",
+      password_confirmation: "NewPass456!"
+    }
+
+    assert_response :ok
+    data = JSON.parse(response.body)
+    assert_includes data["message"], "updated"
+    assert user.reload.authenticate("NewPass456!")
+  end
+
+  test "reset_password returns 422 for invalid token" do
+    patch "/api/v1/auth/password_reset", params: {
+      token: "totallyinvalidtoken",
+      password: "NewPass456!",
+      password_confirmation: "NewPass456!"
+    }
+
+    assert_response :unprocessable_entity
+    data = JSON.parse(response.body)
+    assert_includes data["error"], "invalid"
+  end
+
+  test "reset_password returns 403 when password features disabled" do
+    Rails.configuration.x.auth.local_login_enabled = false
+
+    patch "/api/v1/auth/password_reset", params: {
+      token: "anytoken",
+      password: "NewPass456!",
+      password_confirmation: "NewPass456!"
+    }
+
+    assert_response :forbidden
+  ensure
+    Rails.configuration.x.auth.local_login_enabled = nil
+  end
+
+  test "reset_password returns 422 for SSO-only user token" do
+    user = User.create!(
+      email: "ssoresetblock@example.com",
+      first_name: "SSO",
+      last_name: "Block",
+      skip_password_validation: true,
+      family: Family.create!(name: "SSO Block Family", currency: "USD")
+    )
+    OidcIdentity.create!(
+      user: user,
+      provider: "google_oauth2",
+      uid: "google-uid-sso-block",
+      issuer: "https://accounts.google.com",
+      info: { email: user.email },
+      last_authenticated_at: Time.current
+    )
+    token = user.generate_token_for(:password_reset)
+
+    patch "/api/v1/auth/password_reset", params: {
+      token: token,
+      password: "NewPass456!",
+      password_confirmation: "NewPass456!"
+    }
+
+    assert_response :unprocessable_entity
+    data = JSON.parse(response.body)
+    assert_includes data["error"], "social sign-in"
+  end
 end

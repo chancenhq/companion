@@ -6,6 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_config.dart';
 import 'backend_config_screen.dart';
+import 'forgot_password_screen.dart';
 
 // ── Reusable auth form — used by LoginScreen and OnboardingScreen ──────────
 
@@ -262,6 +263,21 @@ class _LoginFormBodyState extends State<LoginFormBody> {
                         ? null
                         : (_) => _isSignUp ? _handleSignUp() : _handleLogin(),
                   ),
+
+                  // Forgot password — sign-in only
+                  if (!_isSignUp) ...[
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const ForgotPasswordScreen(),
+                          ),
+                        ),
+                        child: const Text('Forgot password?'),
+                      ),
+                    ),
+                  ],
 
                   // MFA / OTP
                   if (showOtp) ...[

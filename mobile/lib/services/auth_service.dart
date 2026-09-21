@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models/auth_tokens.dart';
@@ -41,7 +42,9 @@ class AuthService {
       ).timeout(const Duration(seconds: 30));
 
       LogService.instance.debug('AuthService', 'Login response status: ${response.statusCode}');
-      LogService.instance.debug('AuthService', 'Login response body: ${response.body}');
+      if (kDebugMode) {
+        LogService.instance.debug('AuthService', 'Login response body: ${response.body}');
+      }
 
       final responseData = jsonDecode(response.body);
 
@@ -498,6 +501,7 @@ class AuthService {
     required String linkingCode,
     String? firstName,
     String? lastName,
+    String? password,
   }) async {
     try {
       final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/sso_create_account');
@@ -506,6 +510,7 @@ class AuthService {
       };
       if (firstName != null) body['first_name'] = firstName;
       if (lastName != null) body['last_name'] = lastName;
+      if (password != null) body['password'] = password;
 
       final response = await http.post(
         url,
@@ -692,10 +697,18 @@ class AuthService {
     }
 
     if (userPayload is Map<String, dynamic>) {
+      final payload = kDebugMode
+          ? userPayload
+          : {
+              'id': userPayload['id'],
+              'role': userPayload['role'],
+              'ui_layout': userPayload['ui_layout'],
+              'ai_enabled': userPayload['ai_enabled'],
+            };
       try {
-        LogService.instance.debug('AuthService', '$source user payload: ${jsonEncode(userPayload)}');
+        LogService.instance.debug('AuthService', '$source user payload: ${jsonEncode(payload)}');
       } catch (_) {
-        LogService.instance.debug('AuthService', '$source user payload: $userPayload');
+        LogService.instance.debug('AuthService', '$source user payload: $payload');
       }
     } else {
       LogService.instance.debug('AuthService', '$source user payload type: ${userPayload.runtimeType}');
@@ -713,5 +726,45 @@ class AuthService {
 
   Future<String?> getStoredAuthMode() async {
     return await _storage.read(key: _authModeKey);
+  }
+
+  Future<void> requestPasswordReset({required String email}) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/password_reset');
+      await http.post(
+        url,
+        headers: ApiConfig.jsonHeaders(),
+        body: jsonEncode({'email': email}),
+      ).timeout(const Duration(seconds: 15));
+    } catch (_) {
+      // Silent fail — caller shows generic confirmation regardless
+    }
+  }
+
+  Future<Map<String, dynamic>> resetPassword({
+    required String token,
+    required String password,
+    required String passwordConfirmation,
+  }) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/password_reset');
+      final response = await http.patch(
+        url,
+        headers: ApiConfig.jsonHeaders(),
+        body: jsonEncode({
+          'token': token,
+          'password': password,
+          'password_confirmation': passwordConfirmation,
+        }),
+      ).timeout(const Duration(seconds: 15));
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200) {
+        return {'success': true};
+      }
+      return {'success': false, 'error': data['error'] ?? data['errors']?.join(', ') ?? 'Something went wrong'};
+    } catch (e) {
+      return {'success': false, 'error': 'Network error. Please try again.'};
+    }
   }
 }

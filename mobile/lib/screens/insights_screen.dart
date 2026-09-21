@@ -156,18 +156,38 @@ class _AccountSummaryView extends StatelessWidget {
               const SizedBox(height: 20),
               _SectionHeaderTile(theme: theme, isaStatus: isaStatus),
               const SizedBox(height: 16),
-              switch (isaStatus) {
+              if ((provider.networkError || provider.upstreamError || provider.unavailable) &&
+                  !loading &&
+                  account != null) ...[
+                _StaleDataBanner(
+                  theme: theme,
+                  lastSyncedAt: provider.lastSyncedAt,
+                  onRetry: onRefresh,
+                  isNetworkError: provider.networkError,
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (provider.networkError && !loading && account == null)
+                _NetworkErrorCard(theme: theme, onRetry: onRefresh)
+              else if (provider.upstreamError && !loading && account == null)
+                _UpstreamErrorCard(theme: theme, onRetry: onRefresh)
+              else if (provider.unavailable && !loading && account == null)
+                _ServiceUnavailableCard(theme: theme)
+              else switch (isaStatus) {
                 // Still applying / no ISA contract on file yet — just the
                 // progress explainer. ISA Status badge above already shows.
                 IsaStatus.applicationStage =>
-                  _ApplicationStageCard(theme: theme, loading: loading),
+                  _ApplicationStageCard(
+                    theme: theme,
+                    loading: loading,
+                    notFound: provider.notFound,
+                  ),
 
                 // Contract signed but not graduated: show financing so far.
                 // Instalment tracking isn't relevant until repayment starts —
                 // later this card becomes tappable to drill into instalments.
                 IsaStatus.contractSigned => _IsaFinancingCard(
                     theme: theme,
-                    isaStatus: isaStatus,
                     totalFinanced: loading ? null : fmt.format(account!.totalFinanced),
                     repaymentsReceived: loading
                         ? null
@@ -182,7 +202,6 @@ class _AccountSummaryView extends StatelessWidget {
                     children: [
                       _IsaFinancingCard(
                         theme: theme,
-                        isaStatus: isaStatus,
                         totalFinanced: loading ? null : fmt.format(account!.totalFinanced),
                         repaymentsReceived: loading
                             ? null
@@ -393,10 +412,15 @@ class _SectionHeaderTile extends StatelessWidget {
 // ─── Application Stage card ───────────────────────────────────────────────────
 
 class _ApplicationStageCard extends StatelessWidget {
-  const _ApplicationStageCard({required this.theme, required this.loading});
+  const _ApplicationStageCard({
+    required this.theme,
+    required this.loading,
+    required this.notFound,
+  });
 
   final ThemeData theme;
   final bool loading;
+  final bool notFound;
 
   @override
   Widget build(BuildContext context) {
@@ -420,7 +444,9 @@ class _ApplicationStageCard extends StatelessWidget {
                 child: CircularProgressIndicator(),
               ),
             )
-          : Column(
+          : notFound
+              ? _NotFoundBody(theme: theme)
+              : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
@@ -501,30 +527,389 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
+// ─── Service unavailable card ─────────────────────────────────────────────────
+
+class _ServiceUnavailableCard extends StatelessWidget {
+  const _ServiceUnavailableCard({required this.theme});
+
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.brightness == Brightness.light ? Colors.white : Colors.black,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: _kPurple.withValues(alpha: 0.18),
+            blurRadius: 0,
+            offset: const Offset(4, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: _kPurple.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.cloud_off_rounded, color: _kPurple, size: 24),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Account data temporarily unavailable',
+            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'We\'re having trouble reaching the Chancen data service right now. '
+            'Your ISA details will appear once the connection is restored. '
+            'Pull down to refresh and try again.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Network error card ───────────────────────────────────────────────────────
+
+class _NetworkErrorCard extends StatelessWidget {
+  const _NetworkErrorCard({required this.theme, required this.onRetry});
+
+  final ThemeData theme;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return _ErrorCard(
+      theme: theme,
+      icon: Icons.wifi_off_rounded,
+      iconColor: const Color(0xFFE53935),
+      title: 'No internet connection',
+      body: 'Your ISA details will load once you\'re back online. '
+            'Pull down or tap Retry to try again.',
+      onRetry: onRetry,
+    );
+  }
+}
+
+// ─── Upstream error card ──────────────────────────────────────────────────────
+
+class _UpstreamErrorCard extends StatelessWidget {
+  const _UpstreamErrorCard({required this.theme, required this.onRetry});
+
+  final ThemeData theme;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return _ErrorCard(
+      theme: theme,
+      icon: Icons.error_outline_rounded,
+      iconColor: const Color(0xFFE53935),
+      title: 'Unable to load account data',
+      body: 'The data service returned an unexpected error. '
+            'This is usually temporary — pull down or tap Retry to try again.',
+      onRetry: onRetry,
+    );
+  }
+}
+
+// ─── Stale data banner ────────────────────────────────────────────────────────
+
+class _StaleDataBanner extends StatelessWidget {
+  const _StaleDataBanner({
+    required this.theme,
+    required this.lastSyncedAt,
+    required this.onRetry,
+    required this.isNetworkError,
+  });
+
+  final ThemeData theme;
+  final DateTime? lastSyncedAt;
+  final Future<void> Function() onRetry;
+  final bool isNetworkError;
+
+  String _timeAgo(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return DateFormat('d MMM').format(dt);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const color = Color(0xFFE53935);
+    final syncText = lastSyncedAt != null
+        ? 'Last synced ${_timeAgo(lastSyncedAt!)}'
+        : 'Showing saved data';
+    final statusText = isNetworkError
+        ? 'No internet connection'
+        : 'Could not refresh — showing saved data';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isNetworkError ? Icons.wifi_off_rounded : Icons.error_outline_rounded,
+            size: 16,
+            color: color,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  syncText,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  statusText,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: onRetry,
+            style: TextButton.styleFrom(
+              minimumSize: Size.zero,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(
+              'Retry',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Shared error card layout ─────────────────────────────────────────────────
+
+class _ErrorCard extends StatelessWidget {
+  const _ErrorCard({
+    required this.theme,
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.body,
+    required this.onRetry,
+  });
+
+  final ThemeData theme;
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String body;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.brightness == Brightness.light ? Colors.white : Colors.black,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: iconColor.withValues(alpha: 0.18),
+            blurRadius: 0,
+            offset: const Offset(4, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: iconColor, size: 24),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            title,
+            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            body,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextButton.icon(
+            onPressed: onRetry,
+            icon: Icon(Icons.refresh_rounded, size: 16, color: iconColor),
+            label: Text('Retry', style: TextStyle(color: iconColor)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Not-found body ───────────────────────────────────────────────────────────
+
+class _NotFoundBody extends StatelessWidget {
+  const _NotFoundBody({required this.theme});
+
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: _kPurple.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.search_off_rounded, color: _kPurple, size: 24),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'We couldn\'t find your ISA',
+          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'This could be one of two things:',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 20),
+        _ReasonTile(
+          theme: theme,
+          icon: Icons.schedule_rounded,
+          title: 'Check back later',
+          body: 'If you just applied or signed your contract or recently requested to change your email, your data may not be available yet — check back tomorrow.',
+        ),
+        const SizedBox(height: 12),
+        _ReasonTile(
+          theme: theme,
+          icon: Icons.alternate_email_rounded,
+          title: 'Different email',
+          body: 'You may have signed up with a different email than the one you used to apply. Try signing in with your Chancen application email.',
+        ),
+      ],
+    );
+  }
+}
+
+class _ReasonTile extends StatelessWidget {
+  const _ReasonTile({
+    required this.theme,
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  final ThemeData theme;
+  final IconData icon;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _kPurple.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _kPurple.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: _kPurple, size: 18),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: _kPurple,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  body,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ─── ISA Financing card ───────────────────────────────────────────────────────
 
 class _IsaFinancingCard extends StatelessWidget {
   const _IsaFinancingCard({
     required this.theme,
-    required this.isaStatus,
     required this.totalFinanced,
     required this.repaymentsReceived,
     required this.loading,
   });
 
   final ThemeData theme;
-  final IsaStatus isaStatus;
   final String? totalFinanced;
   final String? repaymentsReceived;
   final bool loading;
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = (isaStatus == IsaStatus.contractSigned &&
-            theme.brightness == Brightness.dark)
-        ? _kGreen
-        : isaStatus.color;
-
     return Container(
       decoration: BoxDecoration(
         color: theme.brightness == Brightness.light ? Colors.white : Colors.black,
@@ -558,28 +943,6 @@ class _IsaFinancingCard extends StatelessWidget {
                   'ISA Financing',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(isaStatus.icon, size: 13, color: statusColor),
-                      const SizedBox(width: 4),
-                      Text(
-                        isaStatus.label,
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: statusColor,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
                   ),
                 ),
               ],

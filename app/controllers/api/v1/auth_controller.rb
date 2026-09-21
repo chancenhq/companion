@@ -208,7 +208,8 @@ module Api
           uid:                      cached[:uid],
           issuer:                   cached[:issuer],
           new_family_fallback_role: sso_provider_default_role(cached[:provider]) || :admin,
-          invitation:               invitation
+          invitation:               invitation,
+          password:                 params[:password].presence
         )
         return unless user
 
@@ -271,6 +272,44 @@ module Api
       rescue AppleSignIn::Error => e
         Rails.logger.warn("[Auth] Apple Sign-In verification failed: #{e.message}")
         render json: { error: "Invalid Apple identity token" }, status: :unauthorized
+      end
+
+      def request_password_reset
+        email = params[:email].to_s.strip.downcase
+        user = User.find_by(email: email)
+
+        if user && !user.sso_only? && AuthConfig.password_features_enabled?
+          token = user.generate_token_for(:password_reset)
+          PasswordMailer.with(user: user, token: token).mobile_password_reset.deliver_later
+        end
+
+        render json: { message: "If an account exists, you'll receive a reset link shortly." }
+      end
+
+      def reset_password
+        unless AuthConfig.password_features_enabled?
+          render json: { error: "Password reset is not available." }, status: :forbidden
+          return
+        end
+
+        user = User.find_by_token_for(:password_reset, params[:token].to_s)
+
+        unless user
+          render json: { error: "Reset link is invalid or has expired." }, status: :unprocessable_entity
+          return
+        end
+
+        if user.sso_only?
+          render json: { error: "This account uses social sign-in. Password reset is not available." }, status: :unprocessable_entity
+          return
+        end
+
+        unless user.update(password: params[:password], password_confirmation: params[:password_confirmation])
+          render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
+          return
+        end
+
+        render json: { message: "Password updated successfully." }
       end
 
       def enable_ai
@@ -400,7 +439,7 @@ module Api
           }
         end
 
-        def jit_create_sso_user(email:, first_name:, last_name:, provider:, uid:, issuer:, new_family_fallback_role: :admin, invitation: nil)
+        def jit_create_sso_user(email:, first_name:, last_name:, provider:, uid:, issuer:, new_family_fallback_role: :admin, invitation: nil, password: nil)
           invitation ||= Invitation.pending.find_by(email: email)
 
           if invitation.blank? && invite_only_default_family_missing?
@@ -412,8 +451,9 @@ module Api
             email:      email,
             first_name: first_name,
             last_name:  last_name,
-            skip_password_validation: true
+            skip_password_validation: password.blank?
           )
+          user.password = password if password.present?
           assign_signup_family_and_role(user, invitation: invitation, new_family_fallback_role: new_family_fallback_role)
 
           ActiveRecord::Base.transaction do

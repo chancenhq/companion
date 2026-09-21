@@ -29,7 +29,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Accept Invitation'), findsNWidgets(2));
+    expect(find.text('Accept Invitation'), findsOneWidget);
     expect(find.text('Link Account'), findsNothing);
     expect(
       find.text(
