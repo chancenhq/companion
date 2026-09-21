@@ -53,7 +53,8 @@ class Provider::MetabaseStudentAccount < Provider
       currency:            def_at.("currency") || "KES"
     )
   rescue Faraday::Error => e
-    raise Error, "Metabase connection error: #{e.message}"
+    body = e.response&.dig(:body).presence || "no body"
+    raise Error, "Metabase connection error: #{e.message} | body: #{body}"
   end
 
   private
