@@ -54,39 +54,46 @@ jobs:
 
           echo "Looking for PRs merged into ${TARGET_BRANCH} since ${SINCE_ISO}"
 
-          MERGED_PRS='[]'
+          # The pulls API response can exceed the ~128 KiB Linux limit for a single
+          # argv element, so JSON always reaches jq through temp files, never through
+          # --argjson arguments.
+          WORKDIR="$(mktemp -d)"
+          trap 'rm -rf "$WORKDIR"' EXIT
+          MERGED_FILE="${WORKDIR}/merged.json"
+          PAGE_FILE="${WORKDIR}/page.json"
+          echo '[]' > "$MERGED_FILE"
+
           PAGE=1
           while true; do
-            PAGE_PRS="$(
-              gh api --method GET \
-                "repos/${GITHUB_REPOSITORY}/pulls" \
-                -f state=closed \
-                -f "base=${TARGET_BRANCH}" \
-                -f sort=updated \
-                -f direction=desc \
-                -F per_page=100 \
-                -F "page=${PAGE}"
-            )"
+            gh api --method GET \
+              "repos/${GITHUB_REPOSITORY}/pulls" \
+              -f state=closed \
+              -f "base=${TARGET_BRANCH}" \
+              -f sort=updated \
+              -f direction=desc \
+              -F per_page=100 \
+              -F "page=${PAGE}" > "$PAGE_FILE"
 
-            if [ "$(jq 'length' <<< "$PAGE_PRS")" -eq 0 ]; then
+            if [ "$(jq 'length' "$PAGE_FILE")" -eq 0 ]; then
               break
             fi
 
-            MERGED_PRS="$(
-              jq -cn \
-                --argjson merged_prs "$MERGED_PRS" \
-                --argjson page_prs "$PAGE_PRS" \
-                --argjson since "$SINCE_EPOCH" \
-                '$merged_prs + [
-                  $page_prs[]
-                  | select(.merged_at != null and (.merged_at | fromdateiso8601) >= $since)
-                ]'
-            )"
+            # Keep only the fields the summary needs so the accumulator stays small.
+            jq -cn \
+              --slurpfile merged_prs "$MERGED_FILE" \
+              --slurpfile page_prs "$PAGE_FILE" \
+              --argjson since "$SINCE_EPOCH" \
+              '$merged_prs[0] + [
+                $page_prs[0][]
+                | select(.merged_at != null and (.merged_at | fromdateiso8601) >= $since)
+                | {number, title, merged_at}
+              ]' > "${MERGED_FILE}.tmp"
+            mv "${MERGED_FILE}.tmp" "$MERGED_FILE"
 
             # Results are ordered by updated_at descending. Once the oldest PR
             # on a page predates the window, later pages cannot contain a PR
             # merged during the window because merging updates the PR.
-            OLDEST_UPDATED_EPOCH="$(jq -r '.[-1].updated_at | fromdateiso8601' <<< "$PAGE_PRS")"
+            OLDEST_UPDATED_EPOCH="$(jq -r '.[-1].updated_at | fromdateiso8601' "$PAGE_FILE")"
             if [ "$OLDEST_UPDATED_EPOCH" -lt "$SINCE_EPOCH" ]; then
               break
             fi
@@ -94,9 +101,10 @@ jobs:
             PAGE=$((PAGE + 1))
           done
 
-          MERGED_PRS="$(jq 'sort_by(.merged_at) | reverse' <<< "$MERGED_PRS")"
+          jq 'sort_by(.merged_at) | reverse' "$MERGED_FILE" > "${MERGED_FILE}.tmp"
+          mv "${MERGED_FILE}.tmp" "$MERGED_FILE"
 
-          MERGED_COUNT="$(jq 'length' <<< "$MERGED_PRS")"
+          MERGED_COUNT="$(jq 'length' "$MERGED_FILE")"
           echo "merged_count=${MERGED_COUNT}" >> "$GITHUB_OUTPUT"
 
           if [ "$MERGED_COUNT" -gt 0 ]; then
@@ -114,7 +122,7 @@ jobs:
             echo "- Merged PRs found: ${MERGED_COUNT}"
             echo
             if [ "$MERGED_COUNT" -gt 0 ]; then
-              jq -r '.[] | "- #\(.number): \(.title) (\(.merged_at))"' <<< "$MERGED_PRS"
+              jq -r '.[] | "- #\(.number): \(.title) (\(.merged_at))"' "$MERGED_FILE"
             else
               echo "No merged PRs found. The build will not be dispatched."
             fi

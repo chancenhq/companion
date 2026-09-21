@@ -55,9 +55,9 @@ class Provider::MetabaseStudentTransactions < Provider
         tags = card.dig("dataset_query", "stages", 0, "template-tags") ||
                card.dig("dataset_query", "native", "template-tags")
         tag  = case tags
-               when Hash  then tags[@email_param]
-               when Array then tags.find { |t| t["name"] == @email_param }
-               end
+        when Hash  then tags[@email_param]
+        when Array then tags.find { |t| t["name"] == @email_param }
+        end
         tag&.fetch("id") or raise Error, "Could not resolve template tag UUID for '#{@email_param}'"
       end
     end
