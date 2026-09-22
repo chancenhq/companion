@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
@@ -456,9 +458,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: const Text('Invite friends and colleagues'),
             onTap: () {
               final box = context.findRenderObject() as RenderBox?;
+              final storeUrl = Platform.isIOS
+                  ? 'https://apps.apple.com/us/app/chancen-companion/id6794429424'
+                  : 'https://play.google.com/store/apps/details?id=tech.chancen.companion';
               Share.share(
                 "I've been using Chancen Companion to track my ISA and stay on top of my finances. Check it out!\n\n"
-                "https://play.google.com/store/apps/details?id=tech.chancen.companion",
+                "$storeUrl",
                 subject: 'Try Chancen Companion',
                 sharePositionOrigin: box == null ? null : box.localToGlobal(Offset.zero) & box.size,
               );

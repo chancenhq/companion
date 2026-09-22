@@ -1,13 +1,19 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'calendar_screen.dart';
 import 'recent_transactions_screen.dart';
 
 const _kPlayStoreUrl = 'https://play.google.com/store/apps/details?id=tech.chancen.companion';
-const _kShareMessage =
+const _kAppStoreUrl = 'https://apps.apple.com/us/app/chancen-companion/id6794429424';
+
+String get _kStoreUrl => Platform.isIOS ? _kAppStoreUrl : _kPlayStoreUrl;
+
+String get _kShareMessage =>
     "I've been using Chancen Companion to track my ISA and stay on top of my finances. "
     "Check it out!\n\n"
-    "$_kPlayStoreUrl";
+    "$_kStoreUrl";
 
 class MoreScreen extends StatelessWidget {
   const MoreScreen({super.key});
