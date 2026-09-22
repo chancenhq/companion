@@ -16,7 +16,7 @@ class RegistrationsController < ApplicationController
     assign_signup_family_and_role(@user, invitation: @invitation)
 
     if signup_with_invite_claim!
-      redirect_to root_path, notice: t(".success")
+      redirect_to new_session_path, notice: t(".confirm_email")
     elsif @invite_code_invalid
       redirect_to new_registration_path, alert: t("registrations.create.invalid_invite_code")
     else
@@ -60,7 +60,7 @@ class RegistrationsController < ApplicationController
         end
 
         @invitation&.update!(accepted_at: Time.current)
-        @session = create_session_for(@user)
+        @user.initiate_signup_confirmation
         success = true
       end
 

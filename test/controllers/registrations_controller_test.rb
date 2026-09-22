@@ -11,7 +11,7 @@ class RegistrationsControllerTest < ActionDispatch::IntegrationTest
       email: "john@example.com",
       password: "Password1!" } }
 
-    assert_redirected_to root_url
+    assert_redirected_to new_session_url
   end
 
   test "first user of instance becomes super_admin" do
@@ -64,7 +64,7 @@ class RegistrationsControllerTest < ActionDispatch::IntegrationTest
           email: "john@example.com",
           password: "Password1!",
           invite_code: invite_code } }
-        assert_redirected_to root_url
+        assert_redirected_to new_session_url
         assert_not InviteCode.exists?(token: invite_code)
       end
     end

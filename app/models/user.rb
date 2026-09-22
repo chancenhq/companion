@@ -74,7 +74,7 @@ class User < ApplicationRecord
 
   validate :profile_image_size
 
-  generates_token_for :password_reset, expires_in: 15.minutes do
+  generates_token_for :password_reset, expires_in: 1.hour do
     password_salt&.last(10)
   end
 
@@ -82,8 +82,23 @@ class User < ApplicationRecord
     unconfirmed_email
   end
 
+  def email_confirmed?
+    confirmed_at.present?
+  end
+
+  def confirm_email!
+    attrs = { confirmed_at: Time.current, unconfirmed_email: nil }
+    attrs[:email] = unconfirmed_email if unconfirmed_email.present?
+    update!(attrs)
+  end
+
+  def initiate_signup_confirmation
+    update!(unconfirmed_email: email)
+    EmailConfirmationMailer.with(user: self).signup_confirmation.deliver_later
+  end
+
   def pending_email_change?
-    unconfirmed_email.present?
+    unconfirmed_email.present? && unconfirmed_email != email
   end
 
   def initiate_email_change(new_email)

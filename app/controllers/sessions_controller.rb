@@ -60,6 +60,12 @@ class SessionsController < ApplicationController
     end
 
     if user
+      unless user.email_confirmed?
+        flash.now[:alert] = t(".unconfirmed_email")
+        render :new, status: :unprocessable_entity
+        return
+      end
+
       if user.otp_required?
         log_super_admin_override_login(user)
         session[:mfa_user_id] = user.id
