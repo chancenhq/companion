@@ -24,14 +24,16 @@ class Api::V1::MyAccountController < Api::V1::BaseController
     return render json: { error: "not_found", message: "No ISA record found for this account" }, status: :not_found unless data
 
     render json: {
-      email:                data.email,
-      status:               data.status,
-      total_financed:       data.total_financed,
-      repayments_received:  data.repayments_received,
-      max_amount:           data.max_amount,
-      installments_paid:    data.installments_paid,
-      max_installments:     data.max_installments,
-      currency:             data.currency
+      cid:                 data.cid,
+      email:               data.email,
+      status:              data.status,
+      total_financed:      data.total_financed,
+      repayments_received: data.repayments_received,
+      max_amount:          data.max_amount,
+      installments_paid:   data.installments_paid,
+      max_installments:    data.max_installments,
+      contract_start_date: data.contract_start_date,
+      currency:            data.currency
     }
   rescue Provider::MetabaseStudentAccount::Error => e
     Rails.logger.error "MetabaseStudentAccount error: #{e.message}"

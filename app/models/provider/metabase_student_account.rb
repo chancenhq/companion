@@ -2,6 +2,7 @@ class Provider::MetabaseStudentAccount < Provider
   Error = Class.new(Provider::Error)
 
   StudentAccountData = Data.define(
+    :cid,
     :email,
     :status,
     :total_financed,
@@ -9,6 +10,7 @@ class Provider::MetabaseStudentAccount < Provider
     :max_amount,
     :installments_paid,
     :max_installments,
+    :contract_start_date,
     :currency
   )
 
@@ -43,6 +45,7 @@ class Provider::MetabaseStudentAccount < Provider
     def_at = ->(col) { idx = cols.index(col); idx && row[idx] }
 
     StudentAccountData.new(
+      cid:                 def_at.("cid").to_s,
       email:               strip_pii(def_at.("email")).to_s,
       status:              (def_at.("isa_status") || def_at.("status")).to_s,
       total_financed:      def_at.("total_financed")&.to_f,
@@ -50,6 +53,7 @@ class Provider::MetabaseStudentAccount < Provider
       max_amount:          def_at.("max_amount")&.to_f,
       installments_paid:   def_at.("installments_paid")&.to_i,
       max_installments:    def_at.("max_installments")&.to_i,
+      contract_start_date: def_at.("contract_start_date").to_s,
       currency:            def_at.("currency") || "KES"
     )
   rescue Faraday::Error => e
