@@ -15,8 +15,8 @@ class Settings::Chancens::MetabaseSettingsComponent < ApplicationComponent
         type: :text_field,
         label: t("url_label"),
         placeholder: t("url_placeholder"),
-        value: ENV.fetch("METABASE_URL", Setting.metabase_url),
-        disabled: ENV["METABASE_URL"].present?,
+        value: Setting.metabase_url,
+        disabled: false,
         options: {
           autocomplete: "off",
           autocapitalize: "none",
@@ -30,7 +30,7 @@ class Settings::Chancens::MetabaseSettingsComponent < ApplicationComponent
         label: t("api_key_label"),
         placeholder: t("api_key_placeholder"),
         value: Setting.metabase_api_key.present? ? "********" : nil,
-        disabled: ENV["METABASE_API_KEY"].present?,
+        disabled: false,
         options: {
           autocomplete: "off",
           autocapitalize: "none",
@@ -42,8 +42,8 @@ class Settings::Chancens::MetabaseSettingsComponent < ApplicationComponent
         type: :text_field,
         label: t("question_id_label"),
         placeholder: t("question_id_placeholder"),
-        value: ENV.fetch("METABASE_STUDENT_QUESTION_ID", Setting.metabase_student_question_id),
-        disabled: ENV["METABASE_STUDENT_QUESTION_ID"].present?,
+        value: Setting.metabase_student_question_id,
+        disabled: false,
         options: {
           autocomplete: "off"
         }
@@ -53,8 +53,8 @@ class Settings::Chancens::MetabaseSettingsComponent < ApplicationComponent
         type: :text_field,
         label: t("transactions_question_id_label"),
         placeholder: t("transactions_question_id_placeholder"),
-        value: ENV.fetch("METABASE_TRANSACTIONS_QUESTION_ID", Setting.metabase_transactions_question_id),
-        disabled: ENV["METABASE_TRANSACTIONS_QUESTION_ID"].present?,
+        value: Setting.metabase_transactions_question_id,
+        disabled: false,
         options: {
           autocomplete: "off"
         }
@@ -64,8 +64,8 @@ class Settings::Chancens::MetabaseSettingsComponent < ApplicationComponent
         type: :text_field,
         label: t("email_param_label"),
         placeholder: t("email_param_placeholder"),
-        value: ENV.fetch("METABASE_EMAIL_PARAM", Setting.metabase_email_param),
-        disabled: ENV["METABASE_EMAIL_PARAM"].present?,
+        value: Setting.metabase_email_param,
+        disabled: false,
         options: {
           autocomplete: "off",
           autocapitalize: "none"
