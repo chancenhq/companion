@@ -25,6 +25,11 @@ class Settings::ChancensController < ApplicationController
       Setting.metabase_email_param = chancen_params[:metabase_email_param].presence || "email"
     end
 
+    %i[whatsapp_group_url_ke whatsapp_group_url_rw
+       whatsapp_group_url_za whatsapp_group_url_gh].each do |field|
+      Setting.public_send(:"#{field}=", chancen_params[field].presence) if chancen_params.key?(field)
+    end
+
     redirect_to settings_chancen_path, notice: t(".success")
   end
 
@@ -32,7 +37,11 @@ class Settings::ChancensController < ApplicationController
     def chancen_params
       return ActionController::Parameters.new unless params.key?(:setting)
 
-      params.require(:setting).permit(:metabase_url, :metabase_api_key, :metabase_student_question_id, :metabase_email_param)
+      params.require(:setting).permit(
+        :metabase_url, :metabase_api_key, :metabase_student_question_id, :metabase_email_param,
+        :whatsapp_group_url_ke, :whatsapp_group_url_rw,
+        :whatsapp_group_url_za, :whatsapp_group_url_gh
+      )
     end
 
     def ensure_super_admin
