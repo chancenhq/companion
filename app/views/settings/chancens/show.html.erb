@@ -3,3 +3,7 @@
 <%= settings_section title: t(".metabase") do %>
   <%= render Settings::Chancens::MetabaseSettingsComponent.new %>
 <% end %>
+
+<%= settings_section title: t(".whatsapp") do %>
+  <%= render "settings/chancens/whatsapp_settings" %>
+<% end %>
