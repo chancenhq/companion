@@ -1,7 +1,7 @@
 <%= content_for :page_title, t(".title") %>
 
 <%= settings_section title: t(".metabase") do %>
-  <%= render Settings::Chancens::MetabaseSettingsComponent.new %>
+  <%= render "settings/chancens/metabase_settings" %>
 <% end %>
 
 <%= settings_section title: t(".whatsapp") do %>
