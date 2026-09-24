@@ -332,6 +332,12 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
           );
         }
 
+        // Onboarding must complete before entering the app, even if
+        // the user signed up mid-flow (auth state wins last, not first).
+        if (!_onboardingComplete) {
+          return OnboardingScreen(onComplete: _onOnboardingComplete);
+        }
+
         if (authProvider.isAuthenticated) {
           return Stack(
             children: [
@@ -355,11 +361,6 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
         // Auth callback states win over first-launch onboarding.
         if (authProvider.ssoOnboardingPending) {
           return const SsoOnboardingScreen();
-        }
-
-        // Show onboarding flow on first launch
-        if (!_onboardingComplete) {
-          return OnboardingScreen(onComplete: _onOnboardingComplete);
         }
 
         return const LoginScreen();
