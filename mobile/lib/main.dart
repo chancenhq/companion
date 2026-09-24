@@ -221,8 +221,10 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
       _markLockedIfEnabled();
-    } else if (state == AppLifecycleState.resumed && _isLocked) {
+    } else if (state == AppLifecycleState.resumed) {
       // Lock screen is already showing via build(); biometric auto-triggers there.
+      // Also refresh remote config so WhatsApp URLs stay current.
+      Provider.of<AppConfigProvider>(context, listen: false).load();
     }
   }
 
