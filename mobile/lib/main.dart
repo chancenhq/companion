@@ -329,6 +329,18 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
           );
         }
 
+        // SSO callbacks must win over everything — including first-launch
+        // onboarding — so the deep link is never dropped from the widget tree.
+        if (authProvider.ssoOnboardingPending) {
+          return const SsoOnboardingScreen();
+        }
+
+        // Onboarding (country select + consent) must complete before the app
+        // is accessible, even when the user signed up on page 1 of the flow.
+        if (!_onboardingComplete) {
+          return OnboardingScreen(onComplete: _onOnboardingComplete);
+        }
+
         if (authProvider.isAuthenticated) {
           return Stack(
             children: [
@@ -347,16 +359,6 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) setState(() => _isLocked = false);
           });
-        }
-
-        // Auth callback states win over first-launch onboarding.
-        if (authProvider.ssoOnboardingPending) {
-          return const SsoOnboardingScreen();
-        }
-
-        // Show onboarding flow on first launch
-        if (!_onboardingComplete) {
-          return OnboardingScreen(onComplete: _onOnboardingComplete);
         }
 
         return const LoginScreen();

@@ -654,8 +654,8 @@ Rails.application.routes.draw do
   terms_url = ENV["LEGAL_TERMS_URL"].presence
   get "privacy", to: privacy_url ? redirect(privacy_url) : "pages#privacy"
   get "terms", to: terms_url ? redirect(terms_url) : "pages#terms"
-  get "privacy/ke", to: "pages#privacy"
-  get "terms/ke", to: "pages#terms"
+  get "privacy/ke", to: "pages#privacy", defaults: { country: "ke" }
+  get "terms/ke", to: "pages#terms", defaults: { country: "ke" }
   get "privacy/:country", to: "pages#privacy"
   get "terms/:country", to: "pages#terms"
   get "intro", to: "pages#intro"
