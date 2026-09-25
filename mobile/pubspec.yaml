@@ -28,6 +28,7 @@ dependencies:
   flutter_markdown: ^0.7.2
   webview_flutter: ^4.10.0
   sign_in_with_apple: ^6.1.0
+  share_plus: ^10.0.0
 
 dev_dependencies:
   flutter_test:
