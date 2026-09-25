@@ -15,7 +15,11 @@ class AssistantConfigurableTest < ActiveSupport::TestCase
 
     config = Assistant.config_for(chat)
 
-    assert_equal [ Assistant::Function::SearchFamilyFiles ], config[:functions]
+    assert_equal [
+      Assistant::Function::SearchFamilyFiles,
+      Assistant::Function::GetMyAccount,
+      Assistant::Function::GetISATransactions
+    ], config[:functions]
     assert_includes config[:instructions], "Income Share Agreements"
   end
 end
