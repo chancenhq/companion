@@ -16,7 +16,7 @@ en:
           question_id_label: Student Question ID
           question_id_placeholder: "1329"
           transactions_question_id_label: Transactions Question ID
-          transactions_question_id_placeholder: "1330"
+          transactions_question_id_placeholder: "1518"
           email_param_label: Email Template Tag
           email_param_placeholder: email
       update:

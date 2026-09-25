@@ -20,10 +20,15 @@ class Api::V1::MyAccountTransactionsController < Api::V1::BaseController
     transactions = provider.find_by_email(current_resource_owner.email)
 
     render json: transactions.map { |t|
-      { payment_type: t.payment_type, amount: t.amount, currency: t.currency, payment_date: t.payment_date }
+      {
+        payment_type: t.payment_type,
+        amount:       t.amount,
+        currency:     t.currency,
+        payment_date: t.payment_date
+      }
     }
   rescue Provider::MetabaseStudentTransactions::Error => e
     Rails.logger.error "MetabaseStudentTransactions error: #{e.message}"
-    render json: { error: "upstream_error", message: "Unable to retrieve student transactions" }, status: :bad_gateway
+    render json: { error: "upstream_error", message: "Unable to retrieve transaction data" }, status: :bad_gateway
   end
 end

@@ -24,8 +24,9 @@ class Provider::MetabaseStudentAccount < Provider
       "/api/card/#{@question_id}/query",
       {
         parameters: [ {
+          id:     email_tag_uuid,
           type:   "text",
-          target: [ "variable", [ "template-tag", "email" ] ],
+          target: [ "variable", [ "template-tag", @email_param ] ],
           value:  email.downcase
         } ]
       }.to_json,
@@ -43,19 +44,36 @@ class Provider::MetabaseStudentAccount < Provider
 
     StudentAccountData.new(
       email:               strip_pii(def_at.("email")).to_s,
-      status:              def_at.("isa_status").to_s,
+      status:              (def_at.("isa_status") || def_at.("status")).to_s,
       total_financed:      def_at.("total_financed")&.to_f,
-      repayments_received: def_at.("total_repayments")&.to_f,
-      max_amount:          def_at.("total_financed")&.to_f,
+      repayments_received: def_at.("repayments_received")&.to_f,
+      max_amount:          def_at.("max_amount")&.to_f,
       installments_paid:   def_at.("installments_paid")&.to_i,
       max_installments:    def_at.("max_installments")&.to_i,
-      currency:            "KES"
+      currency:            def_at.("currency") || "KES"
     )
   rescue Faraday::Error => e
-    raise Error, "Metabase connection error: #{e.message}"
+    body = e.response&.dig(:body).presence || "no body"
+    raise Error, "Metabase connection error: #{e.message} | body: #{body}"
   end
 
   private
+
+    def email_tag_uuid
+      @email_tag_uuid ||= begin
+        card = JSON.parse(
+          connection.get("/api/card/#{@question_id}") { |req| req.headers["X-API-KEY"] = @api_key }.body
+        )
+        # Metabase ≥0.47 stores the query in MBQL stages; older versions use native.template-tags directly.
+        tags = card.dig("dataset_query", "stages", 0, "template-tags") ||
+               card.dig("dataset_query", "native", "template-tags")
+        tag  = case tags
+               when Hash  then tags[@email_param]
+               when Array then tags.find { |t| t["name"] == @email_param }
+               end
+        tag&.fetch("id") or raise Error, "Could not resolve template tag UUID for '#{@email_param}'"
+      end
+    end
 
     def strip_pii(value)
       value.to_s.sub(/\A<TODO-MASK-PII>/i, "").downcase
