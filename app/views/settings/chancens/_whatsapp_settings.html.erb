@@ -1,0 +1,31 @@
+<div class="space-y-4">
+  <div>
+    <h2 class="font-medium mb-1"><%= t(".title") %></h2>
+    <p class="text-secondary text-sm mb-4"><%= t(".description") %></p>
+  </div>
+
+  <% [
+    { field: :whatsapp_group_url_ke, country: t(".country_ke") },
+    { field: :whatsapp_group_url_rw, country: t(".country_rw") },
+    { field: :whatsapp_group_url_za, country: t(".country_za") },
+    { field: :whatsapp_group_url_gh, country: t(".country_gh") }
+  ].each do |entry| %>
+    <%= styled_form_with model: Setting.new,
+                         url: settings_chancen_path,
+                         method: :patch,
+                         data: {
+                           controller: "auto-submit-form",
+                           "auto-submit-form-trigger-event-value": "blur"
+                         } do |form| %>
+      <%= form.text_field entry[:field],
+                          label: "#{entry[:country]} #{t(".url_label")}",
+                          placeholder: t(".url_placeholder"),
+                          value: Setting.public_send(entry[:field]),
+                          disabled: false,
+                          autocomplete: "off",
+                          autocapitalize: "none",
+                          inputmode: "url",
+                          data: { "auto-submit-form-target": "auto" } %>
+    <% end %>
+  <% end %>
+</div>
