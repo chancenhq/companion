@@ -94,7 +94,7 @@ class Invitation < ApplicationRecord
     end
 
     def inviter_is_admin
-      inviter.admin?
+      errors.add(:inviter, "must be an admin") unless inviter&.admin? || inviter&.super_admin?
     end
 
     def auto_share_existing_accounts(user)

@@ -670,6 +670,7 @@ Rails.application.routes.draw do
       end
     end
     resources :users, only: [ :index, :update ]
+    resource :bulk_invitations, only: [ :new, :create ]
     resources :invitations, only: [ :destroy ]
     resources :families, only: [] do
       member do

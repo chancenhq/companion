@@ -79,6 +79,7 @@ class _LoginFormBodyState extends State<LoginFormBody> {
       password: _passwordController.text,
       firstName: _firstNameController.text.trim(),
       lastName: _lastNameController.text.trim(),
+      invitationToken: authProvider.pendingInvitationToken,
     );
   }
 
