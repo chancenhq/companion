@@ -57,7 +57,7 @@ class Provider::MetabaseStudentTransactions < Provider
         tag  = case tags
                when Hash  then tags[@email_param]
                when Array then tags.find { |t| t["name"] == @email_param }
-               end
+        end
         tag&.fetch("id") or raise Error, "Could not resolve template tag UUID for '#{@email_param}'"
       end
     end
