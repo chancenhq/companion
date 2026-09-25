@@ -244,7 +244,7 @@ RSpec.configure do |config|
           },
           AccountDetail: {
             type: :object,
-            required: %w[id name balance balance_cents cash_balance cash_balance_cents currency classification account_type status created_at updated_at],
+            required: %w[id name balance balance_cents cash_balance cash_balance_cents currency classification account_type status metadata created_at updated_at],
             properties: {
               id: { type: :string, format: :uuid },
               name: { type: :string },
@@ -259,6 +259,7 @@ RSpec.configure do |config|
               status: { type: :string, enum: %w[active draft disabled pending_deletion] },
               institution_name: { type: :string, nullable: true },
               institution_domain: { type: :string, nullable: true },
+              metadata: { type: :object, additionalProperties: true },
               created_at: { type: :string, format: :'date-time' },
               updated_at: { type: :string, format: :'date-time' }
             }

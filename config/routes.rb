@@ -492,7 +492,7 @@ Rails.application.routes.draw do
       patch "auth/password_reset", to: "auth#reset_password"
 
       # Production API endpoints
-      resources :accounts, only: [ :index, :show ]
+      resources :accounts, only: [ :index, :show, :update ]
       resources :balances, only: [ :index, :show ]
       resources :budgets, only: [ :index, :show ]
       resources :budget_categories, only: [ :index, :show ]
