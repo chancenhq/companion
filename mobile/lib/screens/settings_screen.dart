@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../providers/app_config_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/categories_provider.dart';
 import '../providers/theme_provider.dart';
@@ -282,7 +283,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _launchContactUrl(BuildContext context) async {
-    final uri = Uri.parse('https://chat.whatsapp.com/IVBXS2QtJpqIFlZYoSPD1t');
+    final appConfig = Provider.of<AppConfigProvider>(context, listen: false);
+    final country = await PreferencesService.instance.getUserCountry();
+    final whatsappUrl = appConfig.whatsappUrlForCountry(country);
+    final uri = Uri.parse(whatsappUrl);
     final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!launched && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

@@ -5,6 +5,7 @@ en:
       show:
         title: Chancen
         metabase: Metabase
+        whatsapp: WhatsApp Groups
       update:
         success: Chancen settings updated
       ensure_super_admin:
@@ -21,3 +22,12 @@ en:
         question_id_placeholder: "1329"
         email_param_label: Email Template Tag
         email_param_placeholder: email
+      whatsapp_settings:
+        title: WhatsApp Group Links
+        description: Configure the WhatsApp group link shown to users in the Contact Us section, per country.
+        url_label: WhatsApp Group URL
+        url_placeholder: "https://chat.whatsapp.com/..."
+        country_ke: Kenya
+        country_rw: Rwanda
+        country_za: South Africa
+        country_gh: Ghana
