@@ -17,15 +17,17 @@ class ApiConfig {
   // For iOS simulator, use: http://localhost:3000
   static const String productionBaseUrl = 'https://companion-prod.chancen.tech';
   static const String stagingBaseUrl = 'https://companion-staging.chancen.tech';
+  static const String localBaseUrl = 'http://192.168.100.11:3000';
 
   /// Preset environments surfaced in the backend config screen so testers can
   /// switch between staging and production without typing the URL by hand.
   static const List<ApiEnvironment> knownEnvironments = [
     ApiEnvironment(label: 'Production', baseUrl: productionBaseUrl),
     ApiEnvironment(label: 'Staging', baseUrl: stagingBaseUrl),
+    ApiEnvironment(label: 'Local', baseUrl: localBaseUrl),
   ];
 
-  static const String _defaultBaseUrl = productionBaseUrl;
+  static const String _defaultBaseUrl = localBaseUrl;
   static const String _backendUrlKey = 'backend_url';
   static String _baseUrl = _defaultBaseUrl;
 
