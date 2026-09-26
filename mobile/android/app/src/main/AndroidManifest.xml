@@ -38,6 +38,13 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="sureapp" android:host="password-reset" />
             </intent-filter>
+            <!-- Deep link for invitation signup -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="sureapp" android:host="invite" />
+            </intent-filter>
         </activity>
         <meta-data
             android:name="flutterEmbedding"

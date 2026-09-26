@@ -124,7 +124,7 @@ class AuthService {
     required String firstName,
     required String lastName,
     required Map<String, String> deviceInfo,
-    String? inviteCode,
+    String? invitationToken,
   }) async {
     try {
       final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/signup');
@@ -139,8 +139,8 @@ class AuthService {
         'device': deviceInfo,
       };
 
-      if (inviteCode != null) {
-        body['invite_code'] = inviteCode;
+      if (invitationToken != null) {
+        body['invitation'] = invitationToken;
       }
 
       final response = await http.post(
