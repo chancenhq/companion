@@ -29,6 +29,12 @@ class Setting < RailsSettings::Base
   field :metabase_transactions_question_id,  type: :string, default: ENV["METABASE_TRANSACTIONS_QUESTION_ID"]
   field :metabase_email_param,               type: :string, default: ENV.fetch("METABASE_EMAIL_PARAM", "email")
 
+  # Chancen companion — per-country WhatsApp group links
+  field :whatsapp_group_url_ke, type: :string, default: ENV["WHATSAPP_GROUP_URL_KE"]
+  field :whatsapp_group_url_rw, type: :string, default: ENV["WHATSAPP_GROUP_URL_RW"]
+  field :whatsapp_group_url_za, type: :string, default: ENV["WHATSAPP_GROUP_URL_ZA"]
+  field :whatsapp_group_url_gh, type: :string, default: ENV["WHATSAPP_GROUP_URL_GH"]
+
   field :brand_fetch_client_id, type: :string, default: ENV["BRAND_FETCH_CLIENT_ID"]
   field :brand_fetch_high_res_logos, type: :boolean, default: ENV.fetch("BRAND_FETCH_HIGH_RES_LOGOS", "false") == "true"
 

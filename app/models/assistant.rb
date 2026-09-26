@@ -28,7 +28,9 @@ module Assistant
         Function::GetBalanceSheet,
         Function::GetIncomeStatement,
         Function::ImportBankStatement,
-        Function::SearchFamilyFiles
+        Function::SearchFamilyFiles,
+        Function::GetMyAccount,
+        Function::GetISATransactions
       ]
     end
 

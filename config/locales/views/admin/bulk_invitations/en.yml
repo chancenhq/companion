@@ -1,0 +1,19 @@
+---
+en:
+  admin:
+    bulk_invitations:
+      new:
+        title: "Bulk Invite Students"
+        description: "Invite multiple students to a country family at once. Each student will receive an invitation email. Students who already have an account will be added to the family immediately."
+        no_emails: "Please enter at least one email address."
+        results:
+          heading: "Results (%{count} processed)"
+          invited: "Invitation email sent"
+          accepted: "Already has an account — added to family"
+        form:
+          family_label: "Country family"
+          family_prompt: "Select a country..."
+          emails_label: "Email addresses"
+          emails_hint: "Separate multiple emails with commas, semicolons, or new lines."
+          emails_placeholder: "student@example.com\nanother@example.com"
+          submit: "Send invitations"
