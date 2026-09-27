@@ -582,8 +582,7 @@ class Provider::Openai < Provider
           function: {
             name: fn[:name],
             description: fn[:description],
-            parameters: fn[:params_schema],
-            strict: fn[:strict]
+            parameters: fn[:params_schema]
           }
         }
       end
