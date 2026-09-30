@@ -2,6 +2,8 @@ require "test_helper"
 
 class SessionsControllerTest < ActionDispatch::IntegrationTest
   setup do
+    ensure_tailwind_build
+
     @user = users(:family_admin)
 
     # Ensure the shared OAuth application exists

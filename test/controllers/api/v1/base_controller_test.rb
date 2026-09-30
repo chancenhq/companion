@@ -77,6 +77,25 @@ class Api::V1::BaseControllerTest < ActionDispatch::IntegrationTest
     assert_equal "unauthorized", response_body["error"]
   end
 
+  test "should reject expired access token" do
+    access_token = Doorkeeper::AccessToken.create!(
+      application: @oauth_app,
+      resource_owner_id: @user.id,
+      scopes: "read",
+      expires_in: 1,
+      created_at: 2.minutes.ago
+    )
+
+    get "/api/v1/test", params: {}, headers: {
+      "Authorization" => "Bearer #{access_token.token}"
+    }
+
+    assert_response :unauthorized
+    response_body = JSON.parse(response.body)
+    assert_equal "unauthorized", response_body["error"]
+    assert_includes response_body["message"], "invalid"
+  end
+
   test "should reject invalid access token" do
     get "/api/v1/test", params: {}, headers: {
       "Authorization" => "Bearer invalid_token"
@@ -85,6 +104,60 @@ class Api::V1::BaseControllerTest < ActionDispatch::IntegrationTest
     assert_response :unauthorized
     response_body = JSON.parse(response.body)
     assert_equal "unauthorized", response_body["error"]
+  end
+
+  test "should reject access token with missing resource owner" do
+    access_token = Doorkeeper::AccessToken.create!(
+      application: @oauth_app,
+      resource_owner_id: SecureRandom.uuid,
+      scopes: "read"
+    )
+
+    get "/api/v1/test", params: {}, headers: {
+      "Authorization" => "Bearer #{access_token.token}"
+    }
+
+    assert_response :unauthorized
+    response_body = JSON.parse(response.body)
+    assert_equal "unauthorized", response_body["error"]
+    assert_equal "Access token is invalid - user not found", response_body["message"]
+  end
+
+  test "should reject access token without resource owner" do
+    access_token = Doorkeeper::AccessToken.create!(
+      application: @oauth_app,
+      resource_owner_id: nil,
+      scopes: "read"
+    )
+
+    get "/api/v1/test", params: {}, headers: {
+      "Authorization" => "Bearer #{access_token.token}"
+    }
+
+    assert_response :unauthorized
+    response_body = JSON.parse(response.body)
+    assert_equal "unauthorized", response_body["error"]
+    assert_equal "Access token is invalid - missing resource owner", response_body["message"]
+  end
+
+  test "should reject OAuth token for deactivated user" do
+    access_token = Doorkeeper::AccessToken.create!(
+      application: @oauth_app,
+      resource_owner_id: @user.id,
+      scopes: "read"
+    )
+    @user.update_column(:active, false)
+
+    get "/api/v1/test", params: {}, headers: {
+      "Authorization" => "Bearer #{access_token.token}"
+    }
+
+    assert_response :unauthorized
+    response_body = JSON.parse(response.body)
+    assert_equal "unauthorized", response_body["error"]
+    assert_equal "Account has been deactivated", response_body["message"]
+  ensure
+    @user&.update_column(:active, true)
   end
 
   test "should authenticate with valid API key" do
