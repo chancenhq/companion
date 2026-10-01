@@ -287,6 +287,9 @@ class SessionsController < ApplicationController
         end
         OidcIdentity.create_from_omniauth(auth, existing_user)
         SsoAuditLog.log_link!(user: existing_user, provider: auth.provider, request: request)
+        # Google has proven control of this email; end any login held by
+        # whoever registered it first before issuing this device's token.
+        existing_user.revoke_all_access!
         handle_mobile_sso_callback(existing_user, device_info: device_info)
         return
       end

@@ -570,6 +570,33 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     assert device.active_tokens.any?, "Expected device to have active tokens after auto-link"
   end
 
+  test "mobile SSO auto-link revokes logins on other devices" do
+    user = users(:new_email)
+    other_device = MobileDevice.upsert_device!(user, device_id: "registrant-phone", device_name: "Other", device_type: "android", os_version: "14", app_version: "1.0")
+    other_device.issue_token!
+
+    setup_omniauth_mock(
+      provider: "openid_connect",
+      uid: "revoke-on-link-uid",
+      email: user.email,
+      name: "New User"
+    )
+    Rails.configuration.x.auth.stubs(:sso_providers).returns([
+      { name: "openid_connect", strategy: "openid_connect", label: "Google" }
+    ])
+
+    get "/auth/mobile/openid_connect", params: {
+      device_id: "flutter-device-revoke",
+      device_name: "Pixel 8",
+      device_type: "android"
+    }
+    get "/auth/openid_connect/callback"
+
+    assert_empty other_device.active_tokens
+    new_device = user.mobile_devices.find_by(device_id: "flutter-device-revoke")
+    assert new_device.active_tokens.any?, "Expected the linking device to keep its new token"
+  end
+
   test "mobile SSO redirects with error when no account exists for email" do
     setup_omniauth_mock(
       provider: "openid_connect",

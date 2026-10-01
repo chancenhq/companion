@@ -249,6 +249,10 @@ module Api
             },
             last_authenticated_at: Time.current
           )
+          # Apple has proven control of this email; end any login held by
+          # whoever registered it first. issue_mobile_tokens below then
+          # issues the only valid token.
+          existing_user.revoke_all_access!
           existing_user
         else
           unless email.present?

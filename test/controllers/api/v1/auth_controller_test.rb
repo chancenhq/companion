@@ -1125,6 +1125,20 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     assert OidcIdentity.exists?(user: user, provider: "apple", uid: apple_uid)
   end
 
+  test "apple_sign_in auto-link revokes logins on other devices" do
+    user = users(:family_admin)
+    other_device = MobileDevice.upsert_device!(user, device_id: "registrant-phone", device_name: "Other", device_type: "android", os_version: "14", app_version: "1.0")
+    other_device.issue_token!
+    AppleSignIn.stubs(:verify!).returns({ "sub" => "apple.uid.revoke-on-link", "email" => user.email })
+
+    post "/api/v1/auth/apple_sign_in", params: { identity_token: "fake.token", device: @device_info }
+
+    assert_response :success
+    assert_empty other_device.active_tokens
+    new_token = JSON.parse(response.body)["access_token"]
+    assert_not Doorkeeper::AccessToken.by_token(new_token).revoked?
+  end
+
   test "apple_sign_in creates new account for unknown Apple ID with email in JWT" do
     apple_uid = "apple.uid.brand-new"
     apple_email = "brandnew@example.com"
