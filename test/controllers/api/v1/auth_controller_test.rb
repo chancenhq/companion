@@ -66,6 +66,10 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     new_user = User.find(response_data["user"]["id"])
     assert_equal new_user.ui_layout, response_data["user"]["ui_layout"]
     assert_equal new_user.ai_enabled?, response_data["user"]["ai_enabled"]
+    assert_nil response_data["user"]["country_code"]
+    assert_equal false, response_data["user"]["email_verified"]
+    assert_equal true, response_data["user"]["requires_country_confirmation"]
+    assert_not new_user.email_verified?
 
     # OAuth token assertions
     assert response_data["access_token"].present?
@@ -171,6 +175,40 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     new_user = User.find(response_data["user"]["id"])
     assert_equal "admin", new_user.role
     assert new_user.family.present?
+  end
+
+  test "signup saves supported country and rejects unsupported country" do
+    post "/api/v1/auth/signup", params: {
+      user: {
+        email: "country@example.com",
+        password: "SecurePass123!",
+        first_name: "Country",
+        last_name: "User",
+        country_code: "rw"
+      },
+      device: @device_info
+    }
+
+    assert_response :created
+    body = JSON.parse(response.body)
+    assert_equal "RW", body["user"]["country_code"]
+    assert_equal false, body["user"]["requires_country_confirmation"]
+    assert_equal "RW", User.find(body["user"]["id"]).country_code
+
+    assert_no_difference("User.count") do
+      post "/api/v1/auth/signup", params: {
+        user: {
+          email: "badcountry@example.com",
+          password: "SecurePass123!",
+          first_name: "Bad",
+          last_name: "Country",
+          country_code: "US"
+        },
+        device: @device_info.merge(device_id: "test-device-bad-country")
+      }
+    end
+
+    assert_response :unprocessable_entity
   end
 
   test "signup requires invite code when invite-only default family id is stale" do
@@ -367,6 +405,9 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     assert_equal user.email, response_data["user"]["email"]
     assert_equal user.ui_layout, response_data["user"]["ui_layout"]
     assert_equal user.ai_enabled?, response_data["user"]["ai_enabled"]
+    assert_equal user.country_code, response_data["user"]["country_code"]
+    assert_equal user.email_verified?, response_data["user"]["email_verified"]
+    assert_equal user.requires_country_confirmation?, response_data["user"]["requires_country_confirmation"]
 
     # OAuth token assertions
     assert response_data["access_token"].present?

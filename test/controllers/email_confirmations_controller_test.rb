@@ -9,4 +9,16 @@ class EmailConfirmationsControllerTest < ActionDispatch::IntegrationTest
     get new_email_confirmation_path(token: token)
     assert_redirected_to new_session_path
   end
+
+  test "confirms initial signup email without changing email address" do
+    user = users(:family_admin)
+    user.update!(email_verified_at: nil)
+    token = user.generate_token_for(:email_confirmation)
+
+    get new_email_confirmation_path(token: token)
+
+    assert_redirected_to new_session_path
+    assert user.reload.email_verified?
+    assert_equal "bob@bobdylan.com", user.email
+  end
 end

@@ -273,7 +273,10 @@ class SyncService with ChangeNotifier {
           _log.error('SyncService', 'Server returned error on page $currentPage: ${result['error']}');
           return SyncResult(
             success: false,
-            error: result['error'] as String? ?? 'Failed to sync from server',
+            error: result['message'] as String? ??
+                (result['error'] as String?) ??
+                'Failed to sync from server',
+            errorCode: result['error'] as String?,
           );
         }
       }
@@ -346,7 +349,10 @@ class SyncService with ChangeNotifier {
       } else {
         return SyncResult(
           success: false,
-          error: result['error'] as String? ?? 'Failed to sync accounts',
+          error: result['message'] as String? ??
+              (result['error'] as String?) ??
+              'Failed to sync accounts',
+          errorCode: result['error'] as String?,
         );
       }
     } catch (e) {
@@ -436,11 +442,13 @@ class SyncResult {
   final int? syncedCount;
   final int? failedCount;
   final String? error;
+  final String? errorCode;
 
   SyncResult({
     required this.success,
     this.syncedCount,
     this.failedCount,
     this.error,
+    this.errorCode,
   });
 }

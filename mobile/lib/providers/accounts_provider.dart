@@ -133,7 +133,9 @@ class AccountsProvider with ChangeNotifier {
         } else {
           // If server fetch failed but we have cached data, that's OK
           if (_accounts.isEmpty) {
-            _errorMessage = result['error'] as String? ?? 'Failed to fetch accounts';
+            _errorMessage = result['message'] as String? ??
+                result['error'] as String? ??
+                'Failed to fetch accounts';
           }
         }
       } else if (!isOnline && _accounts.isEmpty) {
@@ -200,6 +202,13 @@ class AccountsProvider with ChangeNotifier {
         _isBalanceSheetStale = false;
       } else {
         // Keep existing values but mark as stale
+        if (result['message'] != null || result['error'] == 'email_verification_required') {
+          _errorMessage = result['message'] as String? ??
+              'Verify your email to see your Chancen Account.';
+          _accounts = [];
+          _pagination = null;
+          await _offlineStorage.clearAccounts();
+        }
         if (_netWorthFormatted != null) {
           _isBalanceSheetStale = true;
         }

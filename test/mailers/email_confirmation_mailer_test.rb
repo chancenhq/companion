@@ -11,4 +11,13 @@ class EmailConfirmationMailerTest < ActionMailer::TestCase
     assert_equal [ "hello@example.com" ], mail.from
     assert_match "confirm", mail.body.encoded
   end
+
+  test "confirmation_email goes to current email for initial verification" do
+    user = users(:family_admin)
+    user.update!(email_verified_at: nil, unconfirmed_email: nil)
+
+    mail = EmailConfirmationMailer.with(user: user).confirmation_email
+
+    assert_equal [ user.email ], mail.to
+  end
 end

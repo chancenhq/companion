@@ -9,6 +9,8 @@ import 'providers/transactions_provider.dart';
 import 'providers/chat_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/backend_config_screen.dart';
+import 'screens/country_selection_screen.dart';
+import 'screens/email_verification_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/biometric_lock_screen.dart';
 import 'screens/main_navigation_screen.dart';
@@ -193,6 +195,7 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
   bool _hasBackendUrl = false;
   bool _isLocked = false;
   bool _onboardingComplete = true; // assume complete until checked
+  bool _emailVerificationDismissed = false;
   late final AppLinks _appLinks;
   StreamSubscription<Uri>? _linkSubscription;
 
@@ -294,6 +297,14 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
     setState(() => _onboardingComplete = true);
   }
 
+  void _onCountryConfirmed() {
+    setState(() => _onboardingComplete = true);
+  }
+
+  void _onEmailVerificationContinue() {
+    setState(() => _emailVerificationDismissed = true);
+  }
+
   void _onBackendConfigSaved() {
     setState(() {
       _hasBackendUrl = true;
@@ -328,6 +339,18 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
         }
 
         if (authProvider.isAuthenticated) {
+          if (authProvider.requiresCountryConfirmation) {
+            return CountrySelectionScreen(
+              onComplete: _onCountryConfirmed,
+            );
+          }
+
+          if (!authProvider.emailVerified && !_emailVerificationDismissed) {
+            return EmailVerificationScreen(
+              onContinue: _onEmailVerificationContinue,
+            );
+          }
+
           return Stack(
             children: [
               const MainNavigationScreen(),

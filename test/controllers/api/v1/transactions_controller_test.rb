@@ -5,6 +5,7 @@ require "test_helper"
 class Api::V1::TransactionsControllerTest < ActionDispatch::IntegrationTest
   setup do
     @user = users(:family_admin)
+    @user.update!(email_verified_at: Time.current)
     @family = @user.family
     @account = @family.accounts.first
     @transaction = @family.transactions.first
@@ -49,6 +50,15 @@ class Api::V1::TransactionsControllerTest < ActionDispatch::IntegrationTest
     assert response_data["pagination"].key?("per_page")
     assert response_data["pagination"].key?("total_count")
     assert response_data["pagination"].key?("total_pages")
+  end
+
+  test "should block transactions when email is unverified" do
+    @user.update!(email_verified_at: nil)
+
+    get api_v1_transactions_url, headers: api_headers(@api_key)
+
+    assert_response :forbidden
+    assert_equal "email_verification_required", JSON.parse(response.body)["error"]
   end
 
   test "should get index with read-only API key" do

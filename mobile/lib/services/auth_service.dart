@@ -122,6 +122,7 @@ class AuthService {
     required String lastName,
     required Map<String, String> deviceInfo,
     String? inviteCode,
+    String? countryCode,
   }) async {
     try {
       final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/signup');
@@ -132,6 +133,7 @@ class AuthService {
           'password': password,
           'first_name': firstName,
           'last_name': lastName,
+          if (countryCode != null) 'country_code': countryCode,
         },
         'device': deviceInfo,
       };
@@ -641,6 +643,82 @@ class AuthService {
         'success': false,
         'error': 'Network error: ${e.toString()}',
       };
+    }
+  }
+
+  Future<Map<String, dynamic>> updateCountry({
+    required String accessToken,
+    required String countryCode,
+  }) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/users/me/country');
+      final response = await http.patch(
+        url,
+        headers: {
+          ...ApiConfig.getAuthHeaders(accessToken),
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'user': {'country_code': countryCode},
+        }),
+      ).timeout(const Duration(seconds: 30));
+
+      final responseData = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        final user = User.fromJson(responseData['user']);
+        await _saveUser(user);
+        return {'success': true, 'user': user};
+      }
+
+      return {
+        'success': false,
+        'error': responseData['error'] ?? responseData['errors']?.join(', ') ?? 'Failed to save country',
+      };
+    } on SocketException {
+      return {'success': false, 'error': 'Network unavailable'};
+    } on TimeoutException {
+      return {'success': false, 'error': 'Request timed out'};
+    } catch (e, stackTrace) {
+      LogService.instance.error('AuthService', 'Update country error: $e\n$stackTrace');
+      return {'success': false, 'error': 'Failed to save country'};
+    }
+  }
+
+  Future<Map<String, dynamic>> resendEmailVerification({
+    required String accessToken,
+  }) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/resend_email_verification');
+      final response = await http.post(
+        url,
+        headers: ApiConfig.getAuthHeaders(accessToken),
+      ).timeout(const Duration(seconds: 30));
+
+      final responseData = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        User? user;
+        if (responseData['user'] != null) {
+          user = User.fromJson(responseData['user']);
+          await _saveUser(user);
+        }
+        return {
+          'success': true,
+          'message': responseData['message'] ?? 'Verification email sent.',
+          'user': user,
+        };
+      }
+
+      return {
+        'success': false,
+        'error': responseData['error'] ?? 'Failed to resend verification email',
+      };
+    } on SocketException {
+      return {'success': false, 'error': 'Network unavailable'};
+    } on TimeoutException {
+      return {'success': false, 'error': 'Request timed out'};
+    } catch (e, stackTrace) {
+      LogService.instance.error('AuthService', 'Resend verification error: $e\n$stackTrace');
+      return {'success': false, 'error': 'Failed to resend verification email'};
     }
   }
 

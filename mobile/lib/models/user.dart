@@ -5,6 +5,9 @@ class User {
   final String? lastName;
   final String uiLayout;
   final bool aiEnabled;
+  final String? countryCode;
+  final bool emailVerified;
+  final bool requiresCountryConfirmation;
 
   User({
     required this.id,
@@ -13,6 +16,9 @@ class User {
     this.lastName,
     required this.uiLayout,
     required this.aiEnabled,
+    this.countryCode,
+    required this.emailVerified,
+    required this.requiresCountryConfirmation,
   });
 
   bool get isIntroLayout => uiLayout == 'intro';
@@ -25,7 +31,19 @@ class User {
       lastName: json['last_name'] as String?,
       uiLayout: _coerceUiLayout(json['ui_layout'] ?? json['uiLayout']),
       aiEnabled: _coerceBool(json['ai_enabled'] ?? json['aiEnabled'], defaultValue: false),
+      countryCode: _coerceCountryCode(json['country_code'] ?? json['countryCode']),
+      emailVerified: _coerceBool(json['email_verified'] ?? json['emailVerified'], defaultValue: true),
+      requiresCountryConfirmation: _coerceBool(
+        json['requires_country_confirmation'] ?? json['requiresCountryConfirmation'],
+        defaultValue: false,
+      ),
     );
+  }
+
+  static String? _coerceCountryCode(dynamic value) {
+    if (value is! String) return null;
+    final code = value.trim().toUpperCase();
+    return code.isEmpty ? null : code;
   }
 
   static String _coerceUiLayout(dynamic value) {
@@ -66,6 +84,9 @@ class User {
     String? lastName,
     String? uiLayout,
     bool? aiEnabled,
+    String? countryCode,
+    bool? emailVerified,
+    bool? requiresCountryConfirmation,
   }) {
     return User(
       id: id ?? this.id,
@@ -74,6 +95,10 @@ class User {
       lastName: lastName ?? this.lastName,
       uiLayout: uiLayout ?? this.uiLayout,
       aiEnabled: aiEnabled ?? this.aiEnabled,
+      countryCode: countryCode ?? this.countryCode,
+      emailVerified: emailVerified ?? this.emailVerified,
+      requiresCountryConfirmation:
+          requiresCountryConfirmation ?? this.requiresCountryConfirmation,
     );
   }
 
@@ -85,6 +110,9 @@ class User {
       'last_name': lastName,
       'ui_layout': uiLayout,
       'ai_enabled': aiEnabled,
+      'country_code': countryCode,
+      'email_verified': emailVerified,
+      'requires_country_confirmation': requiresCountryConfirmation,
     };
   }
 

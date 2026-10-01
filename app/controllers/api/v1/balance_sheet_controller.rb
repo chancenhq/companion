@@ -4,6 +4,7 @@
 # with all monetary values converted to the family's primary currency.
 class Api::V1::BalanceSheetController < Api::V1::BaseController
   before_action :ensure_read_scope
+  before_action :ensure_verified_for_financial_data
 
   # GET /api/v1/balance_sheet
   # Returns net worth, total assets, and total liabilities as Money objects.

@@ -7,6 +7,7 @@ class PreferencesService {
   static const _themeModeKey = 'theme_mode';
   static const _onboardingCompleteKey = 'onboarding_complete';
   static const _userCountryKey = 'user_country';
+  static const _userCountryCodeKey = 'user_country_code';
   static const _consentGivenKey = 'consent_given';
   static const _consentVersionKey = 'consent_version';
   static const _consentDateKey = 'consent_date';
@@ -81,14 +82,24 @@ class PreferencesService {
 
   // Country
 
-  Future<String> getUserCountry() async {
+  Future<String?> getUserCountry() async {
     final prefs = await _preferences;
-    return prefs.getString(_userCountryKey) ?? 'Kenya';
+    return prefs.getString(_userCountryKey);
   }
 
   Future<void> setUserCountry(String country) async {
     final prefs = await _preferences;
     await prefs.setString(_userCountryKey, country);
+  }
+
+  Future<String?> getUserCountryCode() async {
+    final prefs = await _preferences;
+    return prefs.getString(_userCountryCodeKey);
+  }
+
+  Future<void> setUserCountryCode(String countryCode) async {
+    final prefs = await _preferences;
+    await prefs.setString(_userCountryCodeKey, countryCode);
   }
 
   // Legal consent

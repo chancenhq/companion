@@ -35,6 +35,8 @@ class AuthProvider with ChangeNotifier {
   User? get user => _user;
   bool get isIntroLayout => _user?.isIntroLayout ?? false;
   bool get aiEnabled => _user?.aiEnabled ?? false;
+  bool get emailVerified => _user?.emailVerified ?? true;
+  bool get requiresCountryConfirmation => _user?.requiresCountryConfirmation ?? false;
   AuthTokens? get tokens => _tokens;
   bool get isLoading => _isLoading;
   bool get isInitializing => _isInitializing; // Expose initialization state
@@ -213,6 +215,7 @@ class AuthProvider with ChangeNotifier {
     required String firstName,
     required String lastName,
     String? inviteCode,
+    String? countryCode,
   }) async {
     _errorMessage = null;
     _isLoading = true;
@@ -227,6 +230,7 @@ class AuthProvider with ChangeNotifier {
         lastName: lastName,
         deviceInfo: deviceInfo,
         inviteCode: inviteCode,
+        countryCode: countryCode,
       );
 
       if (result['success'] == true) {
@@ -460,6 +464,62 @@ class AuthProvider with ChangeNotifier {
       notifyListeners();
       return false;
     }
+  }
+
+  Future<bool> updateCountry(String countryCode) async {
+    final token = await getValidAccessToken();
+    if (token == null) {
+      _errorMessage = 'Session expired. Please sign in again.';
+      notifyListeners();
+      return false;
+    }
+
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    final result = await _authService.updateCountry(
+      accessToken: token,
+      countryCode: countryCode,
+    );
+
+    if (result['success'] == true) {
+      _user = result['user'] as User?;
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    }
+
+    _errorMessage = result['error'] as String?;
+    _isLoading = false;
+    notifyListeners();
+    return false;
+  }
+
+  Future<bool> resendEmailVerification() async {
+    final token = await getValidAccessToken();
+    if (token == null) {
+      _errorMessage = 'Session expired. Please sign in again.';
+      notifyListeners();
+      return false;
+    }
+
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    final result = await _authService.resendEmailVerification(accessToken: token);
+    if (result['success'] == true) {
+      if (result['user'] != null) _user = result['user'] as User;
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    }
+
+    _errorMessage = result['error'] as String?;
+    _isLoading = false;
+    notifyListeners();
+    return false;
   }
 
   void cancelSsoOnboarding() {

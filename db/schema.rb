@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_05_12_211200) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_01_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -1802,6 +1802,9 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_12_211200) do
     t.string "ui_layout"
     t.uuid "default_account_id"
     t.string "webauthn_id"
+    t.string "country_code"
+    t.datetime "email_verified_at"
+    t.index ["country_code"], name: "index_users_on_country_code"
     t.index ["default_account_id"], name: "index_users_on_default_account_id"
     t.index ["email"], name: "index_users_on_email", unique: true
     t.index ["family_id"], name: "index_users_on_family_id"
@@ -1810,6 +1813,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_12_211200) do
     t.index ["otp_secret"], name: "index_users_on_otp_secret", unique: true, where: "(otp_secret IS NOT NULL)"
     t.index ["preferences"], name: "index_users_on_preferences", using: :gin
     t.index ["webauthn_id"], name: "index_users_on_webauthn_id", unique: true, where: "(webauthn_id IS NOT NULL)"
+    t.check_constraint "country_code IS NULL OR (country_code::text = ANY (ARRAY['KE'::character varying, 'RW'::character varying, 'ZA'::character varying, 'GH'::character varying]::text[]))", name: "users_country_code_supported"
   end
 
   create_table "valuations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

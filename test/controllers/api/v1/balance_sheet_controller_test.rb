@@ -5,6 +5,7 @@ require "test_helper"
 class Api::V1::BalanceSheetControllerTest < ActionDispatch::IntegrationTest
   setup do
     @user = users(:family_admin)
+    @user.update!(email_verified_at: Time.current)
     @family = @user.family
 
     @user.api_keys.active.destroy_all
@@ -41,6 +42,15 @@ class Api::V1::BalanceSheetControllerTest < ActionDispatch::IntegrationTest
       assert response_body[field].key?("currency"), "#{field} should have currency"
       assert response_body[field].key?("formatted"), "#{field} should have formatted"
     end
+  end
+
+  test "should block balance sheet when email is unverified" do
+    @user.update!(email_verified_at: nil)
+
+    get "/api/v1/balance_sheet", headers: api_headers(@auth)
+
+    assert_response :forbidden
+    assert_equal "email_verification_required", JSON.parse(response.body)["error"]
   end
 
   private

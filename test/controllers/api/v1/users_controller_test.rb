@@ -134,6 +134,25 @@ class Api::V1::UsersControllerTest < ActionDispatch::IntegrationTest
 
   # -- Delete account --------------------------------------------------------
 
+  test "update country saves a supported country on the current user" do
+    patch "/api/v1/users/me/country", params: { user: { country_code: "ke" } }, headers: api_headers(@api_key)
+
+    assert_response :ok
+    body = JSON.parse(response.body)
+    assert_equal "KE", body["user"]["country_code"]
+    assert_equal false, body["user"]["requires_country_confirmation"]
+    assert_equal "KE", @user.reload.country_code
+  end
+
+  test "update country rejects unsupported country" do
+    assert_no_changes -> { @user.reload.country_code } do
+      patch "/api/v1/users/me/country", params: { user: { country_code: "US" } }, headers: api_headers(@api_key)
+    end
+
+    assert_response :unprocessable_entity
+    assert_includes JSON.parse(response.body)["errors"].join(", "), "Country code"
+  end
+
   test "destroy deactivates user and returns 200" do
     solo_family = Family.create!(name: "Solo Family", currency: "USD", locale: "en", date_format: "%m-%d-%Y")
     solo_user = solo_family.users.create!(

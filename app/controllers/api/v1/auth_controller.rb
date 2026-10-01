@@ -6,10 +6,10 @@ module Api
       skip_before_action :authenticate_request!
       skip_before_action :check_api_key_rate_limit
       skip_before_action :log_api_access
-      before_action :authenticate_request!, only: :enable_ai
-      before_action :ensure_write_scope, only: :enable_ai
-      before_action :check_api_key_rate_limit, only: :enable_ai
-      before_action :log_api_access, only: :enable_ai
+      before_action :authenticate_request!, only: %i[enable_ai resend_email_verification]
+      before_action :ensure_write_scope, only: %i[enable_ai resend_email_verification]
+      before_action :check_api_key_rate_limit, only: %i[enable_ai resend_email_verification]
+      before_action :log_api_access, only: %i[enable_ai resend_email_verification]
 
       def signup
         # invite_code_required? consults @invitation, so resolve it before checking invite-code requirements.
@@ -66,7 +66,10 @@ module Api
           return
         end
 
-        render json: token_response.merge(user: mobile_user_payload(user)), status: :created if token_response
+        if token_response
+          user.send_email_verification
+          render json: token_response.merge(user: mobile_user_payload(user)), status: :created
+        end
       end
 
       def login
@@ -141,7 +144,10 @@ module Api
             first_name: cached[:user_first_name],
             last_name: cached[:user_last_name],
             ui_layout: cached[:user_ui_layout],
-            ai_enabled: cached[:user_ai_enabled]
+            ai_enabled: cached[:user_ai_enabled],
+            country_code: cached[:user_country_code],
+            email_verified: cached[:user_email_verified],
+            requires_country_confirmation: cached.fetch(:user_requires_country_confirmation, cached[:user_country_code].blank?)
           }
         }
       end
@@ -167,6 +173,7 @@ module Api
         return render json: { error: "Linking code is invalid or expired" }, status: :unauthorized unless consume_linking_code!(linking_code)
 
         OidcIdentity.create_from_omniauth(build_omniauth_hash(cached), user)
+        user.update!(email_verified_at: Time.current) unless user.email_verified?
 
         SsoAuditLog.log_link!(
           user: user,
@@ -235,7 +242,7 @@ module Api
         identity = OidcIdentity.find_by(provider: "apple", uid: apple_uid)
 
         user = if identity
-          identity.user
+          identity.user.tap { |existing_user| existing_user.update!(email_verified_at: Time.current) unless existing_user.email_verified? }
         elsif email.present? && (existing_user = User.find_by(email: email))
           OidcIdentity.create!(
             user: existing_user,
@@ -249,6 +256,7 @@ module Api
             },
             last_authenticated_at: Time.current
           )
+          existing_user.update!(email_verified_at: Time.current) unless existing_user.email_verified?
           existing_user
         else
           unless email.present?
@@ -327,6 +335,17 @@ module Api
         end
       end
 
+      def resend_email_verification
+        user = current_resource_owner
+
+        if user.email_verified?
+          render json: { message: "Email is already verified.", user: mobile_user_payload(user) }
+        else
+          user.send_email_verification
+          render json: { message: "Verification email sent.", user: mobile_user_payload(user) }
+        end
+      end
+
       def refresh
         # Find the refresh token
         refresh_token = params[:refresh_token]
@@ -374,7 +393,7 @@ module Api
       private
 
         def user_signup_params
-          params.require(:user).permit(:email, :password, :first_name, :last_name)
+          params.require(:user).permit(:email, :password, :first_name, :last_name, :country_code)
         end
 
         def pending_invitation_from_params
@@ -435,7 +454,10 @@ module Api
             first_name: user.first_name,
             last_name: user.last_name,
             ui_layout: user.ui_layout,
-            ai_enabled: user.ai_enabled?
+            ai_enabled: user.ai_enabled?,
+            country_code: user.country_code,
+            email_verified: user.email_verified?,
+            requires_country_confirmation: user.requires_country_confirmation?
           }
         end
 
@@ -461,6 +483,7 @@ module Api
               render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
               raise ActiveRecord::Rollback
             end
+            user.update!(email_verified_at: Time.current)
             OidcIdentity.create!(
               user:                  user,
               provider:              provider,

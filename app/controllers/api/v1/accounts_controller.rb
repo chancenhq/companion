@@ -5,6 +5,7 @@ class Api::V1::AccountsController < Api::V1::BaseController
 
   # Ensure proper scope authorization for read access
   before_action :ensure_read_scope
+  before_action :ensure_verified_for_financial_data
 
   def index
     @per_page = safe_per_page_param

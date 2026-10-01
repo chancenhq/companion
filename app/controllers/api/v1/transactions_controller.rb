@@ -6,6 +6,7 @@ class Api::V1::TransactionsController < Api::V1::BaseController
   # Ensure proper scope authorization for read vs write access
   before_action :ensure_read_scope, only: [ :index, :show ]
   before_action :ensure_write_scope, only: [ :create, :update, :destroy ]
+  before_action :ensure_verified_for_financial_data, only: [ :index, :show ]
   before_action :set_transaction, only: [ :show, :update, :destroy ]
 
   def index

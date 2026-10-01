@@ -42,6 +42,8 @@ class AccountsService {
         return {
           'success': false,
           'error': responseData['error'] ?? 'Failed to fetch accounts',
+          'message': responseData['message'],
+          'action': responseData['action'],
         };
       }
     } catch (e) {
