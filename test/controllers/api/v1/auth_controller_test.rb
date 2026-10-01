@@ -1371,6 +1371,33 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     assert user.reload.authenticate("NewPass456!")
   end
 
+  test "reset_password signs the account out on every device" do
+    user = User.create!(
+      email: "revokeonreset@example.com",
+      password: "OldPass123!",
+      first_name: "Revoke",
+      last_name: "Reset",
+      family: Family.create!(name: "Revoke Family", currency: "USD")
+    )
+    phone = MobileDevice.upsert_device!(user, device_id: "reset-phone", device_name: "Phone", device_type: "ios", os_version: "17", app_version: "1.0")
+    other = MobileDevice.upsert_device!(user, device_id: "reset-other", device_name: "Other", device_type: "android", os_version: "14", app_version: "1.0")
+    old_token = phone.issue_token![:access_token]
+    other.issue_token!
+
+    patch "/api/v1/auth/password_reset", params: {
+      token: user.generate_token_for(:password_reset),
+      password: "NewPass456!",
+      password_confirmation: "NewPass456!"
+    }
+
+    assert_response :ok
+    assert_empty phone.active_tokens
+    assert_empty other.active_tokens
+
+    get "/api/v1/accounts", headers: { "Authorization" => "Bearer #{old_token}" }
+    assert_response :unauthorized
+  end
+
   test "reset_password returns 422 for invalid token" do
     patch "/api/v1/auth/password_reset", params: {
       token: "totallyinvalidtoken",

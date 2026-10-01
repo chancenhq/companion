@@ -309,7 +309,9 @@ module Api
           return
         end
 
-        render json: { message: "Password updated successfully." }
+        user.revoke_all_access!
+
+        render json: { message: "Password updated. You've been signed out on all devices." }
       end
 
       def enable_ai
