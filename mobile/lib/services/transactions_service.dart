@@ -139,9 +139,12 @@ class TransactionsService {
           'error': 'unauthorized',
         };
       } else {
+        final responseData = jsonDecode(response.body);
         return {
           'success': false,
-          'error': 'Failed to fetch transactions',
+          'error': responseData['error'] ?? 'Failed to fetch transactions',
+          'message': responseData['message'],
+          'action': responseData['action'],
         };
       }
     } catch (e) {

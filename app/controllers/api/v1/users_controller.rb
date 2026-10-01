@@ -52,6 +52,16 @@ class Api::V1::UsersController < Api::V1::BaseController
     end
   end
 
+  def update_country
+    user = current_resource_owner
+
+    if user.update(country_code: country_params[:country_code])
+      render json: { user: mobile_user_payload(user) }
+    else
+      render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
+    end
+  end
+
   private
 
     def ensure_write_scope
@@ -78,6 +88,24 @@ class Api::V1::UsersController < Api::V1::BaseController
         plaid_items: family.plaid_items.count,
         imports: family.imports.count,
         budgets: family.budgets.count
+      }
+    end
+
+    def country_params
+      params.require(:user).permit(:country_code)
+    end
+
+    def mobile_user_payload(user)
+      {
+        id: user.id,
+        email: user.email,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        ui_layout: user.ui_layout,
+        ai_enabled: user.ai_enabled?,
+        country_code: user.country_code,
+        email_verified: user.email_verified?,
+        requires_country_confirmation: user.requires_country_confirmation?
       }
     end
 end

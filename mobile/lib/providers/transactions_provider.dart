@@ -127,6 +127,9 @@ class TransactionsProvider with ChangeNotifier {
           _error = null;
         } else {
           _log.error('TransactionsProvider', 'Sync failed: ${result.error}');
+          if (result.errorCode == 'email_verification_required') {
+            _transactions = [];
+          }
           _error = result.error;
         }
       }

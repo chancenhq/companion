@@ -44,6 +44,7 @@ class User < ApplicationRecord
   validates :default_period, inclusion: { in: Period::PERIODS.keys }
   validates :default_account_order, inclusion: { in: AccountOrder::ORDERS.keys }
   validates :locale, inclusion: { in: I18n.available_locales.map(&:to_s) }, allow_nil: true
+  validates :country_code, inclusion: { in: ->(_) { ChancenCountry.codes } }, allow_nil: true
 
   # Password is required on create unless the user is being created via SSO JIT.
   # SSO JIT users have password_digest = nil and authenticate via OIDC only.
@@ -51,6 +52,7 @@ class User < ApplicationRecord
   validates :password, length: { minimum: 8 }, allow_nil: true
   normalizes :email, with: ->(email) { email.strip.downcase }
   normalizes :unconfirmed_email, with: ->(email) { email&.strip&.downcase }
+  normalizes :country_code, with: ->(country_code) { country_code&.strip&.upcase.presence }
 
   normalizes :first_name, :last_name, with: ->(value) { value.strip.presence }
 
@@ -79,18 +81,42 @@ class User < ApplicationRecord
   end
 
   generates_token_for :email_confirmation, expires_in: 1.day do
-    unconfirmed_email
+    email_confirmation_token_subject
   end
 
   def pending_email_change?
     unconfirmed_email.present?
   end
 
+  def email_verified?
+    email_verified_at.present?
+  end
+
+  def country_confirmed?
+    country_code.present?
+  end
+
+  def requires_country_confirmation?
+    !country_confirmed?
+  end
+
+  def email_confirmation_address
+    unconfirmed_email.presence || email
+  end
+
+  def email_confirmation_token_subject
+    email_confirmation_address
+  end
+
+  def send_email_verification
+    EmailConfirmationMailer.with(user: self).confirmation_email.deliver_later
+  end
+
   def initiate_email_change(new_email)
     return false if new_email == email
 
     if Rails.application.config.app_mode.self_hosted? && !Setting.require_email_confirmation
-      update(email: new_email)
+      update(email: new_email, email_verified_at: Time.current)
     else
       if update(unconfirmed_email: new_email)
         EmailConfirmationMailer.with(user: self).confirmation_email.deliver_later

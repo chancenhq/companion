@@ -5,8 +5,9 @@ require "test_helper"
 class Api::V1::AccountsControllerTest < ActionDispatch::IntegrationTest
   setup do
     @user = users(:family_admin) # dylan_family user
+    @user.update!(email_verified_at: Time.current)
     @other_family_user = users(:family_member)
-    @other_family_user.update!(family: families(:empty))
+    @other_family_user.update!(family: families(:empty), email_verified_at: Time.current)
 
     @user.api_keys.active.destroy_all
     @api_key = ApiKey.create!(
@@ -79,6 +80,17 @@ class Api::V1::AccountsControllerTest < ActionDispatch::IntegrationTest
       family_account_names = @user.family.accounts.pluck(:name)
       assert_includes family_account_names, account["name"]
     end
+  end
+
+  test "should block accounts when email is unverified" do
+    @user.update!(email_verified_at: nil)
+
+    get "/api/v1/accounts", params: {}, headers: api_headers(@api_key)
+
+    assert_response :forbidden
+    body = JSON.parse(response.body)
+    assert_equal "email_verification_required", body["error"]
+    assert_equal "Verify your email to see your Chancen Account", body["message"]
   end
 
   test "should only return active accounts" do

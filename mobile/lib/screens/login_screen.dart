@@ -38,6 +38,7 @@ class _LoginFormBodyState extends State<LoginFormBody> {
   final _passwordFocus = FocusNode();
   bool _obscurePassword = true;
   bool _isSignUp = false;
+  bool _showEmailForm = false;
 
   @override
   void initState() {
@@ -82,6 +83,18 @@ class _LoginFormBodyState extends State<LoginFormBody> {
     );
   }
 
+  String? _passwordValidationError(String? value) {
+    final password = value ?? '';
+    if (password.isEmpty) return 'Please enter your password';
+    if (!_isSignUp) return null;
+    if (password.length < 8) return 'Use at least 8 characters';
+    if (!RegExp(r'[A-Z]').hasMatch(password)) return 'Add an uppercase letter';
+    if (!RegExp(r'[a-z]').hasMatch(password)) return 'Add a lowercase letter';
+    if (!RegExp(r'[0-9]').hasMatch(password)) return 'Add a number';
+    if (!RegExp(r'[^A-Za-z0-9]').hasMatch(password)) return 'Add a special character';
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -123,7 +136,7 @@ class _LoginFormBodyState extends State<LoginFormBody> {
           ],
 
           // ── Sign In | Sign Up toggle ─────────────────────────────────
-          if (widget.allowSignUp) ...[
+          if (widget.allowSignUp && _showEmailForm) ...[
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -185,211 +198,215 @@ class _LoginFormBodyState extends State<LoginFormBody> {
             },
           ),
 
-          // ── Fields ───────────────────────────────────────────────────
-          Consumer<AuthProvider>(
-            builder: (context, authProvider, _) {
-              final showOtp = authProvider.showMfaInput;
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Sign-up name fields
-                  if (widget.allowSignUp && _isSignUp) ...[
-                    TextFormField(
-                      controller: _firstNameController,
-                      textCapitalization: TextCapitalization.words,
-                      decoration: const InputDecoration(
-                        labelText: 'First name',
-                        prefixIcon: Icon(Icons.person_outlined),
-                      ),
-                      validator: (v) => (v == null || v.trim().isEmpty)
-                          ? 'Please enter your first name'
-                          : null,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _lastNameController,
-                      textCapitalization: TextCapitalization.words,
-                      decoration: const InputDecoration(
-                        labelText: 'Last name',
-                        prefixIcon: Icon(Icons.person_outlined),
-                      ),
-                      validator: (v) => (v == null || v.trim().isEmpty)
-                          ? 'Please enter your last name'
-                          : null,
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-
-                  // Email
-                  TextFormField(
-                    controller: _emailController,
-                    focusNode: widget.branded ? null : _emailFocus,
-                    keyboardType: TextInputType.emailAddress,
-                    autocorrect: false,
-                    textInputAction: TextInputAction.next,
-                    decoration: const InputDecoration(
-                      labelText: 'Email',
-                      prefixIcon: Icon(Icons.email_outlined),
-                    ),
-                    validator: (v) {
-                      if (v == null || v.isEmpty) return 'Please enter your email';
-                      if (!v.contains('@')) return 'Please enter a valid email';
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Password
-                  TextFormField(
-                    controller: _passwordController,
-                    focusNode: widget.branded ? null : _passwordFocus,
-                    obscureText: _obscurePassword,
-                    textInputAction:
-                        showOtp ? TextInputAction.next : TextInputAction.done,
-                    decoration: InputDecoration(
-                      labelText: 'Password',
-                      prefixIcon: const Icon(Icons.lock_outlined),
-                      suffixIcon: IconButton(
-                        icon: Icon(_obscurePassword
-                            ? Icons.visibility_outlined
-                            : Icons.visibility_off_outlined),
-                        onPressed: () =>
-                            setState(() => _obscurePassword = !_obscurePassword),
-                      ),
-                    ),
-                    validator: (v) =>
-                        (v == null || v.isEmpty) ? 'Please enter your password' : null,
-                    onFieldSubmitted: showOtp
-                        ? null
-                        : (_) => _isSignUp ? _handleSignUp() : _handleLogin(),
-                  ),
-
-                  // Forgot password — sign-in only
-                  if (!_isSignUp) ...[
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const ForgotPasswordScreen(),
-                          ),
-                        ),
-                        child: const Text('Forgot password?'),
-                      ),
-                    ),
-                  ],
-
-                  // MFA / OTP
-                  if (showOtp) ...[
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: colorScheme.primaryContainer.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.security, color: colorScheme.primary),
-                          const SizedBox(width: 12),
-                          const Expanded(
-                            child: Text(
-                              'Two-factor authentication is enabled. Enter your code.',
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _otpController,
-                      keyboardType: TextInputType.number,
-                      textInputAction: TextInputAction.done,
-                      decoration: const InputDecoration(
-                        labelText: 'Authentication Code',
-                        prefixIcon: Icon(Icons.pin_outlined),
-                      ),
-                      validator: (v) => (showOtp && (v == null || v.isEmpty))
-                          ? 'Please enter your authentication code'
-                          : null,
-                      onFieldSubmitted: (_) => _handleLogin(),
-                    ),
-                  ],
-
-                  const SizedBox(height: 24),
-
-                  // Submit
-                  ElevatedButton(
-                    onPressed: authProvider.isLoading
-                        ? null
-                        : () => _isSignUp ? _handleSignUp() : _handleLogin(),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 52),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: authProvider.isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(_isSignUp ? 'Create Account' : 'Sign In'),
-                  ),
-                ],
-              );
-            },
-          ),
-
-          // ── Google SSO ───────────────────────────────────────────────
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(child: Divider(color: colorScheme.outlineVariant)),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text('or',
-                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
-              ),
-              Expanded(child: Divider(color: colorScheme.outlineVariant)),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Consumer<AuthProvider>(
-            builder: (context, authProvider, _) {
-              return OutlinedButton.icon(
-                onPressed: authProvider.isLoading
-                    ? null
-                    : () => authProvider.startSsoLogin('google_oauth2'),
-                icon: SvgPicture.asset(
-                  'assets/images/google_g_logo.svg',
-                  width: 18,
-                  height: 18,
-                ),
-                label: const Text('Sign in with Google'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-              );
-            },
-          ),
-
-          // ── Apple Sign-In (iOS only — Apple requires it when other SSO is offered) ──
-          if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) ...[
-            const SizedBox(height: 12),
+          if (!_showEmailForm) ...[
             Consumer<AuthProvider>(
               builder: (context, authProvider, _) {
-                return SignInWithAppleButton(
+                return OutlinedButton.icon(
                   onPressed: authProvider.isLoading
-                      ? () {}
-                      : () => authProvider.signInWithApple(),
-                  style: Theme.of(context).brightness == Brightness.dark
-                      ? SignInWithAppleButtonStyle.white
-                      : SignInWithAppleButtonStyle.black,
-                  height: 50,
-                  borderRadius: BorderRadius.circular(12),
+                      ? null
+                      : () => authProvider.startSsoLogin('google_oauth2'),
+                  icon: SvgPicture.asset(
+                    'assets/images/google_g_logo.svg',
+                    width: 18,
+                    height: 18,
+                  ),
+                  label: const Text('Sign in with Google'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 50),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                );
+              },
+            ),
+            if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) ...[
+              const SizedBox(height: 12),
+              Consumer<AuthProvider>(
+                builder: (context, authProvider, _) {
+                  return SignInWithAppleButton(
+                    onPressed: authProvider.isLoading
+                        ? () {}
+                        : () => authProvider.signInWithApple(),
+                    style: Theme.of(context).brightness == Brightness.dark
+                        ? SignInWithAppleButtonStyle.white
+                        : SignInWithAppleButtonStyle.black,
+                    height: 50,
+                    borderRadius: BorderRadius.circular(12),
+                  );
+                },
+              ),
+            ],
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () => setState(() => _showEmailForm = true),
+              icon: const Icon(Icons.email_outlined),
+              label: const Text('Continue with email'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Use the email address you gave Chancen.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+          ] else ...[
+            Consumer<AuthProvider>(
+              builder: (context, authProvider, _) {
+                final showOtp = authProvider.showMfaInput;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (widget.allowSignUp && _isSignUp) ...[
+                      TextFormField(
+                        controller: _firstNameController,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: const InputDecoration(
+                          labelText: 'First name',
+                          prefixIcon: Icon(Icons.person_outlined),
+                        ),
+                        validator: (v) => (v == null || v.trim().isEmpty)
+                            ? 'Please enter your first name'
+                            : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _lastNameController,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: const InputDecoration(
+                          labelText: 'Last name',
+                          prefixIcon: Icon(Icons.person_outlined),
+                        ),
+                        validator: (v) => (v == null || v.trim().isEmpty)
+                            ? 'Please enter your last name'
+                            : null,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    TextFormField(
+                      controller: _emailController,
+                      focusNode: widget.branded ? null : _emailFocus,
+                      keyboardType: TextInputType.emailAddress,
+                      autocorrect: false,
+                      textInputAction: TextInputAction.next,
+                      decoration: const InputDecoration(
+                        labelText: 'Email',
+                        prefixIcon: Icon(Icons.email_outlined),
+                      ),
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return 'Please enter your email';
+                        if (!v.contains('@')) return 'Please enter a valid email';
+                        return null;
+                      },
+                    ),
+                    if (_isSignUp) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'Use at least 8 characters, uppercase and lowercase letters, a number, and a special character.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _passwordController,
+                      focusNode: widget.branded ? null : _passwordFocus,
+                      obscureText: _obscurePassword,
+                      textInputAction:
+                          showOtp ? TextInputAction.next : TextInputAction.done,
+                      decoration: InputDecoration(
+                        labelText: 'Password',
+                        prefixIcon: const Icon(Icons.lock_outlined),
+                        suffixIcon: IconButton(
+                          icon: Icon(_obscurePassword
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined),
+                          onPressed: () =>
+                              setState(() => _obscurePassword = !_obscurePassword),
+                        ),
+                      ),
+                      validator: _passwordValidationError,
+                      onFieldSubmitted: showOtp
+                          ? null
+                          : (_) => _isSignUp ? _handleSignUp() : _handleLogin(),
+                    ),
+                    if (!_isSignUp) ...[
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const ForgotPasswordScreen(),
+                            ),
+                          ),
+                          child: const Text('Forgot password?'),
+                        ),
+                      ),
+                    ],
+                    if (showOtp) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: colorScheme.primaryContainer.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.security, color: colorScheme.primary),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text(
+                                'Two-factor authentication is enabled. Enter your code.',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _otpController,
+                        keyboardType: TextInputType.number,
+                        textInputAction: TextInputAction.done,
+                        decoration: const InputDecoration(
+                          labelText: 'Authentication Code',
+                          prefixIcon: Icon(Icons.pin_outlined),
+                        ),
+                        validator: (v) => (showOtp && (v == null || v.isEmpty))
+                            ? 'Please enter your authentication code'
+                            : null,
+                        onFieldSubmitted: (_) => _handleLogin(),
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                    ElevatedButton(
+                      onPressed: authProvider.isLoading
+                          ? null
+                          : () => _isSignUp ? _handleSignUp() : _handleLogin(),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 52),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: authProvider.isLoading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(_isSignUp ? 'Create account' : 'Sign in'),
+                    ),
+                    TextButton(
+                      onPressed: () => setState(() => _showEmailForm = false),
+                      child: const Text('Other sign-in options'),
+                    ),
+                  ],
                 );
               },
             ),

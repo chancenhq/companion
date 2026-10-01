@@ -487,10 +487,12 @@ Rails.application.routes.draw do
       post "auth/sso_link", to: "auth#sso_link"
       post "auth/sso_create_account", to: "auth#sso_create_account"
       patch "auth/enable_ai", to: "auth#enable_ai"
+      post  "auth/resend_email_verification", to: "auth#resend_email_verification"
       post  "auth/password_reset", to: "auth#request_password_reset"
       patch "auth/password_reset", to: "auth#reset_password"
 
       # Production API endpoints
+      resources :countries, only: [ :index ]
       resources :accounts, only: [ :index, :show ]
       resources :balances, only: [ :index, :show ]
       resources :budgets, only: [ :index, :show ]
@@ -534,6 +536,7 @@ Rails.application.routes.draw do
 
       get "users/reset/status", to: "users#reset_status"
       delete "users/reset", to: "users#reset"
+      patch "users/me/country", to: "users#update_country"
       delete "users/me", to: "users#destroy"
 
       # Test routes for API controller testing (only available in test environment)

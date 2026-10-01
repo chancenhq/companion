@@ -217,6 +217,17 @@ class Api::V1::BaseController < ApplicationController
       authorize_scope!(:read)
     end
 
+    def ensure_verified_for_financial_data
+      return true if current_resource_owner&.email_verified?
+
+      render_json({
+        error: "email_verification_required",
+        message: "Verify your email to see your Chancen Account",
+        action: "resend_email"
+      }, status: :forbidden)
+      false
+    end
+
     # Consistent JSON response method
     def render_json(data, status: :ok)
       render json: data, status: status

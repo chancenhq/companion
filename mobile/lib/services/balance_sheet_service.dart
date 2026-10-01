@@ -36,9 +36,12 @@ class BalanceSheetService {
           'error': 'unauthorized',
         };
       } else {
+        final responseData = jsonDecode(response.body);
         return {
           'success': false,
-          'error': 'Failed to fetch balance sheet',
+          'error': responseData['error'] ?? 'Failed to fetch balance sheet',
+          'message': responseData['message'],
+          'action': responseData['action'],
         };
       }
     } catch (e) {
