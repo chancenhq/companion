@@ -33,7 +33,7 @@ class AuthProvider with ChangeNotifier {
   bool _ssoHasPendingInvitation = false;
 
   User? get user => _user;
-  bool get isIntroLayout => _user?.isIntroLayout ?? false;
+  bool get isIntroLayout => true;
   bool get aiEnabled => _user?.aiEnabled ?? false;
   AuthTokens? get tokens => _tokens;
   bool get isLoading => _isLoading;
@@ -319,7 +319,7 @@ class AuthProvider with ChangeNotifier {
         deviceInfo: deviceInfo,
       );
 
-      final launched = await launchUrl(Uri.parse(ssoUrl), mode: LaunchMode.externalApplication);
+      final launched = await launchUrl(Uri.parse(ssoUrl), mode: LaunchMode.inAppBrowserView);
       if (!launched) {
         _errorMessage = 'Unable to open browser for sign-in.';
       }

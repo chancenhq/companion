@@ -240,6 +240,7 @@ Rails.application.routes.draw do
       delete :clear_cache, on: :collection
       delete :disconnect_external_assistant, on: :collection
     end
+    resource :chancen, only: %i[show update]
     resource :payment, only: :show
     resource :security, only: :show
     resources :webauthn_credentials, only: %i[create destroy] do
@@ -526,6 +527,9 @@ Rails.application.routes.draw do
       end
       resources :provider_connections, only: [ :index ]
 
+      resource :my_account, only: [ :show ], controller: :my_account
+      resources :my_account_transactions, only: [ :index ], controller: :my_account_transactions
+
       resources :chats, only: [ :index, :show, :create, :update, :destroy ] do
         resources :messages, only: [ :create ] do
           post :retry, on: :collection
@@ -658,6 +662,7 @@ Rails.application.routes.draw do
 
   # Admin namespace for super admin functionality
   namespace :admin do
+    resource :chancen, only: %i[show update]
     resources :sso_providers do
       member do
         patch :toggle

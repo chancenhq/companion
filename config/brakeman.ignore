@@ -186,11 +186,11 @@
       "render_path": null,
       "location": null,
       "user_input": null,
-      "confidence": "Medium",
+      "confidence": "High",
       "cwe_id": [
         1104
       ],
-      "note": "Rails 7.2 reaches EOL on 2026-08-09; ignored until upgraded to Rails 8"
+      "note": "Rails 7.2 reached EOL on 2026-08-09; ignored until upgraded to Rails 8"
     }
   ],
   "brakeman_version": "7.1.2"

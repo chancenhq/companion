@@ -104,11 +104,6 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
 
-    if (!authProvider.aiEnabled) {
-      chatProvider.clearCurrentChat();
-      return;
-    }
-
     // Skip fetch if the provider already has this chat loaded (e.g. just created).
     if (!forceRefresh && chatProvider.currentChat?.id == _chatId) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -365,7 +360,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                 }).toList()
               : allMessages;
           final firstName =
-              Provider.of<AuthProvider>(context, listen: true).user?.firstName;
+              authProvider.user?.firstName;
 
           return Column(
             children: [

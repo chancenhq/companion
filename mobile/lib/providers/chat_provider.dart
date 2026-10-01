@@ -140,6 +140,14 @@ class ChatProvider with ChangeNotifier {
       if (result['success'] == true) {
         _currentChat = result['chat'] as Chat;
         _errorMessage = null;
+
+        // If the last message is from the user, the AI response is still pending
+        // (e.g. user exited mid-generation and re-entered). Resume polling so the
+        // response arrives without requiring the user to send another message.
+        final lastMsg = _currentChat!.messages.lastOrNull;
+        if (lastMsg != null && lastMsg.isUser) {
+          _startPolling(accessToken, chatId);
+        }
       } else {
         _errorMessage = result['error'] ?? 'Failed to fetch chat';
       }

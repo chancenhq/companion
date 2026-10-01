@@ -1,6 +1,9 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../providers/auth_provider.dart';
 import '../providers/categories_provider.dart';
@@ -10,6 +13,7 @@ import '../services/log_service.dart';
 import '../services/biometric_service.dart';
 import '../services/preferences_service.dart';
 import '../services/user_service.dart';
+import 'backend_config_screen.dart';
 import 'log_viewer_screen.dart';
 import '../models/custom_proxy_header.dart';
 import '../services/api_config.dart';
@@ -24,11 +28,11 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _isResettingAccount = false;
   bool _isDeletingAccount = false;
   bool _biometricSupported = false;
   bool _biometricEnabled = false;
   bool _isTogglingBiometric = false;
+  bool _themeExpanded = false;
   // dev-mode easter egg
   bool _devMode = false;
   int _devTapCount = 0;
@@ -41,6 +45,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _loadBiometricState();
+    _loadAppVersion();
   }
 
   void _onAvatarTap() {
@@ -114,16 +119,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadCustomHeaders() async {
     try {
-      final headers = await CustomProxyHeadersService.instance.loadHeaders();
+      final headers = await CustomProxyHeadersService.instance.loadHeaders(backendUrl: ApiConfig.baseUrl);
       if (mounted) setState(() => _customHeaders = headers);
     } catch (e, stack) {
       debugPrint('SettingsScreen: failed to load custom headers: $e\n$stack');
     }
   }
 
+  void _openBackendSwitcher() {
+    final urlBeforeSwitch = ApiConfig.baseUrl;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (routeContext) => BackendConfigScreen(
+          onConfigSaved: () => _onBackendSwitched(routeContext, urlBeforeSwitch),
+        ),
+      ),
+    );
+  }
+
+  /// Switching backend mid-session leaves an auth token that belongs to the
+  /// old environment, so sign out and drop back to the root (Login) rather
+  /// than leaving a broken authenticated screen up.
+  Future<void> _onBackendSwitched(BuildContext routeContext, String previousUrl) async {
+    if (ApiConfig.normalizeUrl(ApiConfig.baseUrl) == ApiConfig.normalizeUrl(previousUrl)) return;
+    final authProvider = Provider.of<AuthProvider>(routeContext, listen: false);
+    final navigator = Navigator.of(routeContext);
+    await authProvider.logout();
+    navigator.popUntil((route) => route.isFirst);
+  }
+
   Future<void> _showCustomHeadersDialog() async {
     final formKey = GlobalKey<FormState>();
-    final latestHeaders = await CustomProxyHeadersService.instance.loadHeaders();
+    final latestHeaders = await CustomProxyHeadersService.instance.loadHeaders(backendUrl: ApiConfig.baseUrl);
     if (!mounted) return;
 
     setState(() => _customHeaders = latestHeaders);
@@ -174,7 +202,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (saved != true) return;
 
     try {
-      await CustomProxyHeadersService.instance.saveHeaders(draftHeaders);
+      await CustomProxyHeadersService.instance.saveHeaders(draftHeaders, backendUrl: ApiConfig.baseUrl);
       ApiConfig.setCustomProxyHeaders(draftHeaders);
       if (!mounted) return;
       setState(() => _customHeaders = draftHeaders);
@@ -263,76 +291,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Unable to open link')),
       );
-    }
-  }
-
-  Future<void> _handleResetAccount(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Reset Account'),
-        content: const Text(
-          'Resetting your account will delete all your accounts, categories, '
-          'merchants, tags, and other data, but keep your user account intact.\n\n'
-          'This action cannot be undone. Are you sure?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(
-              foregroundColor: Theme.of(context).colorScheme.error,
-            ),
-            child: const Text('Reset Account'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !context.mounted) return;
-
-    setState(() => _isResettingAccount = true);
-    try {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final accessToken = await authProvider.getValidAccessToken();
-      if (accessToken == null) {
-        await authProvider.logout();
-        return;
-      }
-
-      final result = await UserService().resetAccount(accessToken: accessToken);
-
-      if (!context.mounted) return;
-
-      if (result['success'] == true) {
-        await OfflineStorageService().clearAllData();
-        if (context.mounted) {
-          Provider.of<CategoriesProvider>(context, listen: false).clear();
-        }
-
-        if (!context.mounted) return;
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Account reset has been initiated. This may take a moment.'),
-            backgroundColor: Colors.green,
-          ),
-        );
-
-        await authProvider.logout();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['error'] ?? 'Failed to reset account'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isResettingAccount = false);
     }
   }
 
@@ -486,13 +444,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
             leading: const Icon(Icons.chat_bubble_outline),
             title: const Text('Contact us'),
             subtitle: Text(
-              'chat.whatsapp.com/IVBXS2QtJpqIFlZYoSPD1t',
+              'WhatsApp',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.primary,
-                decoration: TextDecoration.underline,
               ),
             ),
             onTap: () => _launchContactUrl(context),
+          ),
+
+          ListTile(
+            leading: const Icon(Icons.share_rounded),
+            title: const Text('Share Companion'),
+            subtitle: const Text('Invite friends and colleagues'),
+            onTap: () {
+              final box = context.findRenderObject() as RenderBox?;
+              final storeUrl = Platform.isIOS
+                  ? 'https://apps.apple.com/us/app/chancen-companion/id6794429424'
+                  : 'https://play.google.com/store/apps/details?id=tech.chancen.companion';
+              Share.share(
+                "I've been using Chancen Companion to track my ISA and stay on top of my finances. Check it out!\n\n"
+                "$storeUrl",
+                subject: 'Try Chancen Companion',
+                sharePositionOrigin: box == null ? null : box.localToGlobal(Offset.zero) & box.size,
+              );
+            },
+          ),
+
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('About'),
+            subtitle: Text(_appVersion ?? '…'),
+            onTap: () => showAboutDialog(
+              context: context,
+              applicationName: 'Chancen',
+              applicationVersion: _appVersion ?? '…',
+              applicationLegalese: '© ${DateTime.now().year} Chancen International',
+            ),
           ),
 
           if (_devMode) ...[
@@ -552,31 +539,77 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           Consumer<ThemeProvider>(
             builder: (context, themeProvider, _) {
-              return ListTile(
-                leading: const Icon(Icons.brightness_6_outlined),
-                title: const Text('Theme'),
-                trailing: SegmentedButton<ThemeMode>(
-                  segments: const [
-                    ButtonSegment(
-                      value: ThemeMode.light,
-                      icon: Icon(Icons.light_mode, size: 18),
-                      tooltip: 'Light',
+              final current = themeProvider.themeMode;
+              final (currentIcon, currentLabel) = switch (current) {
+                ThemeMode.light  => (Icons.light_mode, 'Light'),
+                ThemeMode.dark   => (Icons.dark_mode, 'Dark'),
+                _                => (Icons.brightness_auto, 'System'),
+              };
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.brightness_6_outlined),
+                    title: const Text('Theme'),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(currentIcon, size: 18,
+                            color: Theme.of(context).colorScheme.primary),
+                        const SizedBox(width: 6),
+                        Text(currentLabel,
+                            style: TextStyle(
+                                color: Theme.of(context).colorScheme.primary)),
+                        const SizedBox(width: 4),
+                        Icon(
+                          _themeExpanded
+                              ? Icons.expand_less
+                              : Icons.expand_more,
+                          size: 18,
+                        ),
+                      ],
                     ),
-                    ButtonSegment(
-                      value: ThemeMode.system,
-                      icon: Icon(Icons.brightness_auto, size: 18),
-                      tooltip: 'System',
-                    ),
-                    ButtonSegment(
-                      value: ThemeMode.dark,
-                      icon: Icon(Icons.dark_mode, size: 18),
-                      tooltip: 'Dark',
-                    ),
-                  ],
-                  selected: {themeProvider.themeMode},
-                  onSelectionChanged: (modes) => themeProvider.setThemeMode(modes.first),
-                  showSelectedIcon: false,
-                ),
+                    onTap: () =>
+                        setState(() => _themeExpanded = !_themeExpanded),
+                  ),
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeInOut,
+                    child: _themeExpanded
+                        ? Column(
+                            children: [
+                              _ThemeOption(
+                                icon: Icons.light_mode,
+                                label: 'Light',
+                                selected: current == ThemeMode.light,
+                                onTap: () {
+                                  themeProvider.setThemeMode(ThemeMode.light);
+                                  setState(() => _themeExpanded = false);
+                                },
+                              ),
+                              _ThemeOption(
+                                icon: Icons.brightness_auto,
+                                label: 'System',
+                                selected: current == ThemeMode.system,
+                                onTap: () {
+                                  themeProvider.setThemeMode(ThemeMode.system);
+                                  setState(() => _themeExpanded = false);
+                                },
+                              ),
+                              _ThemeOption(
+                                icon: Icons.dark_mode,
+                                label: 'Dark',
+                                selected: current == ThemeMode.dark,
+                                onTap: () {
+                                  themeProvider.setThemeMode(ThemeMode.dark);
+                                  setState(() => _themeExpanded = false);
+                                },
+                              ),
+                            ],
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ],
               );
             },
           ),
@@ -589,6 +622,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'Connection',
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey),
               ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.dns_outlined),
+              title: const Text('Backend server'),
+              subtitle: Text(ApiConfig.baseUrl),
+              onTap: _openBackendSwitcher,
             ),
             ListTile(
               leading: const Icon(Icons.http_outlined),
@@ -665,19 +704,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
 
           ListTile(
-            leading: const Icon(Icons.restart_alt, color: Colors.red),
-            title: const Text('Reset Account'),
-            subtitle: const Text(
-              'Delete all accounts, categories, merchants, and tags but keep your user account',
-            ),
-            trailing: _isResettingAccount
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                : null,
-            enabled: !_isResettingAccount && !_isDeletingAccount,
-            onTap: _isResettingAccount || _isDeletingAccount ? null : () => _handleResetAccount(context),
-          ),
-
-          ListTile(
             leading: const Icon(Icons.delete_forever, color: Colors.red),
             title: const Text('Delete Account'),
             subtitle: const Text(
@@ -686,8 +712,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             trailing: _isDeletingAccount
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                 : null,
-            enabled: !_isDeletingAccount && !_isResettingAccount,
-            onTap: _isDeletingAccount || _isResettingAccount ? null : () => _handleDeleteAccount(context),
+            enabled: !_isDeletingAccount,
+            onTap: _isDeletingAccount ? null : () => _handleDeleteAccount(context),
           ),
 
           const Divider(),
@@ -706,6 +732,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ThemeOption extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ThemeOption({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            const SizedBox(width: 40),
+            Icon(icon, size: 20,
+                color: selected ? colorScheme.primary : colorScheme.onSurfaceVariant),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                  color: selected ? colorScheme.primary : colorScheme.onSurface,
+                ),
+              ),
+            ),
+            if (selected)
+              Icon(Icons.check, size: 18, color: colorScheme.primary),
+          ],
+        ),
       ),
     );
   }
