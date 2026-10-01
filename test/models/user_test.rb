@@ -620,6 +620,7 @@ class UserTest < ActiveSupport::TestCase
     phone.issue_token!
     tablet.issue_token!
     @user.sessions.create!
+    @user.api_keys.active.destroy_all # one active key per source allowed
     api_key = ApiKey.create!(user: @user, name: "Key", scopes: [ "read" ], source: "web", display_key: "revoke_#{SecureRandom.hex(8)}")
 
     @user.revoke_all_access!
