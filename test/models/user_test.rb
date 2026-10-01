@@ -619,6 +619,20 @@ class UserTest < ActiveSupport::TestCase
     assert_not sso_user.has_local_password?
   end
 
+  # Interim email verification (issue #106): only SSO-only accounts count as verified
+  test "email_verified? is true for sso_only users" do
+    assert users(:sso_only).email_verified?
+  end
+
+  test "email_verified? is false for password users even with a linked OIDC identity" do
+    assert @user.oidc_identities.exists?
+    assert_not @user.email_verified?
+  end
+
+  test "email_verified? is false for password users without an OIDC identity" do
+    assert_not users(:empty).email_verified?
+  end
+
   test "user can be created without password when skip_password_validation is true" do
     user = User.new(
       email: "newssuser@example.com",
