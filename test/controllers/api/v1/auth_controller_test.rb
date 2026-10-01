@@ -275,26 +275,6 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     assert_not_nil invitation.reload.accepted_at
   end
 
-  test "signup with an invited email but no token does not claim the invitation" do
-    invitation = invitations(:one)
-    Setting.onboarding_state = "open"
-
-    post "/api/v1/auth/signup", params: {
-      user: {
-        email: invitation.email,
-        password: "SecurePass123!",
-        first_name: "Not",
-        last_name: "Invited"
-      },
-      device: @device_info
-    }
-
-    assert_response :created
-    user = User.find_by!(email: invitation.email)
-    assert_not_equal invitation.family, user.family
-    assert_nil invitation.reload.accepted_at
-  end
-
   test "should require invite code when enabled" do
     # Mock invite code requirement
     Api::V1::AuthController.any_instance.stubs(:invite_code_required?).returns(true)

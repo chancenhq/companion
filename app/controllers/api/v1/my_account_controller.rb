@@ -1,6 +1,5 @@
 class Api::V1::MyAccountController < Api::V1::BaseController
   before_action :ensure_read_scope
-  before_action :ensure_verified_for_financial_data
 
   def show
     url         = Setting.metabase_url.presence

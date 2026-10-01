@@ -9,32 +9,17 @@ module Assistant::Configurable
       if chat.user.ui_layout_intro?
         {
           instructions: intro_instructions(preferred_currency, preferred_date_format),
-          functions: permitted_functions(chat.user, intro_functions)
+          functions: intro_functions
         }
       else
         {
           instructions: default_instructions(preferred_currency, preferred_date_format),
-          functions: permitted_functions(chat.user, default_functions)
+          functions: default_functions
         }
       end
     end
 
     private
-      # ISA data is looked up by email, so only users who have proven they own
-      # their email may hold these tools (issue #106, Story 3.2).
-      def permitted_functions(user, functions)
-        return functions if user.email_verified?
-
-        functions - isa_functions
-      end
-
-      def isa_functions
-        [
-          Assistant::Function::GetMyAccount,
-          Assistant::Function::GetISATransactions
-        ]
-      end
-
       def intro_functions
         [
           Assistant::Function::SearchFamilyFiles,
