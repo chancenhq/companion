@@ -173,7 +173,7 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     assert new_user.family.present?
   end
 
-  INVITE_ONLY_MESSAGE = "Sign-up is by invitation only. Please use the link in your invitation email."
+  INVITE_ONLY_MESSAGE = "Sign-up is by invitation only. Use the email address you gave Chancen."
 
   test "signup without an invitation is rejected under invite_only" do
     with_self_hosting do
@@ -1502,8 +1502,9 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     assert_not User.find_by!(email: "verifyme@example.com").email_verified?
   end
 
-  test "email signup with an invitation token is verified at once" do
+  test "email signup with the token from an emailed invitation is verified at once" do
     invitation = invitations(:one)
+    invitation.update!(email_sent_at: 1.day.ago)
 
     assert_no_enqueued_emails do
       post "/api/v1/auth/signup", params: {
@@ -1514,6 +1515,38 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :created
     assert_equal true, JSON.parse(response.body).dig("user", "email_verified")
+  end
+
+  test "email signup with a token from an invitation that was never emailed stays unverified" do
+    invitation = invitations(:one)
+
+    assert_enqueued_emails 1 do
+      post "/api/v1/auth/signup", params: {
+        user: { email: invitation.email, password: "SecurePass123!", first_name: "In", last_name: "Vited", invitation: invitation.token },
+        device: @device_info
+      }
+    end
+
+    assert_response :created
+    assert_equal false, JSON.parse(response.body).dig("user", "email_verified")
+  end
+
+  test "invite_only email signup takes the seat reserved for that email and starts unverified" do
+    invitation = invitations(:one) # a bulk-invite style seat: nothing emailed, no token used
+    Setting.onboarding_state = "invite_only"
+
+    assert_enqueued_emails 1 do
+      post "/api/v1/auth/signup", params: {
+        user: { email: invitation.email, password: "SecurePass123!", first_name: "Seat", last_name: "Holder" },
+        device: @device_info
+      }
+    end
+
+    assert_response :created
+    user = User.find_by!(email: invitation.email)
+    assert_equal invitation.family, user.family
+    assert_not user.email_verified?
+    assert_not_nil invitation.reload.accepted_at
   end
 
   test "resend_email_verification sends to unverified users and is rate limited" do

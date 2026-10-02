@@ -243,7 +243,7 @@ class OidcAccountsControllerTest < ActionController::TestCase
     end
 
     assert_redirected_to new_session_path
-    assert_equal "Sign-up is by invitation only. Please use the link in your invitation email.", flash[:alert]
+    assert_equal "Sign-up is by invitation only. Use the email address you gave Chancen.", flash[:alert]
   end
 
   test "create_user does not join the invite-only default family without an invitation" do
@@ -257,7 +257,7 @@ class OidcAccountsControllerTest < ActionController::TestCase
     end
 
     assert_redirected_to new_session_path
-    assert_equal "Sign-up is by invitation only. Please use the link in your invitation email.", flash[:alert]
+    assert_equal "Sign-up is by invitation only. Use the email address you gave Chancen.", flash[:alert]
   end
 
   test "create_user accepts pending invitation before invite-only default family" do

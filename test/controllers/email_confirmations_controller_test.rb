@@ -15,7 +15,8 @@ class EmailConfirmationsControllerTest < ActionDispatch::IntegrationTest
 
     get new_email_confirmation_path(token: user.generate_token_for(:email_confirmation))
 
-    assert_redirected_to new_session_path
+    assert_response :success
+    assert_includes response.body, "Your email is verified"
     assert user.reload.email_verified?
   end
 
@@ -26,7 +27,8 @@ class EmailConfirmationsControllerTest < ActionDispatch::IntegrationTest
 
     get new_email_confirmation_path(token: token)
 
-    assert_redirected_to root_path
+    assert_response :unprocessable_entity
+    assert_includes response.body, "Resend email"
   end
 
   test "a failed email change does not report success" do
