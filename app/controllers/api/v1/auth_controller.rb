@@ -72,8 +72,7 @@ module Api
 
         return unless token_response
 
-        if @invitation.present? && !self_hosted?
-          # The invitation token was emailed to this address, which proves it.
+        if invitation_token_proves_email?(@invitation, invitation_token_param)
           user.mark_email_verified!
         else
           user.send_email_verification
@@ -425,10 +424,20 @@ module Api
           params.require(:user).permit(:email, :password, :first_name, :last_name)
         end
 
+        def invitation_token_param
+          params[:invitation].presence || params.dig(:user, :invitation).presence
+        end
+
+        # The invitation for the token sent with the sign-up, otherwise the seat
+        # reserved for this email (bulk invites aren't emailed). An email match
+        # proves nothing about ownership: that account starts unverified, and
+        # the real owner can reclaim it by password reset or Google/Apple.
         def pending_invitation_from_params
-          token = params[:invitation]
-          token ||= params[:user][:invitation] if params[:user].present?
-          Invitation.pending.find_by(token: token)
+          token = invitation_token_param
+          return Invitation.pending.find_by(token: token) if token.present?
+
+          email = params.dig(:user, :email).to_s.strip.downcase
+          Invitation.pending.find_by(email: email) if email.present?
         end
 
         def validate_password(password)

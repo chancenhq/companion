@@ -21,6 +21,13 @@ module Invitable
       end
     end
 
+    # Signing up with the token from an invitation that was emailed proves the
+    # address. A seat matched by email alone (e.g. bulk invite, nothing sent)
+    # proves nothing, so that account starts unverified.
+    def invitation_token_proves_email?(invitation, token)
+      invitation.present? && token.present? && invitation.emailed?
+    end
+
     def signup_not_permitted_message
       Setting.onboarding_state == "closed" ? t("registrations.closed") : t("registrations.invite_only")
     end
