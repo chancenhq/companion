@@ -1235,6 +1235,22 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     assert_equal "member", new_user.role
   end
 
+  test "apple_sign_in ignores a client-supplied email when Apple's token has none" do
+    user = users(:family_admin)
+    MobileDevice.instance_variable_set(:@shared_oauth_application, nil)
+    existing_device = MobileDevice.upsert_device!(user, device_id: "victim-phone", device_name: "Phone", device_type: "ios", os_version: "17", app_version: "1.0")
+    existing_device.issue_token!
+    AppleSignIn.stubs(:verify!).returns({ "sub" => "apple.uid.no-email-claim" })
+
+    assert_no_difference([ "User.count", "OidcIdentity.count" ]) do
+      post "/api/v1/auth/apple_sign_in", params: { identity_token: "fake.token", email: user.email, device: @device_info }
+    end
+
+    assert_response :unprocessable_entity
+    assert_match(/email/, JSON.parse(response.body)["error"])
+    assert existing_device.active_tokens.any?, "the account's existing logins must be left alone"
+  end
+
   test "apple_sign_in returns 422 when no email in JWT and no email param" do
     apple_uid = "apple.uid.no-email"
 
