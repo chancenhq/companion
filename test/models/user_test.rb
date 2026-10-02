@@ -719,4 +719,67 @@ class UserTest < ActiveSupport::TestCase
     assert_not Family.exists?(family.id)
     assert_not ActiveStorage::Attachment.exists?(export_attachment_id)
   end
+
+  # Email verification (issue #106)
+  test "claim_by_trusted_provider! drops password and MFA, verifies and signs everyone out" do
+    user = users(:unverified)
+    user.setup_mfa!
+    user.enable_mfa!
+    user.sessions.create!
+
+    assert user.claim_by_trusted_provider!
+
+    user.reload
+    assert user.email_verified?
+    assert_nil user.password_digest
+    assert_not user.otp_required?
+    assert_empty user.sessions
+  end
+
+  test "claim_by_trusted_provider! leaves verified accounts alone" do
+    password_digest = @user.password_digest
+
+    assert_not @user.claim_by_trusted_provider!
+    assert_equal password_digest, @user.reload.password_digest
+  end
+
+  test "verify_after_password_reset! clears MFA only for unverified accounts" do
+    unverified = users(:unverified)
+    unverified.setup_mfa!
+    unverified.enable_mfa!
+    @user.setup_mfa!
+    @user.enable_mfa!
+
+    unverified.verify_after_password_reset!
+    @user.verify_after_password_reset!
+
+    assert unverified.reload.email_verified?
+    assert_not unverified.otp_required?
+    assert @user.reload.otp_required?
+  end
+
+  test "email confirmation link stops working once the email is verified" do
+    user = users(:unverified)
+    token = user.generate_token_for(:email_confirmation)
+    assert_equal user, User.find_by_token_for(:email_confirmation, token)
+
+    user.mark_email_verified!
+
+    assert_nil User.find_by_token_for(:email_confirmation, token)
+  end
+
+  test "unconfirmed self-hosted email change clears verification" do
+    with_self_hosting do
+      Setting.require_email_confirmation = false
+      @user.initiate_email_change("changed-#{SecureRandom.hex(4)}@example.com")
+      assert_not @user.reload.email_verified?
+    ensure
+      Setting.require_email_confirmation = true
+    end
+  end
+
+  test "mobile_payload reports verification state" do
+    assert_equal true, @user.mobile_payload[:email_verified]
+    assert_equal false, users(:unverified).mobile_payload[:email_verified]
+  end
 end
