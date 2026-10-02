@@ -164,6 +164,22 @@ class RegistrationsControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "web sign-up without an invitation sends a verification email" do
+    assert_enqueued_emails 1 do
+      post registration_url, params: { user: { email: "web-verify@example.com", password: "Password1!" } }
+    end
+
+    assert_not User.find_by!(email: "web-verify@example.com").email_verified?
+  end
+
+  test "web sign-up with an invitation token is verified at once" do
+    invitation = invitations(:one)
+
+    post registration_url, params: { user: { email: invitation.email, password: "Password1!", invitation: invitation.token } }
+
+    assert User.find_by!(email: invitation.email).email_verified?
+  end
+
   private
 
     def with_onboarding_state(state)

@@ -20,7 +20,11 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     OmniAuth.config.mock_auth[:openid_connect] = nil
   end
 
-  def setup_omniauth_mock(provider:, uid:, email:, name:, first_name: nil, last_name: nil)
+  GOOGLE_ISSUER = "https://accounts.google.com"
+
+  # issuer: set to GOOGLE_ISSUER to make an openid_connect sign-in count as
+  # proof of email ownership (OidcIdentity.email_trusted?).
+  def setup_omniauth_mock(provider:, uid:, email:, name:, first_name: nil, last_name: nil, issuer: nil)
     OmniAuth.config.mock_auth[:openid_connect] = OmniAuth::AuthHash.new({
       provider: provider,
       uid: uid,
@@ -29,8 +33,9 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
         name: name,
         first_name: first_name,
         last_name: last_name
-      }.compact
-    })
+      }.compact,
+      extra: issuer ? { raw_info: { iss: issuer } } : nil
+    }.compact)
   end
 
   test "login page" do
@@ -536,7 +541,8 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
       provider: "openid_connect",
       uid: "unlinked-uid-99999",
       email: user_without_oidc.email,
-      name: "New User"
+      name: "New User",
+      issuer: GOOGLE_ISSUER
     )
 
     Rails.configuration.x.auth.stubs(:sso_providers).returns([
@@ -579,7 +585,8 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
       provider: "openid_connect",
       uid: "revoke-on-link-uid",
       email: user.email,
-      name: "New User"
+      name: "New User",
+      issuer: GOOGLE_ISSUER
     )
     Rails.configuration.x.auth.stubs(:sso_providers).returns([
       { name: "openid_connect", strategy: "openid_connect", label: "Google" }
@@ -770,5 +777,37 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     # Follow redirect to verify we're on the link page (not logged in)
     follow_redirect!
     assert_response :success
+  end
+
+  # Email verification (issue #106)
+  test "mobile SSO from a provider that doesn't prove email does not auto-link" do
+    user = users(:new_email)
+    setup_omniauth_mock(provider: "openid_connect", uid: "untrusted-uid", email: user.email, name: "New User")
+    Rails.configuration.x.auth.stubs(:sso_providers).returns([
+      { name: "openid_connect", strategy: "openid_connect", label: "Other IdP" }
+    ])
+
+    assert_no_difference "OidcIdentity.count" do
+      get "/auth/mobile/openid_connect", params: { device_id: "flutter-device-untrusted", device_name: "Pixel 8", device_type: "android" }
+      get "/auth/openid_connect/callback"
+    end
+
+    params = Rack::Utils.parse_query(URI.parse(@response.redirect_url).query)
+    assert_equal "account_not_linked", params["status"]
+  end
+
+  test "mobile Google auto-link onto an unverified password account wipes the password and verifies" do
+    user = users(:unverified)
+    setup_omniauth_mock(provider: "openid_connect", uid: "claim-uid", email: user.email, name: "Unverified User", issuer: GOOGLE_ISSUER)
+    Rails.configuration.x.auth.stubs(:sso_providers).returns([
+      { name: "openid_connect", strategy: "openid_connect", label: "Google" }
+    ])
+
+    get "/auth/mobile/openid_connect", params: { device_id: "flutter-device-claim", device_name: "Pixel 8", device_type: "android" }
+    get "/auth/openid_connect/callback"
+
+    user.reload
+    assert user.email_verified?
+    assert_nil user.password_digest
   end
 end

@@ -350,4 +350,23 @@ class OidcAccountsControllerTest < ActionController::TestCase
       password: "anypassword"
     ), "SSO-only user should not authenticate with password"
   end
+
+  # Email verification (issue #106)
+  test "create_user from Google is verified" do
+    session[:pending_oidc_auth] = new_user_auth.merge("provider" => "google_oauth2")
+
+    post :create_user
+
+    assert User.find_by!(email: new_user_auth["email"]).email_verified?
+  end
+
+  test "create_user from a provider that doesn't prove email sends a verification email" do
+    session[:pending_oidc_auth] = new_user_auth
+
+    assert_enqueued_emails 1 do
+      post :create_user
+    end
+
+    assert_not User.find_by!(email: new_user_auth["email"]).email_verified?
+  end
 end
