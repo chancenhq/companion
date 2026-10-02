@@ -9,17 +9,29 @@ module Assistant::Configurable
       if chat.user.ui_layout_intro?
         {
           instructions: intro_instructions(preferred_currency, preferred_date_format),
-          functions: intro_functions
+          functions: permitted_functions(chat.user, intro_functions)
         }
       else
         {
           instructions: default_instructions(preferred_currency, preferred_date_format),
-          functions: default_functions
+          functions: permitted_functions(chat.user, default_functions)
         }
       end
     end
 
     private
+      # Unverified users keep the assistant (issue #106, Story 3.2) but none of
+      # the tools that read household or Chancen Account data.
+      def permitted_functions(user, functions)
+        return functions if user.email_verified?
+
+        functions & unverified_functions
+      end
+
+      def unverified_functions
+        [ Assistant::Function::SearchFamilyFiles ]
+      end
+
       def intro_functions
         [
           Assistant::Function::SearchFamilyFiles

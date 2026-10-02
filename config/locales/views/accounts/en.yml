@@ -171,3 +171,4 @@ en:
       invalid_token: Invalid or expired confirmation link.
       success_login: Your email has been confirmed. Please log in with your new email
         address.
+      verified: Your email has been verified. You can now see your Chancen Account in the app.

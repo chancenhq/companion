@@ -1471,4 +1471,163 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     data = JSON.parse(response.body)
     assert_includes data["error"], "social sign-in"
   end
+
+  # Email verification (issue #106)
+  test "email signup without an invitation sends a verification email and stays unverified" do
+    assert_enqueued_emails 1 do
+      post "/api/v1/auth/signup", params: {
+        user: { email: "verifyme@example.com", password: "SecurePass123!", first_name: "Verify", last_name: "Me" },
+        device: @device_info
+      }
+    end
+
+    assert_response :created
+    assert_equal false, JSON.parse(response.body).dig("user", "email_verified")
+    assert_not User.find_by!(email: "verifyme@example.com").email_verified?
+  end
+
+  test "email signup with an invitation token is verified at once" do
+    invitation = invitations(:one)
+
+    assert_no_enqueued_emails do
+      post "/api/v1/auth/signup", params: {
+        user: { email: invitation.email, password: "SecurePass123!", first_name: "In", last_name: "Vited", invitation: invitation.token },
+        device: @device_info
+      }
+    end
+
+    assert_response :created
+    assert_equal true, JSON.parse(response.body).dig("user", "email_verified")
+  end
+
+  test "resend_email_verification sends to unverified users and is rate limited" do
+    headers = bearer_headers_for(users(:unverified))
+
+    3.times do
+      assert_enqueued_emails 1 do
+        post "/api/v1/auth/resend_email_verification", headers: headers
+      end
+      assert_response :success
+    end
+
+    assert_no_enqueued_emails do
+      post "/api/v1/auth/resend_email_verification", headers: headers
+    end
+    assert_response :too_many_requests
+  end
+
+  test "resend_email_verification tells verified users they are done" do
+    assert_no_enqueued_emails do
+      post "/api/v1/auth/resend_email_verification", headers: bearer_headers_for(users(:family_admin))
+    end
+
+    assert_response :success
+    assert_equal true, JSON.parse(response.body).dig("user", "email_verified")
+  end
+
+  test "sso_link verifies only when the trusted provider proved the account's own email" do
+    user = users(:unverified)
+
+    post "/api/v1/auth/sso_link", params: {
+      linking_code: cache_linking_code(provider: "google_oauth2", email: "someone-else@example.com"),
+      email: user.email,
+      password: user_password_test
+    }
+    assert_response :success
+    assert_not user.reload.email_verified?
+
+    post "/api/v1/auth/sso_link", params: {
+      linking_code: cache_linking_code(provider: "google_oauth2", email: user.email, uid: "google-uid-match"),
+      email: user.email,
+      password: user_password_test
+    }
+    assert_response :success
+    assert user.reload.email_verified?
+  end
+
+  test "apple_sign_in ignores a client-supplied email" do
+    user = users(:family_admin)
+    AppleSignIn.stubs(:verify!).returns({ "sub" => "apple.uid.no-email-claim" })
+
+    assert_no_difference([ "User.count", "OidcIdentity.count" ]) do
+      post "/api/v1/auth/apple_sign_in", params: { identity_token: "fake.token", email: user.email, device: @device_info }
+    end
+
+    assert_response :unprocessable_entity
+  end
+
+  test "apple_sign_in auto-link onto an unverified password account wipes the password and verifies" do
+    user = users(:unverified)
+    AppleSignIn.stubs(:verify!).returns({ "sub" => "apple.uid.claims-unverified", "email" => user.email })
+
+    post "/api/v1/auth/apple_sign_in", params: { identity_token: "fake.token", device: @device_info }
+
+    assert_response :success
+    user.reload
+    assert user.email_verified?
+    assert_nil user.password_digest
+    assert_equal true, JSON.parse(response.body).dig("user", "email_verified")
+  end
+
+  test "apple_sign_in new account is verified" do
+    AppleSignIn.stubs(:verify!).returns({ "sub" => "apple.uid.new-verified", "email" => "new-apple@example.com" })
+
+    post "/api/v1/auth/apple_sign_in", params: { identity_token: "fake.token", device: @device_info }
+
+    assert_response :success
+    assert User.find_by!(email: "new-apple@example.com").email_verified?
+  end
+
+  test "reset_password verifies the email and clears MFA set up before verification" do
+    user = users(:unverified)
+    user.setup_mfa!
+    user.enable_mfa!
+
+    patch "/api/v1/auth/password_reset", params: {
+      token: user.generate_token_for(:password_reset),
+      password: "NewPass456!",
+      password_confirmation: "NewPass456!"
+    }
+
+    assert_response :ok
+    user.reload
+    assert user.email_verified?
+    assert_not user.otp_required?
+  end
+
+  test "sso_exchange returns the verification state" do
+    code = SecureRandom.urlsafe_base64(32)
+    Rails.cache.write("mobile_sso:#{code}", {
+      access_token: "a", refresh_token: "r", token_type: "Bearer", expires_in: 3600, created_at: Time.current.to_i,
+      user_id: users(:unverified).id, user_email: users(:unverified).email, user_email_verified: false
+    }, expires_in: 5.minutes)
+
+    post "/api/v1/auth/sso_exchange", params: { code: code }
+
+    assert_response :success
+    assert_equal false, JSON.parse(response.body).dig("user", "email_verified")
+  end
+
+  private
+
+    def bearer_headers_for(user)
+      MobileDevice.instance_variable_set(:@shared_oauth_application, nil)
+      device = MobileDevice.upsert_device!(user, device_id: "verify-#{user.id}", device_name: "Phone", device_type: "ios", os_version: "17", app_version: "1.0")
+      { "Authorization" => "Bearer #{device.issue_token![:access_token]}" }
+    end
+
+    def cache_linking_code(provider:, email:, uid: "google-uid-#{SecureRandom.hex(4)}")
+      code = SecureRandom.urlsafe_base64(32)
+      Rails.cache.write("mobile_sso_link:#{code}", {
+        provider: provider,
+        uid: uid,
+        email: email,
+        first_name: "Link",
+        last_name: "Test",
+        name: "Link Test",
+        device_info: @device_info.stringify_keys,
+        allow_account_creation: false
+      }, expires_in: 10.minutes)
+      code
+    end
 end

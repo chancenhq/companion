@@ -26,6 +26,10 @@ class Api::V1::BaseController < ApplicationController
   before_action :authenticate_request!
   before_action :check_api_key_rate_limit
   before_action :log_api_access
+  # Default-deny (issue #106): every endpoint needs a verified email unless the
+  # controller explicitly skips this. test/controllers/api/v1/verification_gate_test.rb
+  # fails if a new controller is neither gated nor on its allowlist.
+  before_action :ensure_verified_for_financial_data
 
 
 
@@ -215,6 +219,17 @@ class Api::V1::BaseController < ApplicationController
 
     def ensure_read_scope
       authorize_scope!(:read)
+    end
+
+    def ensure_verified_for_financial_data
+      return true if current_resource_owner&.email_verified?
+
+      render_json({
+        error: "email_verification_required",
+        message: "Verify your email to see your Chancen Account",
+        action: "resend_email"
+      }, status: :forbidden)
+      false
     end
 
     # Consistent JSON response method

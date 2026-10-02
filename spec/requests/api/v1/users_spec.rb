@@ -19,6 +19,7 @@ RSpec.describe 'API V1 Users', type: :request do
       email: 'api-user@example.com',
       password: 'password123',
       password_confirmation: 'password123',
+      email_verified_at: Time.current,
       role: role
     )
   end
@@ -124,6 +125,38 @@ RSpec.describe 'API V1 Users', type: :request do
   end
 
   path '/api/v1/users/me' do
+    get 'Current user' do
+      tags 'Users'
+      description 'Returns the signed-in user, including whether their email is verified. '                   'The app calls this to pick up a verification without a new sign-in. '                   'Available before email verification.'
+      security [ { apiKeyAuth: [] } ]
+      produces 'application/json'
+
+      response '200', 'current user' do
+        schema type: :object,
+               properties: {
+                 user: {
+                   type: :object,
+                   properties: {
+                     id: { type: :string, format: :uuid },
+                     email: { type: :string },
+                     first_name: { type: :string, nullable: true },
+                     last_name: { type: :string, nullable: true },
+                     ui_layout: { type: :string, enum: %w[dashboard intro] },
+                     ai_enabled: { type: :boolean },
+                     email_verified: { type: :boolean }
+                   }
+                 }
+               }
+        run_test!
+      end
+
+      response '401', 'unauthorized' do
+        let(:'X-Api-Key') { 'invalid-key' }
+
+        run_test!
+      end
+    end
+
     delete 'Delete account' do
       tags 'Users'
       description 'Permanently deactivates the current user account and all associated data. ' \
