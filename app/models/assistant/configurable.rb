@@ -25,14 +25,7 @@ module Assistant::Configurable
       def permitted_functions(user, functions)
         return functions if user.email_verified?
 
-        functions - isa_functions
-      end
-
-      def isa_functions
-        [
-          Assistant::Function::GetMyAccount,
-          Assistant::Function::GetISATransactions
-        ]
+        functions - Assistant.isa_function_classes
       end
 
       def intro_functions

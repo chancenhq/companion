@@ -620,8 +620,21 @@ class UserTest < ActiveSupport::TestCase
   end
 
   # Interim email verification (issue #106): only SSO-only accounts count as verified
-  test "email_verified? is true for sso_only users" do
+  test "email_verified? is true for password-less Google/Apple accounts" do
     assert users(:sso_only).email_verified?
+  end
+
+  test "email_verified? is false for password-less accounts from providers that don't prove email" do
+    %w[github saml].each do |provider|
+      user = User.create!(email: "#{provider}-only@example.com", skip_password_validation: true, family: families(:empty))
+      OidcIdentity.create!(user: user, provider: provider, uid: "#{provider}-uid", info: { email: user.email })
+      assert user.sso_only?
+      assert_not user.email_verified?, "#{provider}-only account must not count as verified"
+    end
+
+    generic = User.create!(email: "generic-oidc@example.com", skip_password_validation: true, family: families(:empty))
+    OidcIdentity.create!(user: generic, provider: "openid_connect", issuer: "https://idp.example.com", uid: "generic-uid", info: { email: generic.email })
+    assert_not generic.email_verified?
   end
 
   test "email_verified? is false for password users even with a linked OIDC identity" do

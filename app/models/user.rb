@@ -176,10 +176,12 @@ class User < ApplicationRecord
   end
 
   # Interim proof of email ownership until #106 adds users.email_verified_at.
-  # Google/Apple-only accounts have proven control of the address; password
-  # accounts have not. #106 replaces this body with email_verified_at.present?.
+  # Only accounts with no password and a Google/Apple identity count: those
+  # providers prove control of the address. Password accounts, and providers
+  # that don't guarantee verified emails (GitHub, other OIDC/SAML IdPs), don't.
+  # #106 replaces this body with email_verified_at.present?.
   def email_verified?
-    sso_only?
+    password_digest.nil? && oidc_identities.any?(&:email_trusted?)
   end
 
   # Check if user has a local password set (can authenticate locally)
