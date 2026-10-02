@@ -615,6 +615,8 @@ class UserTest < ActiveSupport::TestCase
   end
 
   test "revoke_all_access! ends tokens on every device, web sessions and API keys" do
+    # Class-level memo may point at an OAuth app from another test's rolled-back transaction.
+    MobileDevice.instance_variable_set(:@shared_oauth_application, nil)
     phone = MobileDevice.upsert_device!(@user, device_id: "phone-a", device_name: "Phone A", device_type: "ios", os_version: "17", app_version: "1.0")
     tablet = MobileDevice.upsert_device!(@user, device_id: "tablet-b", device_name: "Tablet B", device_type: "android", os_version: "14", app_version: "1.0")
     phone.issue_token!

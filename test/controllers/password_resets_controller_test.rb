@@ -29,6 +29,8 @@ class PasswordResetsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "update signs the account out everywhere" do
+    # Class-level memo may point at an OAuth app from another test's rolled-back transaction.
+    MobileDevice.instance_variable_set(:@shared_oauth_application, nil)
     @user.sessions.create!
     device = MobileDevice.upsert_device!(@user, device_id: "web-reset-phone", device_name: "Phone", device_type: "ios", os_version: "17", app_version: "1.0")
     device.issue_token!
