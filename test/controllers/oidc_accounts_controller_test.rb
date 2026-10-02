@@ -142,6 +142,29 @@ class OidcAccountsControllerTest < ActionController::TestCase
     assert_select "p", text: /New account creation via single sign-on is disabled/
   end
 
+  test "does not offer account creation under invite_only without an invitation" do
+    Setting.onboarding_state = "invite_only"
+    session[:pending_oidc_auth] = new_user_auth
+    AuthConfig.stubs(:allowed_oidc_domain?).returns(true)
+
+    get :link
+    assert_response :success
+
+    assert_select "button", text: "Create Account", count: 0
+  end
+
+  test "does not offer account creation when sign-up is closed, even with an invitation" do
+    invitation = invitations(:two)
+    Setting.onboarding_state = "closed"
+    session[:pending_oidc_auth] = new_user_auth.merge("email" => invitation.email)
+
+    get :link
+    assert_response :success
+
+    assert_select "button", text: "Create Account", count: 0
+    assert_select "button", text: /Accept/i, count: 0
+  end
+
   test "create_user redirects when JIT link-only mode" do
     session[:pending_oidc_auth] = new_user_auth
 
