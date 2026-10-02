@@ -118,4 +118,59 @@ class RegistrationsControllerTest < ActionDispatch::IntegrationTest
     assert_not created_user.show_ai_sidebar?
     assert created_user.ai_enabled?
   end
+
+  test "invite_only blocks sign-up without an invitation in managed mode" do
+    with_onboarding_state("invite_only") do
+      get new_registration_url
+      assert_redirected_to new_session_url
+      assert_equal "Sign-up is by invitation only. Please use the link in your invitation email.", flash[:alert]
+
+      assert_no_difference "User.count" do
+        post registration_url, params: { user: { email: "uninvited@example.com", password: "Password1!" } }
+      end
+      assert_redirected_to new_session_url
+    end
+  end
+
+  test "invite_only allows sign-up with an invitation token" do
+    invitation = invitations(:one)
+
+    with_onboarding_state("invite_only") do
+      get new_registration_url(invitation: invitation.token)
+      assert_response :success
+
+      assert_difference "User.count", +1 do
+        post registration_url, params: { user: {
+          email: invitation.email,
+          password: "Password1!",
+          invitation: invitation.token } }
+      end
+      assert_not_nil invitation.reload.accepted_at
+    end
+  end
+
+  test "closed blocks sign-up even with an invitation token" do
+    invitation = invitations(:one)
+
+    with_onboarding_state("closed") do
+      assert_no_difference "User.count" do
+        post registration_url, params: { user: {
+          email: invitation.email,
+          password: "Password1!",
+          invitation: invitation.token } }
+      end
+      assert_redirected_to new_session_url
+      assert_equal "Signups are currently closed.", flash[:alert]
+    end
+  end
+
+  private
+
+    def with_onboarding_state(state)
+      original = Setting.onboarding_state
+      Setting.onboarding_state = state
+      yield
+    ensure
+      Setting.onboarding_state = original
+    end
 end
