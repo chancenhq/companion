@@ -1125,6 +1125,20 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     assert OidcIdentity.exists?(user: user, provider: "apple", uid: apple_uid)
   end
 
+  test "apple_sign_in auto-link revokes logins on other devices" do
+    user = users(:family_admin)
+    other_device = MobileDevice.upsert_device!(user, device_id: "registrant-phone", device_name: "Other", device_type: "android", os_version: "14", app_version: "1.0")
+    other_device.issue_token!
+    AppleSignIn.stubs(:verify!).returns({ "sub" => "apple.uid.revoke-on-link", "email" => user.email })
+
+    post "/api/v1/auth/apple_sign_in", params: { identity_token: "fake.token", device: @device_info }
+
+    assert_response :success
+    assert_empty other_device.active_tokens
+    new_token = JSON.parse(response.body)["access_token"]
+    assert_not Doorkeeper::AccessToken.by_token(new_token).revoked?
+  end
+
   test "apple_sign_in creates new account for unknown Apple ID with email in JWT" do
     apple_uid = "apple.uid.brand-new"
     apple_email = "brandnew@example.com"
@@ -1219,6 +1233,22 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     new_user = User.find_by!(email: apple_email)
     assert_equal default_family, new_user.family
     assert_equal "member", new_user.role
+  end
+
+  test "apple_sign_in ignores a client-supplied email when Apple's token has none" do
+    user = users(:family_admin)
+    MobileDevice.instance_variable_set(:@shared_oauth_application, nil)
+    existing_device = MobileDevice.upsert_device!(user, device_id: "victim-phone", device_name: "Phone", device_type: "ios", os_version: "17", app_version: "1.0")
+    existing_device.issue_token!
+    AppleSignIn.stubs(:verify!).returns({ "sub" => "apple.uid.no-email-claim" })
+
+    assert_no_difference([ "User.count", "OidcIdentity.count" ]) do
+      post "/api/v1/auth/apple_sign_in", params: { identity_token: "fake.token", email: user.email, device: @device_info }
+    end
+
+    assert_response :unprocessable_entity
+    assert_match(/email/, JSON.parse(response.body)["error"])
+    assert existing_device.active_tokens.any?, "the account's existing logins must be left alone"
   end
 
   test "apple_sign_in returns 422 when no email in JWT and no email param" do
@@ -1369,6 +1399,33 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     data = JSON.parse(response.body)
     assert_includes data["message"], "updated"
     assert user.reload.authenticate("NewPass456!")
+  end
+
+  test "reset_password signs the account out on every device" do
+    user = User.create!(
+      email: "revokeonreset@example.com",
+      password: "OldPass123!",
+      first_name: "Revoke",
+      last_name: "Reset",
+      family: Family.create!(name: "Revoke Family", currency: "USD")
+    )
+    phone = MobileDevice.upsert_device!(user, device_id: "reset-phone", device_name: "Phone", device_type: "ios", os_version: "17", app_version: "1.0")
+    other = MobileDevice.upsert_device!(user, device_id: "reset-other", device_name: "Other", device_type: "android", os_version: "14", app_version: "1.0")
+    old_token = phone.issue_token![:access_token]
+    other.issue_token!
+
+    patch "/api/v1/auth/password_reset", params: {
+      token: user.generate_token_for(:password_reset),
+      password: "NewPass456!",
+      password_confirmation: "NewPass456!"
+    }
+
+    assert_response :ok
+    assert_empty phone.active_tokens
+    assert_empty other.active_tokens
+
+    get "/api/v1/accounts", headers: { "Authorization" => "Bearer #{old_token}" }
+    assert_response :unauthorized
   end
 
   test "reset_password returns 422 for invalid token" do

@@ -230,7 +230,9 @@ module Api
 
         claims = AppleSignIn.verify!(identity_token)
         apple_uid = claims["sub"]
-        email     = claims["email"].presence || params[:email].presence
+        # Only the email inside Apple's signed token proves anything. A client-
+        # supplied email must never link to, verify or create an account.
+        email     = claims["email"].presence
 
         identity = OidcIdentity.find_by(provider: "apple", uid: apple_uid)
 
@@ -249,6 +251,10 @@ module Api
             },
             last_authenticated_at: Time.current
           )
+          # Apple has proven control of this email; end any login held by
+          # whoever registered it first. issue_mobile_tokens below then
+          # issues the only valid token.
+          existing_user.revoke_all_access!
           existing_user
         else
           unless email.present?
@@ -309,7 +315,9 @@ module Api
           return
         end
 
-        render json: { message: "Password updated successfully." }
+        user.revoke_all_access!
+
+        render json: { message: "Password updated. You've been signed out on all devices." }
       end
 
       def enable_ai

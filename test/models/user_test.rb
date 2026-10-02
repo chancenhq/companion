@@ -614,6 +614,25 @@ class UserTest < ActiveSupport::TestCase
     assert @user.has_local_password?
   end
 
+  test "revoke_all_access! ends tokens on every device, web sessions and API keys" do
+    # Class-level memo may point at an OAuth app from another test's rolled-back transaction.
+    MobileDevice.instance_variable_set(:@shared_oauth_application, nil)
+    phone = MobileDevice.upsert_device!(@user, device_id: "phone-a", device_name: "Phone A", device_type: "ios", os_version: "17", app_version: "1.0")
+    tablet = MobileDevice.upsert_device!(@user, device_id: "tablet-b", device_name: "Tablet B", device_type: "android", os_version: "14", app_version: "1.0")
+    phone.issue_token!
+    tablet.issue_token!
+    @user.sessions.create!
+    @user.api_keys.active.destroy_all # one active key per source allowed
+    api_key = ApiKey.create!(user: @user, name: "Key", scopes: [ "read" ], source: "web", display_key: "revoke_#{SecureRandom.hex(8)}")
+
+    @user.revoke_all_access!
+
+    assert_empty phone.active_tokens
+    assert_empty tablet.active_tokens
+    assert_empty @user.sessions.reload
+    assert api_key.reload.revoked?
+  end
+
   test "has_local_password? returns false when password_digest is nil" do
     sso_user = users(:sso_only)
     assert_not sso_user.has_local_password?
