@@ -3,9 +3,9 @@ class RegistrationsController < ApplicationController
 
   layout "auth"
 
-  before_action :ensure_signup_open, if: :self_hosted?
-  before_action :set_user, only: :create
   before_action :set_invitation
+  before_action :ensure_signup_open
+  before_action :set_user, only: :create
   before_action :validate_password_requirements, only: :create
 
   def new
@@ -93,8 +93,8 @@ class RegistrationsController < ApplicationController
     end
 
     def ensure_signup_open
-      return unless Setting.onboarding_state == "closed"
+      return if signup_permitted?(invitation: @invitation)
 
-      redirect_to new_session_path, alert: t("registrations.closed")
+      redirect_to new_session_path, alert: signup_not_permitted_message
     end
 end

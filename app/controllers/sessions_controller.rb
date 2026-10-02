@@ -294,8 +294,10 @@ class SessionsController < ApplicationController
         return
       end
 
-      has_pending_invitation = email.present? && Invitation.pending.exists?(email: email)
-      allow_creation = has_pending_invitation || (!AuthConfig.jit_link_only? && AuthConfig.allowed_oidc_domain?(email))
+      pending_invitation = email.present? ? Invitation.pending.find_by(email: email) : nil
+      has_pending_invitation = pending_invitation.present?
+      allow_creation = signup_permitted?(invitation: pending_invitation) &&
+        (has_pending_invitation || (!AuthConfig.jit_link_only? && AuthConfig.allowed_oidc_domain?(email)))
 
       linking_code = SecureRandom.urlsafe_base64(32)
       Rails.cache.write(

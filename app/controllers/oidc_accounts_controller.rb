@@ -100,6 +100,11 @@ class OidcAccountsController < ApplicationController
     # Check for a pending invitation for this email
     invitation = Invitation.pending.find_by(email: email)
 
+    unless signup_permitted?(invitation: invitation)
+      redirect_to new_session_path, alert: signup_not_permitted_message
+      return
+    end
+
     # Respect global JIT configuration: in link_only mode or when the email
     # domain is not allowed, block JIT account creation—unless there's a
     # pending invitation for this user.
