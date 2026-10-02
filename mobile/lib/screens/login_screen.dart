@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../providers/auth_provider.dart';
-import '../services/api_config.dart';
 import 'backend_config_screen.dart';
 import 'forgot_password_screen.dart';
 
@@ -15,6 +14,7 @@ class LoginFormBody extends StatefulWidget {
     super.key,
     this.branded = false,
     this.allowSignUp = false,
+    this.onLogoTap,
   });
 
   /// When true: Chancen logo + "Sign in to your Companion" headline.
@@ -22,6 +22,9 @@ class LoginFormBody extends StatefulWidget {
 
   /// When true: shows Sign In | Sign Up toggle and first/last name fields.
   final bool allowSignUp;
+
+  /// Optional tap handler for the logo (used for hidden dev-mode unlock).
+  final VoidCallback? onLogoTap;
 
   @override
   State<LoginFormBody> createState() => _LoginFormBodyState();
@@ -97,10 +100,13 @@ class _LoginFormBodyState extends State<LoginFormBody> {
           // ── Header ──────────────────────────────────────────────────────
           if (widget.branded) ...[
             Center(
-              child: SvgPicture.asset(
-                'assets/images/companion-logo.svg',
-                width: 64,
-                height: 64,
+              child: GestureDetector(
+                onTap: widget.onLogoTap,
+                child: SvgPicture.asset(
+                  'assets/images/companion-logo.svg',
+                  width: 64,
+                  height: 64,
+                ),
               ),
             ),
             const SizedBox(height: 24),
@@ -429,6 +435,30 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  int _logoTapCount = 0;
+  DateTime? _firstLogoTapAt;
+  bool _devUnlocked = false;
+
+  void _handleLogoTap() {
+    final now = DateTime.now();
+    if (_firstLogoTapAt == null ||
+        now.difference(_firstLogoTapAt!) > const Duration(seconds: 5)) {
+      _firstLogoTapAt = now;
+      _logoTapCount = 1;
+    } else {
+      _logoTapCount++;
+      if (_logoTapCount >= 7 && !_devUnlocked) {
+        setState(() => _devUnlocked = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Developer options enabled'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
   void _showApiKeyDialog() {
     final apiKeyController = TextEditingController();
     final outerContext = context;
@@ -519,8 +549,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
     return Scaffold(
       body: SafeArea(
         child: Stack(
@@ -530,43 +558,13 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const LoginFormBody(branded: true, allowSignUp: true),
+                  LoginFormBody(
+                    branded: true,
+                    allowSignUp: true,
+                    onLogoTap: _handleLogoTap,
+                  ),
 
-                  if (kDebugMode) ...[
-                    // Backend URL info
-                    InkWell(
-                      onTap: () => widget._openSettings(context),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: colorScheme.surfaceContainerHighest
-                              .withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Column(
-                          children: [
-                            Text(
-                              'Sure server URL:',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: colorScheme.onSurfaceVariant,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              ApiConfig.baseUrl,
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: colorScheme.primary,
-                                    fontFamily: 'monospace',
-                                  ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
+                  if (_devUnlocked) ...[
                     const SizedBox(height: 12),
 
                     // API Key Login Button
@@ -580,7 +578,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
 
-            if (kDebugMode)
+            if (_devUnlocked)
               Positioned(
                 right: 8,
                 top: 8,
