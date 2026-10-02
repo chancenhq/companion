@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../models/isa_transaction.dart';
 import '../providers/auth_provider.dart';
 import '../services/isa_transactions_service.dart';
+import '../services/my_account_service.dart' show EmailVerificationRequiredException;
+import '../widgets/verify_email_card.dart';
 
 class IsaTransactionsScreen extends StatefulWidget {
   const IsaTransactionsScreen({super.key});
@@ -18,6 +20,7 @@ class _IsaTransactionsScreenState extends State<IsaTransactionsScreen> {
   List<IsaTransaction>? _transactions;
   bool _loading = true;
   String? _error;
+  bool _verificationRequired = false;
 
   @override
   void initState() {
@@ -26,7 +29,7 @@ class _IsaTransactionsScreenState extends State<IsaTransactionsScreen> {
   }
 
   Future<void> _load() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() { _loading = true; _error = null; _verificationRequired = false; });
     try {
       final token = await context.read<AuthProvider>().getValidAccessToken();
       if (token == null) { if (mounted) setState(() { _loading = false; }); return; }
@@ -36,6 +39,8 @@ class _IsaTransactionsScreenState extends State<IsaTransactionsScreen> {
         return type.contains('repayment') || type.contains('commitment');
       }).toList();
       if (mounted) setState(() { _transactions = filtered; _loading = false; });
+    } on EmailVerificationRequiredException {
+      if (mounted) setState(() { _transactions = null; _verificationRequired = true; _loading = false; });
     } on IsaTransactionsUnavailableException {
       if (mounted) setState(() { _error = 'Repayment data is not configured yet.'; _loading = false; });
     } catch (_) {
@@ -54,6 +59,13 @@ class _IsaTransactionsScreenState extends State<IsaTransactionsScreen> {
   Widget _buildBody(BuildContext context) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_verificationRequired) {
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: [VerifyEmailCard(onVerified: _load)],
+      );
     }
 
     if (_error != null) {

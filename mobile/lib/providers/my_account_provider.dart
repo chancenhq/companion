@@ -12,6 +12,7 @@ class MyAccountProvider with ChangeNotifier {
   bool _unavailable = false;
   bool _networkError = false;
   bool _upstreamError = false;
+  bool _verificationRequired = false;
   DateTime? _lastSyncedAt;
 
   StudentAccount? get account => _account;
@@ -23,6 +24,8 @@ class MyAccountProvider with ChangeNotifier {
   bool get networkError => _networkError;
   /// True when the server returned an unexpected error (e.g. 502 from Metabase).
   bool get upstreamError => _upstreamError;
+  /// True when the server locks Chancen Account data until the email is verified.
+  bool get verificationRequired => _verificationRequired;
   /// UTC timestamp of the last successful data fetch, null if never loaded.
   DateTime? get lastSyncedAt => _lastSyncedAt;
 
@@ -33,12 +36,20 @@ class MyAccountProvider with ChangeNotifier {
     _unavailable = false;
     _networkError = false;
     _upstreamError = false;
+    _verificationRequired = false;
     notifyListeners();
 
     try {
       _account = await _service.fetchMyAccount(apiKey);
       _loaded = true;
       _lastSyncedAt = DateTime.now();
+    } on EmailVerificationRequiredException {
+      // Drop anything cached: it may predate the lock or belong to whoever
+      // registered this email first.
+      _account = null;
+      _lastSyncedAt = null;
+      _verificationRequired = true;
+      _loaded = true;
     } on AccountNotFoundException {
       _notFound = true;
       _loaded = true;
