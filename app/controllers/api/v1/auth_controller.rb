@@ -232,7 +232,9 @@ module Api
 
         claims = AppleSignIn.verify!(identity_token)
         apple_uid = claims["sub"]
-        email     = claims["email"].presence || params[:email].presence
+        # Only the email inside Apple's signed token proves anything. A client-
+        # supplied email must never link to, verify or create an account.
+        email     = claims["email"].presence
 
         identity = OidcIdentity.find_by(provider: "apple", uid: apple_uid)
 
