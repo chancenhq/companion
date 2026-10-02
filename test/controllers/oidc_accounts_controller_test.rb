@@ -210,7 +210,7 @@ class OidcAccountsControllerTest < ActionController::TestCase
     assert_equal "guest", new_user.role
   end
 
-  test "create_user rejects stale invite-only default family" do
+  test "create_user without an invitation is rejected under invite_only" do
     Setting.onboarding_state = "invite_only"
     Setting.invite_only_default_family_id = SecureRandom.uuid
     session[:pending_oidc_auth] = new_user_auth
@@ -220,25 +220,21 @@ class OidcAccountsControllerTest < ActionController::TestCase
     end
 
     assert_redirected_to new_session_path
-    assert_equal "Invite-only default family is unavailable. Please contact an administrator.", flash[:alert]
+    assert_equal "Sign-up is by invitation only. Please use the link in your invitation email.", flash[:alert]
   end
 
-  test "create_user joins configured invite-only default family as member" do
+  test "create_user does not join the invite-only default family without an invitation" do
     default_family = families(:empty)
     Setting.onboarding_state = "invite_only"
     Setting.invite_only_default_family_id = default_family.id.to_s
     session[:pending_oidc_auth] = new_user_auth
 
-    assert_difference([ "User.count", "OidcIdentity.count" ], 1) do
-      assert_no_difference("Family.count") do
-        post :create_user
-      end
+    assert_no_difference([ "User.count", "OidcIdentity.count", "Family.count" ]) do
+      post :create_user
     end
 
-    assert_redirected_to root_path
-    new_user = User.find_by!(email: new_user_auth["email"])
-    assert_equal default_family, new_user.family
-    assert_equal "member", new_user.role
+    assert_redirected_to new_session_path
+    assert_equal "Sign-up is by invitation only. Please use the link in your invitation email.", flash[:alert]
   end
 
   test "create_user accepts pending invitation before invite-only default family" do

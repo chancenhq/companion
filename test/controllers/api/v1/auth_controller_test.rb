@@ -173,7 +173,9 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     assert new_user.family.present?
   end
 
-  test "signup requires invite code when invite-only default family id is stale" do
+  INVITE_ONLY_MESSAGE = "Sign-up is by invitation only. Please use the link in your invitation email."
+
+  test "signup without an invitation is rejected under invite_only" do
     with_self_hosting do
       Setting.onboarding_state = "invite_only"
       Setting.invite_only_default_family_id = SecureRandom.uuid
@@ -191,47 +193,37 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
       end
 
       assert_response :forbidden
-      assert_equal "Invite code is required", JSON.parse(response.body)["error"]
+      assert_equal INVITE_ONLY_MESSAGE, JSON.parse(response.body)["error"]
     end
   end
 
-  test "signup with invite code creates family when invite-only default family id is stale" do
+  test "signup with a generic invite code is rejected under invite_only" do
     invite_code = InviteCode.create!
+    Setting.onboarding_state = "invite_only"
 
-    with_self_hosting do
-      Setting.onboarding_state = "invite_only"
-      Setting.invite_only_default_family_id = SecureRandom.uuid
-
-      assert_difference("User.count", 1) do
-        assert_difference("Family.count", 1) do
-          assert_difference("InviteCode.count", -1) do
-            post "/api/v1/auth/signup", params: {
-              user: {
-                email: "staleinvite@example.com",
-                password: "SecurePass123!",
-                first_name: "Stale",
-                last_name: "Invite"
-              },
-              device: @device_info,
-              invite_code: invite_code.token
-            }
-          end
-        end
-      end
-
-      assert_response :created
-      user = User.find_by!(email: "staleinvite@example.com")
-      assert_equal "admin", user.role
-      assert user.family.present?
+    assert_no_difference([ "User.count", "Family.count", "InviteCode.count" ]) do
+      post "/api/v1/auth/signup", params: {
+        user: {
+          email: "codeonly@example.com",
+          password: "SecurePass123!",
+          first_name: "Code",
+          last_name: "Only"
+        },
+        device: @device_info,
+        invite_code: invite_code.token
+      }
     end
+
+    assert_response :forbidden
+    assert_equal INVITE_ONLY_MESSAGE, JSON.parse(response.body)["error"]
   end
 
-  test "signup joins configured invite-only default family as member" do
+  test "signup does not join the invite-only default family without an invitation" do
     default_family = families(:empty)
     Setting.onboarding_state = "invite_only"
     Setting.invite_only_default_family_id = default_family.id.to_s
 
-    assert_no_difference("Family.count") do
+    assert_no_difference([ "User.count", "Family.count" ]) do
       post "/api/v1/auth/signup", params: {
         user: {
           email: "defaultfamily@example.com",
@@ -243,10 +235,30 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
       }
     end
 
-    assert_response :created
-    user = User.find_by!(email: "defaultfamily@example.com")
-    assert_equal default_family, user.family
-    assert_equal "member", user.role
+    assert_response :forbidden
+    assert_equal INVITE_ONLY_MESSAGE, JSON.parse(response.body)["error"]
+  end
+
+  test "signup is rejected when onboarding is closed, even with an invitation token" do
+    invitation = invitations(:two)
+    Setting.onboarding_state = "closed"
+
+    assert_no_difference("User.count") do
+      post "/api/v1/auth/signup", params: {
+        user: {
+          email: invitation.email,
+          password: "SecurePass123!",
+          first_name: "Closed",
+          last_name: "Signup",
+          invitation: invitation.token
+        },
+        device: @device_info
+      }
+    end
+
+    assert_response :forbidden
+    assert_equal "Signups are currently closed.", JSON.parse(response.body)["error"]
+    assert_nil invitation.reload.accepted_at
   end
 
   test "signup accepts pending invitation before invite-only default family" do
@@ -842,7 +854,7 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     assert_equal "member", user.role
   end
 
-  test "sso_create_account rejects stale invite-only default family without consuming linking code" do
+  test "sso_create_account without an invitation is rejected under invite_only without consuming linking code" do
     Setting.onboarding_state = "invite_only"
     Setting.invite_only_default_family_id = SecureRandom.uuid
 
@@ -867,11 +879,11 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     end
 
     assert_response :forbidden
-    assert_equal "Invite-only default family is unavailable. Please contact an administrator.", JSON.parse(response.body)["error"]
+    assert_equal INVITE_ONLY_MESSAGE, JSON.parse(response.body)["error"]
     assert Rails.cache.read("mobile_sso_link:#{linking_code}").present?
   end
 
-  test "sso_create_account joins configured invite-only default family as member" do
+  test "sso_create_account does not join the invite-only default family without an invitation" do
     default_family = families(:empty)
     Setting.onboarding_state = "invite_only"
     Setting.invite_only_default_family_id = default_family.id.to_s
@@ -888,20 +900,16 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
       allow_account_creation: true
     }, expires_in: 10.minutes)
 
-    assert_difference([ "User.count", "OidcIdentity.count" ], 1) do
-      assert_no_difference("Family.count") do
-        post "/api/v1/auth/sso_create_account", params: {
-          linking_code: linking_code,
-          first_name: "Default",
-          last_name: "Sso"
-        }
-      end
+    assert_no_difference([ "User.count", "OidcIdentity.count", "Family.count" ]) do
+      post "/api/v1/auth/sso_create_account", params: {
+        linking_code: linking_code,
+        first_name: "Default",
+        last_name: "Sso"
+      }
     end
 
-    assert_response :success
-    user = User.find_by!(email: "defaultsso@example.com")
-    assert_equal default_family, user.family
-    assert_equal "member", user.role
+    assert_response :forbidden
+    assert_equal INVITE_ONLY_MESSAGE, JSON.parse(response.body)["error"]
   end
 
   test "sso_create_account accepts pending invitation before invite-only default family" do
@@ -1191,7 +1199,7 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     assert invitation.reload.accepted_at.present?, "invitation should be marked accepted"
   end
 
-  test "apple_sign_in returns 403 when invite-only default family is unavailable and no invitation" do
+  test "apple_sign_in new account without an invitation is rejected under invite_only" do
     Setting.onboarding_state = "invite_only"
     Setting.invite_only_default_family_id = 0.to_s  # non-existent family
 
@@ -1208,11 +1216,10 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     end
 
     assert_response :forbidden
-    data = JSON.parse(response.body)
-    assert_match(/unavailable/, data["error"])
+    assert_equal INVITE_ONLY_MESSAGE, JSON.parse(response.body)["error"]
   end
 
-  test "apple_sign_in new account joins invite-only default family as member" do
+  test "apple_sign_in new account does not join the invite-only default family without an invitation" do
     default_family = families(:empty)
     Setting.onboarding_state = "invite_only"
     Setting.invite_only_default_family_id = default_family.id.to_s
@@ -1222,17 +1229,15 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
 
     AppleSignIn.stubs(:verify!).returns({ "sub" => apple_uid, "email" => apple_email })
 
-    assert_no_difference("Family.count") do
+    assert_no_difference([ "User.count", "Family.count" ]) do
       post "/api/v1/auth/apple_sign_in", params: {
         identity_token: "fake.token",
         device: @device_info
       }
     end
 
-    assert_response :success
-    new_user = User.find_by!(email: apple_email)
-    assert_equal default_family, new_user.family
-    assert_equal "member", new_user.role
+    assert_response :forbidden
+    assert_equal INVITE_ONLY_MESSAGE, JSON.parse(response.body)["error"]
   end
 
   test "apple_sign_in returns 422 when no email in JWT and no email param" do
