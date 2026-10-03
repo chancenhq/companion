@@ -20,6 +20,22 @@ void main() {
       expect(User.fromJson(payload()).emailVerified, isNull);
     });
 
+    test('country fields: unknown never prompts, server values are kept', () {
+      final unknown = User.fromJson(payload());
+      expect(unknown.requiresCountryConfirmation, isNull);
+      expect(unknown.countryCode, isNull);
+
+      final user = User.fromJson(payload({
+        'country_code': 'RW',
+        'requires_country_confirmation': false,
+        'consent_version': '1.0',
+        'consent_country_code': 'RW',
+      }));
+      expect(user.countryCode, 'RW');
+      expect(user.requiresCountryConfirmation, isFalse);
+      expect(User.fromJson(user.toJson()).consentVersion, '1.0');
+    });
+
     test('survives being stored and read back', () {
       final stored = User.fromJson(payload({'email_verified': false})).toJson();
       expect(User.fromJson(stored).emailVerified, isFalse);
