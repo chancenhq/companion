@@ -1,6 +1,8 @@
 require "test_helper"
 
 class OidcAccountsControllerTest < ActionController::TestCase
+  include ActionMailer::TestHelper
+
   setup do
     ensure_tailwind_build
     @user = users(:family_admin)
