@@ -184,6 +184,38 @@ class AuthProvider with ChangeNotifier {
         'Something went wrong. Please try again.';
   }
 
+  /// Current privacy/terms version. Bump to ask every member to accept again.
+  static const String consentVersion = '1.0';
+
+  /// Issue #106, Story 1.5: show the country picker when the server has no
+  /// country for this member, or their consent is for an older version.
+  /// Unknown (older server) never prompts.
+  bool get countryConfirmationRequired {
+    final user = _user;
+    if (user == null || _isApiKeyAuth) return false;
+    if (user.requiresCountryConfirmation == true) return true;
+    return user.requiresCountryConfirmation == false && user.consentVersion != consentVersion;
+  }
+
+  /// Saves the country and accepted consent on the server. Returns an error
+  /// message, or null on success.
+  Future<String?> updateCountry(String countryCode) async {
+    final token = await getValidAccessToken();
+    if (token == null) return 'Please sign in again.';
+
+    final result = await _authService.updateCountry(
+      accessToken: token,
+      countryCode: countryCode,
+      consentVersion: consentVersion,
+    );
+    if (result['success'] == true) {
+      _setUser(result['user'] as User?);
+      notifyListeners();
+      return null;
+    }
+    return result['error'] as String? ?? 'Could not save your country. Please try again.';
+  }
+
   void dismissEmailVerificationPrompt() {
     _verificationPromptDismissed = true;
     notifyListeners();
