@@ -27,4 +27,24 @@ class AssistantConfigurableTest < ActiveSupport::TestCase
 
     assert_equal [ Assistant::Function::SearchFamilyFiles ], config[:functions]
   end
+  test "escalation and ISA guidance follow the member's country" do
+    chat = chats(:intro)
+    chat.user.update!(country_code: "RW")
+
+    instructions = Assistant.config_for(chat)[:instructions]
+
+    assert_includes instructions, "Chancen Rwanda team"
+    assert_includes instructions, "Use the rwanda ISA content source"
+    assert_not_includes instructions, "Always refer to the 'Chancen Kenya team'"
+  end
+
+  test "neutral guidance when the member has no country" do
+    chat = chats(:intro)
+    chat.user.update!(country_code: nil)
+
+    instructions = Assistant.config_for(chat)[:instructions]
+
+    assert_includes instructions, "the Chancen team"
+    assert_includes instructions, "Do not default to Kenya"
+  end
 end

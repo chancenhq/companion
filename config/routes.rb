@@ -493,6 +493,7 @@ Rails.application.routes.draw do
       patch "auth/password_reset", to: "auth#reset_password"
 
       # Production API endpoints
+      resources :countries, only: [ :index ]
       resources :accounts, only: [ :index, :show ]
       resources :balances, only: [ :index, :show ]
       resources :budgets, only: [ :index, :show ]
@@ -540,6 +541,7 @@ Rails.application.routes.draw do
       get "users/reset/status", to: "users#reset_status"
       delete "users/reset", to: "users#reset"
       get "users/me", to: "users#me"
+      patch "users/me/country", to: "users#update_country"
       delete "users/me", to: "users#destroy"
 
       # Test routes for API controller testing (only available in test environment)

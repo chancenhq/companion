@@ -154,7 +154,9 @@ module Api
             last_name: cached[:user_last_name],
             ui_layout: cached[:user_ui_layout],
             ai_enabled: cached[:user_ai_enabled],
-            email_verified: cached[:user_email_verified]
+            email_verified: cached[:user_email_verified],
+            country_code: cached[:user_country_code],
+            requires_country_confirmation: cached.fetch(:user_requires_country_confirmation, cached[:user_country_code].blank?)
           }
         }
       end
@@ -421,7 +423,7 @@ module Api
       private
 
         def user_signup_params
-          params.require(:user).permit(:email, :password, :first_name, :last_name)
+          params.require(:user).permit(:email, :password, :first_name, :last_name, :country_code)
         end
 
         def invitation_token_param
