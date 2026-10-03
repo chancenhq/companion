@@ -5,15 +5,16 @@ module Assistant::Configurable
     def config_for(chat)
       preferred_currency = Money::Currency.new(chat.user.family.currency)
       preferred_date_format = chat.user.family.date_format
+      country = ChancenCountry.find(chat.user.country_code)
 
       if chat.user.ui_layout_intro?
         {
-          instructions: intro_instructions(preferred_currency, preferred_date_format),
+          instructions: intro_instructions(preferred_currency, preferred_date_format, country),
           functions: permitted_functions(chat.user, intro_functions)
         }
       else
         {
-          instructions: default_instructions(preferred_currency, preferred_date_format),
+          instructions: default_instructions(preferred_currency, preferred_date_format, country),
           functions: permitted_functions(chat.user, default_functions)
         }
       end
@@ -38,7 +39,7 @@ module Assistant::Configurable
         ]
       end
 
-      def intro_instructions(preferred_currency, preferred_date_format)
+      def intro_instructions(preferred_currency, preferred_date_format, country)
         <<~PROMPT
         ## Your identity
 
@@ -85,7 +86,8 @@ module Assistant::Configurable
         - Always frame income reporting as a contractual obligation, not optional. Use language like 'this is a requirement under your contract' when answering questions about reporting
         - Our main value is fair financing for students. It means putting students at the centre, being open about how ISAs work, and always leaving the decision in the student’s hands
         - If a student asks about a Chancen representative visiting their home, confirm that this is contractually permitted in cases of Event of Default. Do not frame this as unusual or rare
-        - Never refer to 'Chancen Manager.' Always refer to the 'Chancen Kenya team' when directing students to escalate
+        - Never refer to 'Chancen Manager.' #{country_escalation_guidance(country)}
+        - #{country_isa_guidance(country)}
 
         ### Financial planning and budgeting rules
 
@@ -125,7 +127,7 @@ module Assistant::Configurable
         Assistant.function_classes
       end
 
-      def default_instructions(preferred_currency, preferred_date_format)
+      def default_instructions(preferred_currency, preferred_date_format, country)
         <<~PROMPT
         ## Your identity
 
@@ -165,6 +167,8 @@ module Assistant::Configurable
         - Help students understand their specific ISA terms and repayment structure
         - Guide students through ISA calculations when relevant
         - Address common ISA concerns like early repayment, income changes, and payment caps
+        - #{country_escalation_guidance(country)}
+        - #{country_isa_guidance(country)}
         - Our main value is fair financing for students. It means putting students at the centre, being open about how ISAs work, and always leaving the decision in the student’s hands
 
         ### Financial planning and budgeting rules
@@ -199,6 +203,26 @@ module Assistant::Configurable
 
         Remember: Your goal is to build students' confidence and financial literacy while keeping them engaged and supported throughout their learning journey.
         PROMPT
+      end
+
+      # Issue #106, Story 1.3: escalation and ISA content follow the member's
+      # country (config/chancen_countries.yml); never Kenya by default.
+      def country_escalation_guidance(country)
+        if country
+          "When directing students to escalate, refer to the #{country.team_name} and share #{country.escalation_contact} when contact details are needed."
+        else
+          "When directing students to escalate, use neutral wording: 'the Chancen team'. Do not default to Kenya or any other country-specific team."
+        end
+      end
+
+      def country_isa_guidance(country)
+        if country&.isa_content_source == "general"
+          "Use general ISA content for this member until country-specific ISA material is available."
+        elsif country
+          "Use the #{country.isa_content_source} ISA content source for this member. When calling search_family_files for ISA questions, include #{country.isa_content_source} and #{country.name} in the search query so country-specific material is retrieved when available."
+        else
+          "Use general ISA content only until the member confirms their country."
+        end
       end
   end
 end

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_02_100000) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_03_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -1804,6 +1804,11 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_02_100000) do
     t.uuid "default_account_id"
     t.string "webauthn_id"
     t.datetime "email_verified_at"
+    t.string "country_code"
+    t.string "consent_version"
+    t.string "consent_country_code"
+    t.datetime "consent_accepted_at"
+    t.index ["country_code"], name: "index_users_on_country_code"
     t.index ["default_account_id"], name: "index_users_on_default_account_id"
     t.index ["email"], name: "index_users_on_email", unique: true
     t.index ["family_id"], name: "index_users_on_family_id"

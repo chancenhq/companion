@@ -782,4 +782,23 @@ class UserTest < ActiveSupport::TestCase
     assert_equal true, @user.mobile_payload[:email_verified]
     assert_equal false, users(:unverified).mobile_payload[:email_verified]
   end
+  # Country (issue #106, Epic 1)
+  test "country must be one of the Chancen countries" do
+    @user.country_code = "ke"
+    assert @user.valid?
+    assert_equal "KE", @user.country_code
+
+    @user.country_code = "US"
+    assert_not @user.valid?
+  end
+
+  test "members without a country must confirm it, and nothing fills one in" do
+    @user.update!(country_code: nil)
+    assert @user.requires_country_confirmation?
+    assert_nil @user.mobile_payload[:country_code]
+
+    @user.record_country!("GH")
+    assert_not @user.reload.requires_country_confirmation?
+    assert_nil @user.consent_version, "no consent recorded unless a version is given"
+  end
 end

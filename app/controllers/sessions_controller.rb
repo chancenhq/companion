@@ -267,7 +267,9 @@ class SessionsController < ApplicationController
           user_last_name: user.last_name,
           user_ui_layout: user.ui_layout,
           user_ai_enabled: user.ai_enabled?,
-          user_email_verified: user.email_verified?
+          user_email_verified: user.email_verified?,
+          user_country_code: user.country_code,
+          user_requires_country_confirmation: user.requires_country_confirmation?
         ),
         expires_in: 5.minutes
       )
