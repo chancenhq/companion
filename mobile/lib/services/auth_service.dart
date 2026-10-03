@@ -647,6 +647,107 @@ class AuthService {
     }
   }
 
+  /// Fetches the signed-in user (GET /api/v1/users/me) so the app picks up
+  /// email verification without a new sign-in. Returns null when the call
+  /// fails or the server predates the endpoint (404); callers keep what
+  /// they have.
+  Future<User?> fetchCurrentUser({required String accessToken}) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/users/me');
+      final response = await http.get(
+        url,
+        headers: ApiConfig.getAuthHeaders(accessToken),
+      ).timeout(const Duration(seconds: 20));
+
+      if (response.statusCode != 200) {
+        LogService.instance.debug('AuthService', 'users/me returned ${response.statusCode}');
+        return null;
+      }
+
+      final responseData = jsonDecode(response.body);
+      _logRawUserPayload('users_me', responseData['user']);
+      final user = User.fromJson(responseData['user']);
+      await _saveUser(user);
+      return user;
+    } catch (e) {
+      LogService.instance.debug('AuthService', 'users/me failed: $e');
+      return null;
+    }
+  }
+
+  /// Saves the member's country and the privacy/terms version they accepted
+  /// for it (PATCH /api/v1/users/me/country, issue #106).
+  Future<Map<String, dynamic>> updateCountry({
+    required String accessToken,
+    required String countryCode,
+    required String consentVersion,
+  }) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/users/me/country');
+      final response = await http.patch(
+        url,
+        headers: {
+          ...ApiConfig.getAuthHeaders(accessToken),
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'user': {'country_code': countryCode, 'consent_version': consentVersion},
+        }),
+      ).timeout(const Duration(seconds: 20));
+
+      final responseData = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        final user = User.fromJson(responseData['user']);
+        await _saveUser(user);
+        return {'success': true, 'user': user};
+      }
+
+      return {
+        'success': false,
+        'error': (responseData['errors'] as List?)?.join(', ') ??
+            responseData['error'] ??
+            'Could not save your country. Please try again.',
+      };
+    } catch (e) {
+      return {'success': false, 'error': 'Network unavailable. Please try again.'};
+    }
+  }
+
+  Future<Map<String, dynamic>> resendEmailVerification({
+    required String accessToken,
+  }) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/resend_email_verification');
+      final response = await http.post(
+        url,
+        headers: ApiConfig.getAuthHeaders(accessToken),
+      ).timeout(const Duration(seconds: 30));
+
+      final responseData = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        final userJson = responseData['user'];
+        final user = userJson is Map<String, dynamic> ? User.fromJson(userJson) : null;
+        if (user != null) await _saveUser(user);
+        return {
+          'success': true,
+          'message': responseData['message'] ?? 'Verification email sent.',
+          'user': user,
+        };
+      }
+
+      return {
+        'success': false,
+        'error': responseData['error'] ?? 'Could not send the verification email. Please try again.',
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'error': 'Network unavailable',
+      };
+    }
+  }
+
   Future<void> logout() async {
     await _storage.delete(key: _tokenKey);
     await _storage.delete(key: _userKey);
