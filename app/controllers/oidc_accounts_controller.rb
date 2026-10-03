@@ -18,8 +18,10 @@ class OidcAccountsController < ApplicationController
     @pending_invitation = Invitation.pending.find_by(email: @email) if @email.present?
 
     # Determine whether we should offer JIT account creation for this
-    # pending auth, based on JIT mode and allowed domains.
-    @allow_account_creation = @pending_invitation.present? || (!AuthConfig.jit_link_only? && AuthConfig.allowed_oidc_domain?(@email))
+    # pending auth, based on the sign-up rule (invite_only/closed), JIT mode
+    # and allowed domains. create_user enforces the same rule.
+    @allow_account_creation = signup_permitted?(invitation: @pending_invitation) &&
+      (@pending_invitation.present? || (!AuthConfig.jit_link_only? && AuthConfig.allowed_oidc_domain?(@email)))
   end
 
   def create_link
