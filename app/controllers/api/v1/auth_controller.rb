@@ -380,9 +380,10 @@ module Api
         def pending_invitation_from_params
           token = params[:invitation]
           token ||= params[:user][:invitation] if params[:user].present?
-          invitation = Invitation.pending.find_by(token: token) if token.present?
-          invitation ||= Invitation.pending.find_by(email: params.dig(:user, :email).to_s.strip.downcase)
-          invitation
+          return nil if token.blank?
+
+          # Token only: knowing an invited email must not be enough to claim the invitation.
+          Invitation.pending.find_by(token: token)
         end
 
         def validate_password(password)

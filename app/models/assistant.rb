@@ -34,6 +34,19 @@ module Assistant
       ]
     end
 
+    # Functions that read Chancen Account (ISA) data, looked up by email.
+    def isa_function_classes
+      [ Function::GetMyAccount, Function::GetISATransactions ]
+    end
+
+    # Function classes this user may use: ISA functions need a verified email
+    # (issue #106, Story 3.2). Used by the assistant config and MCP.
+    def function_classes_for(user)
+      return function_classes if user.email_verified?
+
+      function_classes - isa_function_classes
+    end
+
     private
 
       def implementation_for(chat)
