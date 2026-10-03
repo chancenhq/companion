@@ -6,6 +6,37 @@ module Invitable
   end
 
   private
+    # One sign-up rule for every account-creation path (web, mobile email,
+    # Apple, Google/OIDC). Only creation is gated; existing users sign in as usual.
+    #   open        -> anyone
+    #   invite_only -> only with a pending invitation: the emailed token for
+    #                  email sign-up, a provider-verified email match for
+    #                  Google/Apple. Invite codes and the default family don't count.
+    #   closed      -> nobody, invitations included
+    def signup_permitted?(invitation:)
+      case Setting.onboarding_state
+      when "closed" then false
+      when "invite_only" then invitation.present?
+      else true
+      end
+    end
+
+    # Signing up with the token from an invitation that was emailed proves the
+    # address. A seat matched by email alone (e.g. bulk invite, nothing sent)
+    # proves nothing, so that account starts unverified.
+    def invitation_token_proves_email?(invitation, token)
+      invitation.present? && token.present? && invitation.emailed?
+    end
+
+    def signup_not_permitted_message
+      Setting.onboarding_state == "closed" ? t("registrations.closed") : t("registrations.invite_only")
+    end
+
+    # The mobile app shows `error` verbatim, so it carries the readable message.
+    def render_signup_not_permitted_json
+      render json: { error: signup_not_permitted_message }, status: :forbidden
+    end
+
     def invite_code_required?
       return false if @invitation.present?
       if self_hosted?

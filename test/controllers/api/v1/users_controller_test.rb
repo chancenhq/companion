@@ -181,6 +181,40 @@ class Api::V1::UsersControllerTest < ActionDispatch::IntegrationTest
     assert_equal "Account has been deactivated", body["message"]
   end
 
+
+  # Country and consent (issue #106, Epic 1)
+  test "update country saves the country and the consent accepted for it" do
+    patch "/api/v1/users/me/country", params: { user: { country_code: "ke", consent_version: "1.0" } }, headers: api_headers(@api_key)
+
+    assert_response :ok
+    body = JSON.parse(response.body)["user"]
+    assert_equal "KE", body["country_code"]
+    assert_equal false, body["requires_country_confirmation"]
+    assert_equal "1.0", body["consent_version"]
+
+    @user.reload
+    assert_equal "KE", @user.consent_country_code
+    assert_not_nil @user.consent_accepted_at
+  end
+
+  test "update country rejects a country that isn't in the Chancen list" do
+    assert_no_changes -> { @user.reload.country_code } do
+      patch "/api/v1/users/me/country", params: { user: { country_code: "US" } }, headers: api_headers(@api_key)
+    end
+
+    assert_response :unprocessable_entity
+  end
+
+  test "unverified members can still set their country" do
+    user = users(:unverified)
+    key = ApiKey.create!(user: user, name: "Unverified", scopes: [ "read_write" ], source: "web", display_key: "unv_#{SecureRandom.hex(8)}")
+
+    patch "/api/v1/users/me/country", params: { user: { country_code: "RW", consent_version: "1.0" } }, headers: api_headers(key)
+
+    assert_response :ok
+    assert_equal "RW", user.reload.country_code
+  end
+
   private
 
     def api_headers(api_key)

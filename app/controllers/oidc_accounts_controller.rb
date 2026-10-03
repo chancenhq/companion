@@ -18,8 +18,10 @@ class OidcAccountsController < ApplicationController
     @pending_invitation = Invitation.pending.find_by(email: @email) if @email.present?
 
     # Determine whether we should offer JIT account creation for this
-    # pending auth, based on JIT mode and allowed domains.
-    @allow_account_creation = @pending_invitation.present? || (!AuthConfig.jit_link_only? && AuthConfig.allowed_oidc_domain?(@email))
+    # pending auth, based on the sign-up rule (invite_only/closed), JIT mode
+    # and allowed domains. create_user enforces the same rule.
+    @allow_account_creation = signup_permitted?(invitation: @pending_invitation) &&
+      (@pending_invitation.present? || (!AuthConfig.jit_link_only? && AuthConfig.allowed_oidc_domain?(@email)))
   end
 
   def create_link
@@ -39,6 +41,12 @@ class OidcAccountsController < ApplicationController
         build_auth_hash(@pending_auth),
         user
       )
+
+      # Password proves the account; the provider proves its own email. Only
+      # when that is the account's email does linking verify it.
+      if oidc_identity.email_trusted? && @pending_auth["email"].to_s.casecmp?(user.email)
+        user.mark_email_verified!
+      end
 
       # Log account linking
       SsoAuditLog.log_link!(
@@ -100,6 +108,11 @@ class OidcAccountsController < ApplicationController
     # Check for a pending invitation for this email
     invitation = Invitation.pending.find_by(email: email)
 
+    unless signup_permitted?(invitation: invitation)
+      redirect_to new_session_path, alert: signup_not_permitted_message
+      return
+    end
+
     # Respect global JIT configuration: in link_only mode or when the email
     # domain is not allowed, block JIT account creation—unless there's a
     # pending invitation for this user.
@@ -151,6 +164,12 @@ class OidcAccountsController < ApplicationController
       # Mark invitation as accepted if one was used
       invitation&.update!(accepted_at: Time.current)
 
+      if identity.persisted? && identity.email_trusted?
+        @user.mark_email_verified!
+      else
+        @user.send_email_verification
+      end
+
       # Clear pending auth from session
       session.delete(:pending_oidc_auth)
 
@@ -175,7 +194,8 @@ class OidcAccountsController < ApplicationController
       OpenStruct.new(
         provider: pending_auth["provider"],
         uid: pending_auth["uid"],
-        info: OpenStruct.new(pending_auth.slice("email", "name", "first_name", "last_name"))
+        info: OpenStruct.new(pending_auth.slice("email", "name", "first_name", "last_name")),
+        extra: OpenStruct.new(raw_info: OpenStruct.new(iss: pending_auth["issuer"]))
       )
     end
 end
