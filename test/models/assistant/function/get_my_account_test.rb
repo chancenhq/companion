@@ -16,7 +16,7 @@ class Assistant::Function::GetMyAccountTest < ActiveSupport::TestCase
   test "refuses unverified users without calling Metabase" do
     Provider::MetabaseStudentAccount.any_instance.expects(:find_by_email).never
 
-    result = Assistant::Function::GetMyAccount.new(users(:family_admin)).call
+    result = Assistant::Function::GetMyAccount.new(User.create!(email: "unverified-#{SecureRandom.hex(4)}@example.com", password: "Password1!", family: families(:empty))).call
 
     assert_equal "email_verification_required", result[:error]
   end

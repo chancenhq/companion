@@ -4,7 +4,9 @@ require "test_helper"
 
 class Api::V1::MyAccountControllerTest < ActionDispatch::IntegrationTest
   setup do
-    @password_user = users(:family_admin)
+    # A password account nobody has verified: unverified under the interim
+    # rule and under #106's email_verified_at alike.
+    @password_user = User.create!(email: "unverified-#{SecureRandom.hex(4)}@example.com", password: "Password1!", family: families(:empty))
     @sso_only_user = users(:sso_only)
 
     Setting.metabase_url = "https://metabase.example.com"

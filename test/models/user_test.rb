@@ -637,13 +637,14 @@ class UserTest < ActiveSupport::TestCase
     assert_not generic.email_verified?
   end
 
-  test "email_verified? is false for password users even with a linked OIDC identity" do
-    assert @user.oidc_identities.exists?
-    assert_not @user.email_verified?
+  test "email_verified? is false for password users even with a linked Google identity" do
+    user = User.create!(email: "unverified-#{SecureRandom.hex(4)}@example.com", password: "Password1!", family: families(:empty))
+    OidcIdentity.create!(user: user, provider: "google_oauth2", uid: "linked-later-uid", info: { email: user.email })
+    assert_not user.email_verified?
   end
 
-  test "email_verified? is false for password users without an OIDC identity" do
-    assert_not users(:empty).email_verified?
+  test "email_verified? is false for password users without an SSO identity" do
+    assert_not User.create!(email: "unverified-#{SecureRandom.hex(4)}@example.com", password: "Password1!", family: families(:empty)).email_verified?
   end
 
   test "user can be created without password when skip_password_validation is true" do
