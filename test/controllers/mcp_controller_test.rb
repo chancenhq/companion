@@ -180,7 +180,7 @@ class McpControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "tools/list and tools/call leave out ISA tools for an unverified MCP user" do
-    # family_admin has a password, so the interim check treats them as unverified.
+    @user = User.create!(email: "unverified-#{SecureRandom.hex(4)}@example.com", password: "Password1!", family: families(:empty)) # unverified password account
     with_mcp_env do
       post "/mcp", params: jsonrpc_request("tools/list").to_json, headers: mcp_headers(@token)
       tool_names = JSON.parse(response.body)["result"]["tools"].map { |t| t["name"] }
