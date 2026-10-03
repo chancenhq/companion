@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../models/student_account.dart';
 import 'api_config.dart';
+import 'auth_events.dart';
 
 class AccountNotFoundException implements Exception {
   const AccountNotFoundException();
@@ -14,6 +15,11 @@ class AccountServiceUnavailableException implements Exception {
 
 class AccountNetworkException implements Exception {
   const AccountNetworkException();
+}
+
+/// The server locks Chancen Account data until the email is verified (issue #106).
+class EmailVerificationRequiredException implements Exception {
+  const EmailVerificationRequiredException();
 }
 
 class AccountUpstreamException implements Exception {
@@ -30,6 +36,10 @@ class MyAccountService {
         headers: ApiConfig.getAuthHeaders(accessToken),
       ).timeout(const Duration(seconds: 20));
 
+      AuthEvents.instance.report(response);
+      if (AuthEvents.isEmailVerificationRequired(response)) {
+        throw const EmailVerificationRequiredException();
+      }
       if (response.statusCode == 200) {
         return StudentAccount.fromJson(
           jsonDecode(response.body) as Map<String, dynamic>,
@@ -38,6 +48,8 @@ class MyAccountService {
       if (response.statusCode == 404) throw const AccountNotFoundException();
       if (response.statusCode == 503) throw const AccountServiceUnavailableException();
       throw AccountUpstreamException(response.statusCode);
+    } on EmailVerificationRequiredException {
+      rethrow;
     } on AccountNotFoundException {
       rethrow;
     } on AccountServiceUnavailableException {

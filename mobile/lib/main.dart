@@ -10,6 +10,7 @@ import 'providers/chat_provider.dart';
 import 'providers/my_account_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/backend_config_screen.dart';
+import 'screens/email_verification_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/biometric_lock_screen.dart';
 import 'screens/main_navigation_screen.dart';
@@ -218,8 +219,13 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
       _markLockedIfEnabled();
-    } else if (state == AppLifecycleState.resumed && _isLocked) {
-      // Lock screen is already showing via build(); biometric auto-triggers there.
+    } else if (state == AppLifecycleState.resumed) {
+      // Lock screen (if any) is already showing via build(); biometric auto-triggers there.
+      // Pick up an email verification done in the browser while the app was away.
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      if (authProvider.isAuthenticated && authProvider.emailVerificationRequired) {
+        authProvider.refreshUser();
+      }
     }
   }
 
@@ -342,6 +348,12 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
         }
 
         if (authProvider.isAuthenticated) {
+          // Email sign-ups confirm their address once (issue #106); the
+          // assistant stays available if they continue without verifying.
+          if (authProvider.showEmailVerificationPrompt) {
+            return const EmailVerificationScreen();
+          }
+
           return Stack(
             children: [
               const MainNavigationScreen(),
