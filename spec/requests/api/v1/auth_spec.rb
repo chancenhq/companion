@@ -379,7 +379,7 @@ RSpec.describe 'API V1 Auth', type: :request do
   path '/api/v1/auth/resend_email_verification' do
     post 'Resend the email verification link' do
       tags 'Auth'
-      description 'Sends a new verification link to the signed-in user's email. '                   'Limited to 3 per hour. Verified users get a confirmation instead.'
+      description "Sends a new verification link to the signed-in user's email. Limited to 3 per hour. Verified users get a confirmation instead."
       produces 'application/json'
       security [ { apiKeyAuth: [] } ]
 
