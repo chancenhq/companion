@@ -1,6 +1,8 @@
 require "test_helper"
 
 class OidcAccountsControllerTest < ActionController::TestCase
+  include ActionMailer::TestHelper
+
   setup do
     ensure_tailwind_build
     @user = users(:family_admin)
@@ -243,7 +245,7 @@ class OidcAccountsControllerTest < ActionController::TestCase
     end
 
     assert_redirected_to new_session_path
-    assert_equal "Sign-up is by invitation only. Please use the link in your invitation email.", flash[:alert]
+    assert_equal "Sign-up is by invitation only. Use the email address you gave Chancen.", flash[:alert]
   end
 
   test "create_user does not join the invite-only default family without an invitation" do
@@ -257,7 +259,7 @@ class OidcAccountsControllerTest < ActionController::TestCase
     end
 
     assert_redirected_to new_session_path
-    assert_equal "Sign-up is by invitation only. Please use the link in your invitation email.", flash[:alert]
+    assert_equal "Sign-up is by invitation only. Use the email address you gave Chancen.", flash[:alert]
   end
 
   test "create_user accepts pending invitation before invite-only default family" do
@@ -349,5 +351,24 @@ class OidcAccountsControllerTest < ActionController::TestCase
       email: new_user.email,
       password: "anypassword"
     ), "SSO-only user should not authenticate with password"
+  end
+
+  # Email verification (issue #106)
+  test "create_user from Google is verified" do
+    session[:pending_oidc_auth] = new_user_auth.merge("provider" => "google_oauth2")
+
+    post :create_user
+
+    assert User.find_by!(email: new_user_auth["email"]).email_verified?
+  end
+
+  test "create_user from a provider that doesn't prove email sends a verification email" do
+    session[:pending_oidc_auth] = new_user_auth
+
+    assert_enqueued_emails 1 do
+      post :create_user
+    end
+
+    assert_not User.find_by!(email: new_user_auth["email"]).email_verified?
   end
 end

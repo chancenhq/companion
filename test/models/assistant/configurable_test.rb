@@ -18,4 +18,13 @@ class AssistantConfigurableTest < ActiveSupport::TestCase
     assert_equal [ Assistant::Function::SearchFamilyFiles ], config[:functions]
     assert_includes config[:instructions], "Income Share Agreements"
   end
+
+  test "unverified users keep the assistant but get no data tools" do
+    user = users(:unverified)
+    chat = Chat.create!(user: user, title: "Unverified chat")
+
+    config = Assistant.config_for(chat)
+
+    assert_equal [ Assistant::Function::SearchFamilyFiles ], config[:functions]
+  end
 end

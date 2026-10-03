@@ -78,19 +78,78 @@ class User < ApplicationRecord
     password_salt&.last(10)
   end
 
+  # Keyed on the address being confirmed and the verification state, so a
+  # link dies once it has been used or the email changes.
   generates_token_for :email_confirmation, expires_in: 1.day do
-    unconfirmed_email
+    [ unconfirmed_email, email, email_verified_at&.to_i ]
   end
 
   def pending_email_change?
     unconfirmed_email.present?
   end
 
+  # Proof that the account holder controls `email` (issue #106). Gates all
+  # financial and Chancen Account (ISA) data.
+  def email_verified?
+    email_verified_at.present?
+  end
+
+  def mark_email_verified!
+    update!(email_verified_at: Time.current) unless email_verified?
+  end
+
+  # A trusted provider (Google/Apple) has just proven this email on an
+  # account that isn't verified yet, so it may have been registered by
+  # someone else first. Anything set up before verification could belong to
+  # them: drop the password and MFA, mark verified, end every other login.
+  # Returns false (and changes nothing) for already-verified accounts.
+  def claim_by_trusted_provider!
+    return false if email_verified?
+
+    transaction do
+      disable_mfa!
+      update!(password_digest: nil, email_verified_at: Time.current)
+    end
+    revoke_all_access!
+    true
+  end
+
+  # The reset link was emailed to this address, so ownership is proven. MFA
+  # set up before verification may belong to whoever registered it first.
+  def verify_after_password_reset!
+    transaction do
+      disable_mfa! unless email_verified?
+      mark_email_verified!
+    end
+  end
+
+  def email_confirmation_address
+    unconfirmed_email.presence || email
+  end
+
+  def send_email_verification
+    EmailConfirmationMailer.with(user: self).confirmation_email.deliver_later
+  end
+
+  # User shape returned to the mobile app (auth responses, SSO exchange, /users/me).
+  def mobile_payload
+    {
+      id: id,
+      email: email,
+      first_name: first_name,
+      last_name: last_name,
+      ui_layout: ui_layout,
+      ai_enabled: ai_enabled?,
+      email_verified: email_verified?
+    }
+  end
+
   def initiate_email_change(new_email)
     return false if new_email == email
 
     if Rails.application.config.app_mode.self_hosted? && !Setting.require_email_confirmation
-      update(email: new_email)
+      # No confirmation step, so nothing proves the new address yet.
+      update(email: new_email, email_verified_at: nil)
     else
       if update(unconfirmed_email: new_email)
         EmailConfirmationMailer.with(user: self).confirmation_email.deliver_later

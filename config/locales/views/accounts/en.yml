@@ -171,3 +171,9 @@ en:
       invalid_token: Invalid or expired confirmation link.
       success_login: Your email has been confirmed. Please log in with your new email
         address.
+    verified:
+      title: Your email is verified
+      body: Go back to the Companion app. Your Chancen Account and payments are now unlocked.
+    invalid:
+      title: This link has expired or was already used
+      body: Open the Companion app and tap "Resend email" to get a new link. If you already verified, you're all set.

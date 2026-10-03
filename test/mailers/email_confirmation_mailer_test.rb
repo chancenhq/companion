@@ -11,4 +11,13 @@ class EmailConfirmationMailerTest < ActionMailer::TestCase
     assert_equal [ "hello@example.com" ], mail.from
     assert_match "confirm", mail.body.encoded
   end
+
+  test "confirmation_email verifies the current address for a new account" do
+    user = users(:unverified)
+
+    mail = EmailConfirmationMailer.with(user: user).confirmation_email
+
+    assert_equal [ user.email ], mail.to
+    assert_equal I18n.t("email_confirmation_mailer.confirmation_email.verify_subject", product_name: Rails.configuration.x.product_name), mail.subject
+  end
 end

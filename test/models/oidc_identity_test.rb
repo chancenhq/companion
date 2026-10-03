@@ -114,4 +114,13 @@ class OidcIdentityTest < ActiveSupport::TestCase
     assert_equal @user, identity.user
     assert_not_nil identity.last_authenticated_at
   end
+
+  test "email_trusted? accepts Google and Apple only" do
+    assert OidcIdentity.email_trusted?(provider: "google_oauth2")
+    assert OidcIdentity.email_trusted?(provider: "apple")
+    assert OidcIdentity.email_trusted?(provider: "openid_connect", issuer: "https://accounts.google.com")
+    assert_not OidcIdentity.email_trusted?(provider: "openid_connect", issuer: "https://idp.example.com")
+    assert_not OidcIdentity.email_trusted?(provider: "openid_connect")
+    assert_not OidcIdentity.email_trusted?(provider: "github")
+  end
 end
