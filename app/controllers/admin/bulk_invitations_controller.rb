@@ -23,6 +23,7 @@ module Admin
       @results = emails.map { |email| invite(email, family, move_existing: move_existing) }
       @family = family
       @families = Family.order(:name)
+      render :new
     end
 
     private

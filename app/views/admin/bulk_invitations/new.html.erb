@@ -41,7 +41,7 @@
     </div>
   <% end %>
 
-  <%= form_with url: admin_bulk_invitations_path, method: :post do |f| %>
+  <%= form_with url: admin_bulk_invitations_path, method: :post, data: { turbo: false } do |f| %>
     <div class="space-y-5">
       <div>
         <%= f.label :family_id, t(".form.family_label"), class: "block text-sm font-medium text-primary mb-1" %>
