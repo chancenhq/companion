@@ -25,7 +25,7 @@ class ApiConfig {
     ApiEnvironment(label: 'Staging', baseUrl: stagingBaseUrl),
   ];
 
-  static const String _defaultBaseUrl = productionBaseUrl;
+  static const String _defaultBaseUrl = stagingBaseUrl;
   static const String _backendUrlKey = 'backend_url';
   static String _baseUrl = _defaultBaseUrl;
 
