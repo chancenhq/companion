@@ -52,7 +52,7 @@ class _LoginFormBodyState extends State<LoginFormBody> {
 
   /// Mirrors the server's sign-up rules so problems show before submitting.
   static String? _signUpPasswordError(String password) {
-    if (password.length < 8) return 'Use at least 8 characters.';
+    if (password.runes.length < 8) return 'Use at least 8 characters.';
     if (!RegExp(r'[A-Z]').hasMatch(password) || !RegExp(r'[a-z]').hasMatch(password)) {
       return 'Use both upper and lower case letters.';
     }
