@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import '../models/chat.dart';
 import '../models/message.dart';
 import 'api_config.dart';
+import 'auth_events.dart';
 
 class ChatService {
   /// Get list of chats with pagination
@@ -20,6 +21,7 @@ class ChatService {
         url,
         headers: ApiConfig.getAuthHeaders(accessToken),
       ).timeout(const Duration(seconds: 30));
+      AuthEvents.instance.report(response);
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
@@ -69,6 +71,7 @@ class ChatService {
         url,
         headers: ApiConfig.getAuthHeaders(accessToken),
       ).timeout(const Duration(seconds: 30));
+      AuthEvents.instance.report(response);
 
       if (response.statusCode == 200) {
         return {'success': true};
@@ -105,6 +108,7 @@ class ChatService {
         url,
         headers: ApiConfig.getAuthHeaders(accessToken),
       ).timeout(const Duration(seconds: 30));
+      AuthEvents.instance.report(response);
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
@@ -175,6 +179,7 @@ class ChatService {
         },
         body: jsonEncode(body),
       ).timeout(const Duration(seconds: 30));
+      AuthEvents.instance.report(response);
 
       if (response.statusCode == 201) {
         final responseData = jsonDecode(response.body);
@@ -231,6 +236,7 @@ class ChatService {
           'content': content,
         }),
       ).timeout(const Duration(seconds: 30));
+      AuthEvents.instance.report(response);
 
       if (response.statusCode == 201) {
         final responseData = jsonDecode(response.body);
@@ -293,6 +299,7 @@ class ChatService {
           'title': title,
         }),
       ).timeout(const Duration(seconds: 30));
+      AuthEvents.instance.report(response);
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
@@ -341,6 +348,7 @@ class ChatService {
         url,
         headers: ApiConfig.getAuthHeaders(accessToken),
       ).timeout(const Duration(seconds: 30));
+      AuthEvents.instance.report(response);
 
       if (response.statusCode == 204) {
         return {
@@ -413,6 +421,7 @@ class ChatService {
         url,
         headers: ApiConfig.getAuthHeaders(accessToken),
       ).timeout(const Duration(seconds: 30));
+      AuthEvents.instance.report(response);
 
       if (response.statusCode == 202) {
         return {

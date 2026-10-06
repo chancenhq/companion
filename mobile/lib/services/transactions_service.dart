@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/transaction.dart';
 import 'api_config.dart';
+import 'auth_events.dart';
 
 class TransactionsService {
   Future<Map<String, dynamic>> createTransaction({
@@ -39,6 +40,7 @@ class TransactionsService {
         },
         body: jsonEncode(body),
       ).timeout(const Duration(seconds: 30));
+      AuthEvents.instance.report(response);
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final responseData = jsonDecode(response.body);
@@ -104,6 +106,7 @@ class TransactionsService {
           'Content-Type': 'application/json',
         },
       ).timeout(const Duration(seconds: 30));
+      AuthEvents.instance.report(response);
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
@@ -166,6 +169,7 @@ class TransactionsService {
           'Content-Type': 'application/json',
         },
       ).timeout(const Duration(seconds: 30));
+      AuthEvents.instance.report(response);
 
       if (response.statusCode == 200 || response.statusCode == 204) {
         return {

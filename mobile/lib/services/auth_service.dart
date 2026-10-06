@@ -647,6 +647,69 @@ class AuthService {
     }
   }
 
+  /// Fetches the signed-in user (GET /api/v1/users/me) so the app picks up
+  /// email verification without a new sign-in. Returns null when the call
+  /// fails or the server predates the endpoint (404); callers keep what
+  /// they have.
+  Future<User?> fetchCurrentUser({required String accessToken}) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/users/me');
+      final response = await http.get(
+        url,
+        headers: ApiConfig.getAuthHeaders(accessToken),
+      ).timeout(const Duration(seconds: 20));
+
+      if (response.statusCode != 200) {
+        LogService.instance.debug('AuthService', 'users/me returned ${response.statusCode}');
+        return null;
+      }
+
+      final responseData = jsonDecode(response.body);
+      _logRawUserPayload('users_me', responseData['user']);
+      final user = User.fromJson(responseData['user']);
+      await _saveUser(user);
+      return user;
+    } catch (e) {
+      LogService.instance.debug('AuthService', 'users/me failed: $e');
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>> resendEmailVerification({
+    required String accessToken,
+  }) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/resend_email_verification');
+      final response = await http.post(
+        url,
+        headers: ApiConfig.getAuthHeaders(accessToken),
+      ).timeout(const Duration(seconds: 30));
+
+      final responseData = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        final userJson = responseData['user'];
+        final user = userJson is Map<String, dynamic> ? User.fromJson(userJson) : null;
+        if (user != null) await _saveUser(user);
+        return {
+          'success': true,
+          'message': responseData['message'] ?? 'Verification email sent.',
+          'user': user,
+        };
+      }
+
+      return {
+        'success': false,
+        'error': responseData['error'] ?? 'Could not send the verification email. Please try again.',
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'error': 'Network unavailable',
+      };
+    }
+  }
+
   Future<void> logout() async {
     await _storage.delete(key: _tokenKey);
     await _storage.delete(key: _userKey);

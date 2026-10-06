@@ -1,6 +1,8 @@
 require "test_helper"
 
 class OidcAccountsControllerTest < ActionController::TestCase
+  include ActionMailer::TestHelper
+
   setup do
     ensure_tailwind_build
     @user = users(:family_admin)
@@ -142,6 +144,29 @@ class OidcAccountsControllerTest < ActionController::TestCase
     assert_select "p", text: /New account creation via single sign-on is disabled/
   end
 
+  test "does not offer account creation under invite_only without an invitation" do
+    Setting.onboarding_state = "invite_only"
+    session[:pending_oidc_auth] = new_user_auth
+    AuthConfig.stubs(:allowed_oidc_domain?).returns(true)
+
+    get :link
+    assert_response :success
+
+    assert_select "button", text: "Create Account", count: 0
+  end
+
+  test "does not offer account creation when sign-up is closed, even with an invitation" do
+    invitation = invitations(:two)
+    Setting.onboarding_state = "closed"
+    session[:pending_oidc_auth] = new_user_auth.merge("email" => invitation.email)
+
+    get :link
+    assert_response :success
+
+    assert_select "button", text: "Create Account", count: 0
+    assert_select "button", text: /Accept/i, count: 0
+  end
+
   test "create_user redirects when JIT link-only mode" do
     session[:pending_oidc_auth] = new_user_auth
 
@@ -210,7 +235,7 @@ class OidcAccountsControllerTest < ActionController::TestCase
     assert_equal "guest", new_user.role
   end
 
-  test "create_user rejects stale invite-only default family" do
+  test "create_user without an invitation is rejected under invite_only" do
     Setting.onboarding_state = "invite_only"
     Setting.invite_only_default_family_id = SecureRandom.uuid
     session[:pending_oidc_auth] = new_user_auth
@@ -220,25 +245,21 @@ class OidcAccountsControllerTest < ActionController::TestCase
     end
 
     assert_redirected_to new_session_path
-    assert_equal "Invite-only default family is unavailable. Please contact an administrator.", flash[:alert]
+    assert_equal "Sign-up is by invitation only. Use the email address you gave Chancen.", flash[:alert]
   end
 
-  test "create_user joins configured invite-only default family as member" do
+  test "create_user does not join the invite-only default family without an invitation" do
     default_family = families(:empty)
     Setting.onboarding_state = "invite_only"
     Setting.invite_only_default_family_id = default_family.id.to_s
     session[:pending_oidc_auth] = new_user_auth
 
-    assert_difference([ "User.count", "OidcIdentity.count" ], 1) do
-      assert_no_difference("Family.count") do
-        post :create_user
-      end
+    assert_no_difference([ "User.count", "OidcIdentity.count", "Family.count" ]) do
+      post :create_user
     end
 
-    assert_redirected_to root_path
-    new_user = User.find_by!(email: new_user_auth["email"])
-    assert_equal default_family, new_user.family
-    assert_equal "member", new_user.role
+    assert_redirected_to new_session_path
+    assert_equal "Sign-up is by invitation only. Use the email address you gave Chancen.", flash[:alert]
   end
 
   test "create_user accepts pending invitation before invite-only default family" do
@@ -330,5 +351,24 @@ class OidcAccountsControllerTest < ActionController::TestCase
       email: new_user.email,
       password: "anypassword"
     ), "SSO-only user should not authenticate with password"
+  end
+
+  # Email verification (issue #106)
+  test "create_user from Google is verified" do
+    session[:pending_oidc_auth] = new_user_auth.merge("provider" => "google_oauth2")
+
+    post :create_user
+
+    assert User.find_by!(email: new_user_auth["email"]).email_verified?
+  end
+
+  test "create_user from a provider that doesn't prove email sends a verification email" do
+    session[:pending_oidc_auth] = new_user_auth
+
+    assert_enqueued_emails 1 do
+      post :create_user
+    end
+
+    assert_not User.find_by!(email: new_user_auth["email"]).email_verified?
   end
 end

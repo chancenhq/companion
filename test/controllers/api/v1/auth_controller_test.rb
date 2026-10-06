@@ -173,7 +173,9 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     assert new_user.family.present?
   end
 
-  test "signup requires invite code when invite-only default family id is stale" do
+  INVITE_ONLY_MESSAGE = "Sign-up is by invitation only. Use the email address you gave Chancen."
+
+  test "signup without an invitation is rejected under invite_only" do
     with_self_hosting do
       Setting.onboarding_state = "invite_only"
       Setting.invite_only_default_family_id = SecureRandom.uuid
@@ -191,47 +193,37 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
       end
 
       assert_response :forbidden
-      assert_equal "Invite code is required", JSON.parse(response.body)["error"]
+      assert_equal INVITE_ONLY_MESSAGE, JSON.parse(response.body)["error"]
     end
   end
 
-  test "signup with invite code creates family when invite-only default family id is stale" do
+  test "signup with a generic invite code is rejected under invite_only" do
     invite_code = InviteCode.create!
+    Setting.onboarding_state = "invite_only"
 
-    with_self_hosting do
-      Setting.onboarding_state = "invite_only"
-      Setting.invite_only_default_family_id = SecureRandom.uuid
-
-      assert_difference("User.count", 1) do
-        assert_difference("Family.count", 1) do
-          assert_difference("InviteCode.count", -1) do
-            post "/api/v1/auth/signup", params: {
-              user: {
-                email: "staleinvite@example.com",
-                password: "SecurePass123!",
-                first_name: "Stale",
-                last_name: "Invite"
-              },
-              device: @device_info,
-              invite_code: invite_code.token
-            }
-          end
-        end
-      end
-
-      assert_response :created
-      user = User.find_by!(email: "staleinvite@example.com")
-      assert_equal "admin", user.role
-      assert user.family.present?
+    assert_no_difference([ "User.count", "Family.count", "InviteCode.count" ]) do
+      post "/api/v1/auth/signup", params: {
+        user: {
+          email: "codeonly@example.com",
+          password: "SecurePass123!",
+          first_name: "Code",
+          last_name: "Only"
+        },
+        device: @device_info,
+        invite_code: invite_code.token
+      }
     end
+
+    assert_response :forbidden
+    assert_equal INVITE_ONLY_MESSAGE, JSON.parse(response.body)["error"]
   end
 
-  test "signup joins configured invite-only default family as member" do
+  test "signup does not join the invite-only default family without an invitation" do
     default_family = families(:empty)
     Setting.onboarding_state = "invite_only"
     Setting.invite_only_default_family_id = default_family.id.to_s
 
-    assert_no_difference("Family.count") do
+    assert_no_difference([ "User.count", "Family.count" ]) do
       post "/api/v1/auth/signup", params: {
         user: {
           email: "defaultfamily@example.com",
@@ -243,10 +235,30 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
       }
     end
 
-    assert_response :created
-    user = User.find_by!(email: "defaultfamily@example.com")
-    assert_equal default_family, user.family
-    assert_equal "member", user.role
+    assert_response :forbidden
+    assert_equal INVITE_ONLY_MESSAGE, JSON.parse(response.body)["error"]
+  end
+
+  test "signup is rejected when onboarding is closed, even with an invitation token" do
+    invitation = invitations(:two)
+    Setting.onboarding_state = "closed"
+
+    assert_no_difference("User.count") do
+      post "/api/v1/auth/signup", params: {
+        user: {
+          email: invitation.email,
+          password: "SecurePass123!",
+          first_name: "Closed",
+          last_name: "Signup",
+          invitation: invitation.token
+        },
+        device: @device_info
+      }
+    end
+
+    assert_response :forbidden
+    assert_equal "Signups are currently closed.", JSON.parse(response.body)["error"]
+    assert_nil invitation.reload.accepted_at
   end
 
   test "signup accepts pending invitation before invite-only default family" do
@@ -273,26 +285,6 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     assert_equal invitation.family, user.family
     assert_equal invitation.role, user.role
     assert_not_nil invitation.reload.accepted_at
-  end
-
-  test "signup with an invited email but no token does not claim the invitation" do
-    invitation = invitations(:one)
-    Setting.onboarding_state = "open"
-
-    post "/api/v1/auth/signup", params: {
-      user: {
-        email: invitation.email,
-        password: "SecurePass123!",
-        first_name: "Not",
-        last_name: "Invited"
-      },
-      device: @device_info
-    }
-
-    assert_response :created
-    user = User.find_by!(email: invitation.email)
-    assert_not_equal invitation.family, user.family
-    assert_nil invitation.reload.accepted_at
   end
 
   test "should require invite code when enabled" do
@@ -862,7 +854,7 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     assert_equal "member", user.role
   end
 
-  test "sso_create_account rejects stale invite-only default family without consuming linking code" do
+  test "sso_create_account without an invitation is rejected under invite_only without consuming linking code" do
     Setting.onboarding_state = "invite_only"
     Setting.invite_only_default_family_id = SecureRandom.uuid
 
@@ -887,11 +879,11 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     end
 
     assert_response :forbidden
-    assert_equal "Invite-only default family is unavailable. Please contact an administrator.", JSON.parse(response.body)["error"]
+    assert_equal INVITE_ONLY_MESSAGE, JSON.parse(response.body)["error"]
     assert Rails.cache.read("mobile_sso_link:#{linking_code}").present?
   end
 
-  test "sso_create_account joins configured invite-only default family as member" do
+  test "sso_create_account does not join the invite-only default family without an invitation" do
     default_family = families(:empty)
     Setting.onboarding_state = "invite_only"
     Setting.invite_only_default_family_id = default_family.id.to_s
@@ -908,20 +900,16 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
       allow_account_creation: true
     }, expires_in: 10.minutes)
 
-    assert_difference([ "User.count", "OidcIdentity.count" ], 1) do
-      assert_no_difference("Family.count") do
-        post "/api/v1/auth/sso_create_account", params: {
-          linking_code: linking_code,
-          first_name: "Default",
-          last_name: "Sso"
-        }
-      end
+    assert_no_difference([ "User.count", "OidcIdentity.count", "Family.count" ]) do
+      post "/api/v1/auth/sso_create_account", params: {
+        linking_code: linking_code,
+        first_name: "Default",
+        last_name: "Sso"
+      }
     end
 
-    assert_response :success
-    user = User.find_by!(email: "defaultsso@example.com")
-    assert_equal default_family, user.family
-    assert_equal "member", user.role
+    assert_response :forbidden
+    assert_equal INVITE_ONLY_MESSAGE, JSON.parse(response.body)["error"]
   end
 
   test "sso_create_account accepts pending invitation before invite-only default family" do
@@ -1145,6 +1133,20 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     assert OidcIdentity.exists?(user: user, provider: "apple", uid: apple_uid)
   end
 
+  test "apple_sign_in auto-link revokes logins on other devices" do
+    user = users(:family_admin)
+    other_device = MobileDevice.upsert_device!(user, device_id: "registrant-phone", device_name: "Other", device_type: "android", os_version: "14", app_version: "1.0")
+    other_device.issue_token!
+    AppleSignIn.stubs(:verify!).returns({ "sub" => "apple.uid.revoke-on-link", "email" => user.email })
+
+    post "/api/v1/auth/apple_sign_in", params: { identity_token: "fake.token", device: @device_info }
+
+    assert_response :success
+    assert_empty other_device.active_tokens
+    new_token = JSON.parse(response.body)["access_token"]
+    assert_not Doorkeeper::AccessToken.by_token(new_token).revoked?
+  end
+
   test "apple_sign_in creates new account for unknown Apple ID with email in JWT" do
     apple_uid = "apple.uid.brand-new"
     apple_email = "brandnew@example.com"
@@ -1197,7 +1199,7 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     assert invitation.reload.accepted_at.present?, "invitation should be marked accepted"
   end
 
-  test "apple_sign_in returns 403 when invite-only default family is unavailable and no invitation" do
+  test "apple_sign_in new account without an invitation is rejected under invite_only" do
     Setting.onboarding_state = "invite_only"
     Setting.invite_only_default_family_id = 0.to_s  # non-existent family
 
@@ -1214,11 +1216,10 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     end
 
     assert_response :forbidden
-    data = JSON.parse(response.body)
-    assert_match(/unavailable/, data["error"])
+    assert_equal INVITE_ONLY_MESSAGE, JSON.parse(response.body)["error"]
   end
 
-  test "apple_sign_in new account joins invite-only default family as member" do
+  test "apple_sign_in new account does not join the invite-only default family without an invitation" do
     default_family = families(:empty)
     Setting.onboarding_state = "invite_only"
     Setting.invite_only_default_family_id = default_family.id.to_s
@@ -1228,17 +1229,31 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
 
     AppleSignIn.stubs(:verify!).returns({ "sub" => apple_uid, "email" => apple_email })
 
-    assert_no_difference("Family.count") do
+    assert_no_difference([ "User.count", "Family.count" ]) do
       post "/api/v1/auth/apple_sign_in", params: {
         identity_token: "fake.token",
         device: @device_info
       }
     end
 
-    assert_response :success
-    new_user = User.find_by!(email: apple_email)
-    assert_equal default_family, new_user.family
-    assert_equal "member", new_user.role
+    assert_response :forbidden
+    assert_equal INVITE_ONLY_MESSAGE, JSON.parse(response.body)["error"]
+  end
+
+  test "apple_sign_in ignores a client-supplied email when Apple's token has none" do
+    user = users(:family_admin)
+    MobileDevice.instance_variable_set(:@shared_oauth_application, nil)
+    existing_device = MobileDevice.upsert_device!(user, device_id: "victim-phone", device_name: "Phone", device_type: "ios", os_version: "17", app_version: "1.0")
+    existing_device.issue_token!
+    AppleSignIn.stubs(:verify!).returns({ "sub" => "apple.uid.no-email-claim" })
+
+    assert_no_difference([ "User.count", "OidcIdentity.count" ]) do
+      post "/api/v1/auth/apple_sign_in", params: { identity_token: "fake.token", email: user.email, device: @device_info }
+    end
+
+    assert_response :unprocessable_entity
+    assert_match(/email/, JSON.parse(response.body)["error"])
+    assert existing_device.active_tokens.any?, "the account's existing logins must be left alone"
   end
 
   test "apple_sign_in returns 422 when no email in JWT and no email param" do
@@ -1391,6 +1406,33 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     assert user.reload.authenticate("NewPass456!")
   end
 
+  test "reset_password signs the account out on every device" do
+    user = User.create!(
+      email: "revokeonreset@example.com",
+      password: "OldPass123!",
+      first_name: "Revoke",
+      last_name: "Reset",
+      family: Family.create!(name: "Revoke Family", currency: "USD")
+    )
+    phone = MobileDevice.upsert_device!(user, device_id: "reset-phone", device_name: "Phone", device_type: "ios", os_version: "17", app_version: "1.0")
+    other = MobileDevice.upsert_device!(user, device_id: "reset-other", device_name: "Other", device_type: "android", os_version: "14", app_version: "1.0")
+    old_token = phone.issue_token![:access_token]
+    other.issue_token!
+
+    patch "/api/v1/auth/password_reset", params: {
+      token: user.generate_token_for(:password_reset),
+      password: "NewPass456!",
+      password_confirmation: "NewPass456!"
+    }
+
+    assert_response :ok
+    assert_empty phone.active_tokens
+    assert_empty other.active_tokens
+
+    get "/api/v1/accounts", headers: { "Authorization" => "Bearer #{old_token}" }
+    assert_response :unauthorized
+  end
+
   test "reset_password returns 422 for invalid token" do
     patch "/api/v1/auth/password_reset", params: {
       token: "totallyinvalidtoken",
@@ -1445,4 +1487,196 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     data = JSON.parse(response.body)
     assert_includes data["error"], "social sign-in"
   end
+
+  # Email verification (issue #106)
+  test "email signup without an invitation sends a verification email and stays unverified" do
+    assert_enqueued_emails 1 do
+      post "/api/v1/auth/signup", params: {
+        user: { email: "verifyme@example.com", password: "SecurePass123!", first_name: "Verify", last_name: "Me" },
+        device: @device_info
+      }
+    end
+
+    assert_response :created
+    assert_equal false, JSON.parse(response.body).dig("user", "email_verified")
+    assert_not User.find_by!(email: "verifyme@example.com").email_verified?
+  end
+
+  test "email signup with the token from an emailed invitation is verified at once" do
+    invitation = invitations(:one)
+    invitation.update!(email_sent_at: 1.day.ago)
+
+    assert_no_enqueued_emails do
+      post "/api/v1/auth/signup", params: {
+        user: { email: invitation.email, password: "SecurePass123!", first_name: "In", last_name: "Vited", invitation: invitation.token },
+        device: @device_info
+      }
+    end
+
+    assert_response :created
+    assert_equal true, JSON.parse(response.body).dig("user", "email_verified")
+  end
+
+  test "email signup with a token from an invitation that was never emailed stays unverified" do
+    invitation = invitations(:one)
+
+    assert_enqueued_emails 1 do
+      post "/api/v1/auth/signup", params: {
+        user: { email: invitation.email, password: "SecurePass123!", first_name: "In", last_name: "Vited", invitation: invitation.token },
+        device: @device_info
+      }
+    end
+
+    assert_response :created
+    assert_equal false, JSON.parse(response.body).dig("user", "email_verified")
+  end
+
+  test "invite_only email signup takes the seat reserved for that email and starts unverified" do
+    invitation = invitations(:one) # a bulk-invite style seat: nothing emailed, no token used
+    Setting.onboarding_state = "invite_only"
+
+    assert_enqueued_emails 1 do
+      post "/api/v1/auth/signup", params: {
+        user: { email: invitation.email, password: "SecurePass123!", first_name: "Seat", last_name: "Holder" },
+        device: @device_info
+      }
+    end
+
+    assert_response :created
+    user = User.find_by!(email: invitation.email)
+    assert_equal invitation.family, user.family
+    assert_not user.email_verified?
+    assert_not_nil invitation.reload.accepted_at
+  end
+
+  test "resend_email_verification sends to unverified users and is rate limited" do
+    headers = bearer_headers_for(users(:unverified))
+
+    3.times do
+      assert_enqueued_emails 1 do
+        post "/api/v1/auth/resend_email_verification", headers: headers
+      end
+      assert_response :success
+    end
+
+    assert_no_enqueued_emails do
+      post "/api/v1/auth/resend_email_verification", headers: headers
+    end
+    assert_response :too_many_requests
+  end
+
+  test "resend_email_verification tells verified users they are done" do
+    assert_no_enqueued_emails do
+      post "/api/v1/auth/resend_email_verification", headers: bearer_headers_for(users(:family_admin))
+    end
+
+    assert_response :success
+    assert_equal true, JSON.parse(response.body).dig("user", "email_verified")
+  end
+
+  test "sso_link verifies only when the trusted provider proved the account's own email" do
+    user = users(:unverified)
+
+    post "/api/v1/auth/sso_link", params: {
+      linking_code: cache_linking_code(provider: "google_oauth2", email: "someone-else@example.com"),
+      email: user.email,
+      password: user_password_test
+    }
+    assert_response :success
+    assert_not user.reload.email_verified?
+
+    post "/api/v1/auth/sso_link", params: {
+      linking_code: cache_linking_code(provider: "google_oauth2", email: user.email, uid: "google-uid-match"),
+      email: user.email,
+      password: user_password_test
+    }
+    assert_response :success
+    assert user.reload.email_verified?
+  end
+
+  test "apple_sign_in ignores a client-supplied email" do
+    user = users(:family_admin)
+    AppleSignIn.stubs(:verify!).returns({ "sub" => "apple.uid.no-email-claim" })
+
+    assert_no_difference([ "User.count", "OidcIdentity.count" ]) do
+      post "/api/v1/auth/apple_sign_in", params: { identity_token: "fake.token", email: user.email, device: @device_info }
+    end
+
+    assert_response :unprocessable_entity
+  end
+
+  test "apple_sign_in auto-link onto an unverified password account wipes the password and verifies" do
+    user = users(:unverified)
+    AppleSignIn.stubs(:verify!).returns({ "sub" => "apple.uid.claims-unverified", "email" => user.email })
+
+    post "/api/v1/auth/apple_sign_in", params: { identity_token: "fake.token", device: @device_info }
+
+    assert_response :success
+    user.reload
+    assert user.email_verified?
+    assert_nil user.password_digest
+    assert_equal true, JSON.parse(response.body).dig("user", "email_verified")
+  end
+
+  test "apple_sign_in new account is verified" do
+    AppleSignIn.stubs(:verify!).returns({ "sub" => "apple.uid.new-verified", "email" => "new-apple@example.com" })
+
+    post "/api/v1/auth/apple_sign_in", params: { identity_token: "fake.token", device: @device_info }
+
+    assert_response :success
+    assert User.find_by!(email: "new-apple@example.com").email_verified?
+  end
+
+  test "reset_password verifies the email and clears MFA set up before verification" do
+    user = users(:unverified)
+    user.setup_mfa!
+    user.enable_mfa!
+
+    patch "/api/v1/auth/password_reset", params: {
+      token: user.generate_token_for(:password_reset),
+      password: "NewPass456!",
+      password_confirmation: "NewPass456!"
+    }
+
+    assert_response :ok
+    user.reload
+    assert user.email_verified?
+    assert_not user.otp_required?
+  end
+
+  test "sso_exchange returns the verification state" do
+    code = SecureRandom.urlsafe_base64(32)
+    Rails.cache.write("mobile_sso:#{code}", {
+      access_token: "a", refresh_token: "r", token_type: "Bearer", expires_in: 3600, created_at: Time.current.to_i,
+      user_id: users(:unverified).id, user_email: users(:unverified).email, user_email_verified: false
+    }, expires_in: 5.minutes)
+
+    post "/api/v1/auth/sso_exchange", params: { code: code }
+
+    assert_response :success
+    assert_equal false, JSON.parse(response.body).dig("user", "email_verified")
+  end
+
+  private
+
+    def bearer_headers_for(user)
+      MobileDevice.instance_variable_set(:@shared_oauth_application, nil)
+      device = MobileDevice.upsert_device!(user, device_id: "verify-#{user.id}", device_name: "Phone", device_type: "ios", os_version: "17", app_version: "1.0")
+      { "Authorization" => "Bearer #{device.issue_token![:access_token]}" }
+    end
+
+    def cache_linking_code(provider:, email:, uid: "google-uid-#{SecureRandom.hex(4)}")
+      code = SecureRandom.urlsafe_base64(32)
+      Rails.cache.write("mobile_sso_link:#{code}", {
+        provider: provider,
+        uid: uid,
+        email: email,
+        first_name: "Link",
+        last_name: "Test",
+        name: "Link Test",
+        device_info: @device_info.stringify_keys,
+        allow_account_creation: false
+      }, expires_in: 10.minutes)
+      code
+    end
 end

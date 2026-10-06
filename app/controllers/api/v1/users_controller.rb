@@ -1,9 +1,26 @@
 # frozen_string_literal: true
 
 class Api::V1::UsersController < Api::V1::BaseController
-  before_action :ensure_read_scope, only: :reset_status
-  before_action :ensure_write_scope, except: :reset_status
+  # Profile, country and account deletion stay available before email verification.
+  skip_before_action :ensure_verified_for_financial_data, only: %i[me update_country destroy]
+  before_action :ensure_read_scope, only: %i[reset_status me]
+  before_action :ensure_write_scope, except: %i[reset_status me]
   before_action :ensure_admin, only: %i[reset reset_status]
+
+  # GET /api/v1/users/me — lets the app refresh verification state without a new sign-in.
+  def me
+    render json: { user: current_resource_owner.mobile_payload }
+  end
+
+  # PATCH /api/v1/users/me/country — the member's country (issue #106,
+  # Stories 1.2 and 1.5), with the privacy/terms version they accepted for it.
+  def update_country
+    user = current_resource_owner
+    user.record_country!(country_params[:country_code], consent_version: country_params[:consent_version])
+    render json: { user: user.mobile_payload }
+  rescue ActiveRecord::RecordInvalid
+    render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
+  end
 
   def reset
     family = current_resource_owner.family
@@ -53,6 +70,10 @@ class Api::V1::UsersController < Api::V1::BaseController
   end
 
   private
+
+    def country_params
+      params.require(:user).permit(:country_code, :consent_version)
+    end
 
     def ensure_write_scope
       authorize_scope!(:write)

@@ -118,4 +118,91 @@ class RegistrationsControllerTest < ActionDispatch::IntegrationTest
     assert_not created_user.show_ai_sidebar?
     assert created_user.ai_enabled?
   end
+
+  test "invite_only blocks sign-up without an invitation in managed mode" do
+    with_onboarding_state("invite_only") do
+      # The form stays reachable: the seat is matched by email on submit.
+      get new_registration_url
+      assert_response :success
+
+      assert_no_difference "User.count" do
+        post registration_url, params: { user: { email: "uninvited@example.com", password: "Password1!" } }
+      end
+      assert_redirected_to new_session_url
+      assert_equal "Sign-up is by invitation only. Use the email address you gave Chancen.", flash[:alert]
+    end
+  end
+
+  test "invite_only web sign-up takes the seat reserved for that email and starts unverified" do
+    invitation = invitations(:one)
+
+    with_onboarding_state("invite_only") do
+      assert_enqueued_emails 1 do
+        post registration_url, params: { user: { email: invitation.email, password: "Password1!" } }
+      end
+    end
+
+    user = User.find_by!(email: invitation.email)
+    assert_equal invitation.family, user.family
+    assert_not user.email_verified?
+  end
+
+  test "invite_only allows sign-up with an invitation token" do
+    invitation = invitations(:one)
+
+    with_onboarding_state("invite_only") do
+      get new_registration_url(invitation: invitation.token)
+      assert_response :success
+
+      assert_difference "User.count", +1 do
+        post registration_url, params: { user: {
+          email: invitation.email,
+          password: "Password1!",
+          invitation: invitation.token } }
+      end
+      assert_not_nil invitation.reload.accepted_at
+    end
+  end
+
+  test "closed blocks sign-up even with an invitation token" do
+    invitation = invitations(:one)
+
+    with_onboarding_state("closed") do
+      assert_no_difference "User.count" do
+        post registration_url, params: { user: {
+          email: invitation.email,
+          password: "Password1!",
+          invitation: invitation.token } }
+      end
+      assert_redirected_to new_session_url
+      assert_equal "Signups are currently closed.", flash[:alert]
+    end
+  end
+
+  test "web sign-up without an invitation sends a verification email" do
+    assert_enqueued_emails 1 do
+      post registration_url, params: { user: { email: "web-verify@example.com", password: "Password1!" } }
+    end
+
+    assert_not User.find_by!(email: "web-verify@example.com").email_verified?
+  end
+
+  test "web sign-up with the token from an emailed invitation is verified at once" do
+    invitation = invitations(:one)
+    invitation.update!(email_sent_at: 1.day.ago)
+
+    post registration_url, params: { user: { email: invitation.email, password: "Password1!", invitation: invitation.token } }
+
+    assert User.find_by!(email: invitation.email).email_verified?
+  end
+
+  private
+
+    def with_onboarding_state(state)
+      original = Setting.onboarding_state
+      Setting.onboarding_state = state
+      yield
+    ensure
+      Setting.onboarding_state = original
+    end
 end
