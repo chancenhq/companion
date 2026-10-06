@@ -175,6 +175,18 @@ class User < ApplicationRecord
     password_digest.nil? && oidc_identities.exists?
   end
 
+  # Ends every existing way into this account: OAuth/mobile tokens on all
+  # devices (refresh tokens included), web sessions and API keys. Used when
+  # control of the email is (re)proven, so whoever registered the address
+  # first cannot keep a login: password reset and Google/Apple auto-link.
+  def revoke_all_access!
+    now = Time.current
+    Doorkeeper::AccessToken.where(resource_owner_id: id, revoked_at: nil).update_all(revoked_at: now)
+    Doorkeeper::AccessGrant.where(resource_owner_id: id, revoked_at: nil).update_all(revoked_at: now)
+    sessions.destroy_all
+    api_keys.active.update_all(revoked_at: now)
+  end
+
   # Check if user has a local password set (can authenticate locally)
   def has_local_password?
     password_digest.present?
