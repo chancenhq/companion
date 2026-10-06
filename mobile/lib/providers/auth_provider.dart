@@ -35,6 +35,9 @@ class AuthProvider with ChangeNotifier {
   bool _ssoAllowAccountCreation = false;
   bool _ssoHasPendingInvitation = false;
 
+  // Invitation deep-link state
+  String? _pendingInvitationToken;
+
   // Email verification (issue #106)
   bool _emailVerificationLocked = false;
   bool _verificationPromptDismissed = false;
@@ -63,6 +66,13 @@ class AuthProvider with ChangeNotifier {
   String? get ssoLastName => _ssoLastName;
   bool get ssoAllowAccountCreation => _ssoAllowAccountCreation;
   bool get ssoHasPendingInvitation => _ssoHasPendingInvitation;
+
+  String? get pendingInvitationToken => _pendingInvitationToken;
+
+  void setPendingInvitationToken(String? token) {
+    _pendingInvitationToken = token;
+    notifyListeners();
+  }
 
   /// True when the server has refused financial or Chancen Account data until
   /// the email is verified, or reported the user as unverified.
@@ -296,7 +306,7 @@ class AuthProvider with ChangeNotifier {
     required String password,
     required String firstName,
     required String lastName,
-    String? inviteCode,
+    String? invitationToken,
   }) async {
     _errorMessage = null;
     _isLoading = true;
@@ -310,12 +320,13 @@ class AuthProvider with ChangeNotifier {
         firstName: firstName,
         lastName: lastName,
         deviceInfo: deviceInfo,
-        inviteCode: inviteCode,
+        invitationToken: invitationToken ?? _pendingInvitationToken,
       );
 
       if (result['success'] == true) {
         _tokens = result['tokens'] as AuthTokens?;
         _setUser(result['user'] as User?);
+        _pendingInvitationToken = null;
         _isLoading = false;
         notifyListeners();
         return true;

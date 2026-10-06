@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'providers/app_config_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/accounts_provider.dart';
 import 'providers/categories_provider.dart';
@@ -66,6 +67,7 @@ class SureApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => LogService.instance),
         ChangeNotifierProvider(create: (_) => ConnectivityService()),
+        ChangeNotifierProvider(create: (_) => AppConfigProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => ChatProvider()),
         ChangeNotifierProvider(create: (_) => MyAccountProvider()),
@@ -206,6 +208,7 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
     _checkBackendConfig();
     _checkOnboarding();
     _initDeepLinks();
+    Provider.of<AppConfigProvider>(context, listen: false).load();
   }
 
   @override
@@ -226,6 +229,8 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
       if (authProvider.isAuthenticated && authProvider.emailVerificationRequired) {
         authProvider.refreshUser();
       }
+      // Also refresh remote config so WhatsApp URLs stay current.
+      Provider.of<AppConfigProvider>(context, listen: false).load();
     }
   }
 
@@ -277,6 +282,12 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
         Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => ResetPasswordScreen(token: token)),
         );
+      }
+    } else if (uri.scheme == 'sureapp' && uri.host == 'invite') {
+      final token = uri.queryParameters['token'];
+      if (token != null && token.isNotEmpty) {
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        authProvider.setPendingInvitationToken(token);
       }
     }
   }

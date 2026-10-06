@@ -35,7 +35,9 @@ module Assistant::Configurable
 
       def intro_functions
         [
-          Assistant::Function::SearchFamilyFiles
+          Assistant::Function::SearchFamilyFiles,
+          Assistant::Function::GetMyAccount,
+          Assistant::Function::GetISATransactions
         ]
       end
 

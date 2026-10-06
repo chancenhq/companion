@@ -6,6 +6,7 @@ class InvitationMailer < ApplicationMailer
   def invite_email(invitation)
     @invitation = invitation
     @accept_url = accept_invitation_url(@invitation.token)
+    @mobile_accept_url = "sureapp://invite?token=#{@invitation.token}"
 
     mail(
       to: @invitation.email,

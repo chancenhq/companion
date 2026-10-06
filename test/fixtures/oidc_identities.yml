@@ -23,6 +23,7 @@ jakob_google:
 sso_only_identity:
   user: sso_only
   provider: openid_connect
+  issuer: https://accounts.google.com
   uid: sso-only-uid-12345
   info:
     email: sso-user@example.com
