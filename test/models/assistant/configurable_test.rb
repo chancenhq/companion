@@ -16,12 +16,42 @@ class AssistantConfigurableTest < ActiveSupport::TestCase
   end
 
   test "returns intro configuration with search function only for unverified users" do
-    chat = chats(:intro)
+    user = users(:unverified)
+    user.update_column(:ui_layout, "intro")
+    chat = Chat.create!(user: user, title: "Unverified intro chat")
 
     config = Assistant.config_for(chat)
 
     assert_equal [ Assistant::Function::SearchFamilyFiles ], config[:functions]
     assert_includes config[:instructions], "Income Share Agreements"
+  end
+
+  test "dashboard configuration withholds ISA functions from unverified users" do
+    user = users(:unverified)
+    user.update_column(:ui_layout, "dashboard")
+    config = Assistant.config_for(Chat.create!(user: user, title: "Unverified dashboard chat"))
+
+    ISA_FUNCTIONS.each { |fn| assert_not_includes config[:functions], fn }
+  end
+
+  test "intro configuration includes ISA functions for verified users" do
+    user = users(:sso_only)
+    user.update_column(:ui_layout, "intro")
+    chat = Chat.create!(user: user, title: "Verified intro chat")
+
+    config = Assistant.config_for(chat)
+
+    assert_equal [ Assistant::Function::SearchFamilyFiles, *ISA_FUNCTIONS ], config[:functions]
+  end
+
+  test "dashboard configuration includes ISA functions for verified users" do
+    user = users(:sso_only)
+    user.update_column(:ui_layout, "dashboard")
+    chat = Chat.create!(user: user, title: "Verified dashboard chat")
+
+    config = Assistant.config_for(chat)
+
+    ISA_FUNCTIONS.each { |fn| assert_includes config[:functions], fn }
   end
 
   test "unverified users keep the assistant but get no data tools" do
