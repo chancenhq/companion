@@ -6,10 +6,13 @@ module Api
       skip_before_action :authenticate_request!
       skip_before_action :check_api_key_rate_limit
       skip_before_action :log_api_access
-      before_action :authenticate_request!, only: :enable_ai
-      before_action :ensure_write_scope, only: :enable_ai
-      before_action :check_api_key_rate_limit, only: :enable_ai
-      before_action :log_api_access, only: :enable_ai
+      skip_before_action :ensure_verified_for_financial_data
+      before_action :authenticate_request!, only: %i[enable_ai resend_email_verification]
+      before_action :ensure_write_scope, only: %i[enable_ai resend_email_verification]
+      before_action :check_api_key_rate_limit, only: %i[enable_ai resend_email_verification]
+      before_action :log_api_access, only: %i[enable_ai resend_email_verification]
+
+      EMAIL_VERIFICATION_RESENDS_PER_HOUR = 3
 
       def signup
         # invite_code_required? consults @invitation, so resolve it before checking invite-code requirements.
@@ -67,7 +70,15 @@ module Api
           return
         end
 
-        render json: token_response.merge(user: mobile_user_payload(user)), status: :created if token_response
+        return unless token_response
+
+        if invitation_token_proves_email?(@invitation, invitation_token_param)
+          user.mark_email_verified!
+        else
+          user.send_email_verification
+        end
+
+        render json: token_response.merge(user: user.mobile_payload), status: :created
       end
 
       def login
@@ -101,7 +112,7 @@ module Api
             return
           end
 
-          render json: token_response.merge(user: mobile_user_payload(user))
+          render json: token_response.merge(user: user.mobile_payload)
         else
           render json: { error: "Invalid email or password" }, status: :unauthorized
         end
@@ -142,7 +153,8 @@ module Api
             first_name: cached[:user_first_name],
             last_name: cached[:user_last_name],
             ui_layout: cached[:user_ui_layout],
-            ai_enabled: cached[:user_ai_enabled]
+            ai_enabled: cached[:user_ai_enabled],
+            email_verified: cached[:user_email_verified]
           }
         }
       end
@@ -168,6 +180,13 @@ module Api
         return render json: { error: "Linking code is invalid or expired" }, status: :unauthorized unless consume_linking_code!(linking_code)
 
         OidcIdentity.create_from_omniauth(build_omniauth_hash(cached), user)
+
+        # The password proves the account, the provider proves its own email.
+        # Only when that is the account's email does this verify it.
+        if OidcIdentity.email_trusted?(provider: cached[:provider], issuer: cached[:issuer]) &&
+            cached[:email].to_s.casecmp?(user.email)
+          user.mark_email_verified!
+        end
 
         SsoAuditLog.log_link!(
           user: user,
@@ -239,7 +258,7 @@ module Api
         identity = OidcIdentity.find_by(provider: "apple", uid: apple_uid)
 
         user = if identity
-          identity.user
+          identity.user.tap(&:claim_by_trusted_provider!)
         elsif email.present? && (existing_user = User.find_by(email: email))
           OidcIdentity.create!(
             user: existing_user,
@@ -254,8 +273,9 @@ module Api
             last_authenticated_at: Time.current
           )
           # Apple has proven control of this email; end any login held by
-          # whoever registered it first. issue_mobile_tokens below then
-          # issues the only valid token.
+          # whoever registered it first (and, if unverified, their password
+          # and MFA). issue_mobile_tokens below then issues the only valid token.
+          existing_user.claim_by_trusted_provider!
           existing_user.revoke_all_access!
           existing_user
         else
@@ -318,6 +338,7 @@ module Api
         end
 
         user.revoke_all_access!
+        user.verify_after_password_reset!
 
         render json: { message: "Password updated. You've been signed out on all devices." }
       end
@@ -331,10 +352,26 @@ module Api
         end
 
         if user.update(ai_enabled: true)
-          render json: { user: mobile_user_payload(user) }
+          render json: { user: user.mobile_payload }
         else
           render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
         end
+      end
+
+      def resend_email_verification
+        user = current_resource_owner
+
+        if user.email_verified?
+          return render json: { message: "Your email is already verified.", user: user.mobile_payload }
+        end
+
+        sent = Rails.cache.increment("email_verification_resend:#{user.id}", 1, expires_in: 1.hour).to_i
+        if sent > EMAIL_VERIFICATION_RESENDS_PER_HOUR
+          return render json: { error: "Too many verification emails. Please try again in an hour." }, status: :too_many_requests
+        end
+
+        user.send_email_verification
+        render json: { message: "Verification email sent.", user: user.mobile_payload }
       end
 
       def refresh
@@ -387,10 +424,20 @@ module Api
           params.require(:user).permit(:email, :password, :first_name, :last_name)
         end
 
+        def invitation_token_param
+          params[:invitation].presence || params.dig(:user, :invitation).presence
+        end
+
+        # The invitation for the token sent with the sign-up, otherwise the seat
+        # reserved for this email (bulk invites aren't emailed). An email match
+        # proves nothing about ownership: that account starts unverified, and
+        # the real owner can reclaim it by password reset or Google/Apple.
         def pending_invitation_from_params
-          token = params[:invitation]
-          token ||= params[:user][:invitation] if params[:user].present?
-          Invitation.pending.find_by(token: token)
+          token = invitation_token_param
+          return Invitation.pending.find_by(token: token) if token.present?
+
+          email = params.dig(:user, :email).to_s.strip.downcase
+          Invitation.pending.find_by(email: email) if email.present?
         end
 
         def validate_password(password)
@@ -438,17 +485,6 @@ module Api
           params.require(:code)
         end
 
-        def mobile_user_payload(user)
-          {
-            id: user.id,
-            email: user.email,
-            first_name: user.first_name,
-            last_name: user.last_name,
-            ui_layout: user.ui_layout,
-            ai_enabled: user.ai_enabled?
-          }
-        end
-
         def jit_create_sso_user(email:, first_name:, last_name:, provider:, uid:, issuer:, new_family_fallback_role: :admin, invitation: nil, password: nil)
           invitation ||= Invitation.pending.find_by(email: email)
 
@@ -485,10 +521,12 @@ module Api
               last_authenticated_at: Time.current
             )
             invitation&.update!(accepted_at: Time.current)
+            user.mark_email_verified! if OidcIdentity.email_trusted?(provider: provider, issuer: issuer)
             SsoAuditLog.log_jit_account_created!(user: user, provider: provider, request: request)
           end
 
           return nil if performed?
+          user.send_email_verification unless user.email_verified?
           user
         end
 
@@ -529,7 +567,7 @@ module Api
           device = MobileDevice.upsert_device!(user, device_info)
           token_response = device.issue_token!
 
-          render json: token_response.merge(user: mobile_user_payload(user))
+          render json: token_response.merge(user: user.mobile_payload)
         rescue ActiveRecord::RecordInvalid => e
           Rails.logger.error("[Auth] Device registration failed: #{e.message}")
           render json: { error: "Failed to register device" }, status: :unprocessable_entity

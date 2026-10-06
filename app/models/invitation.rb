@@ -28,6 +28,11 @@ class Invitation < ApplicationRecord
     accepted_at.nil? && expires_at > Time.current
   end
 
+  # Whether the invitation (and its token) was emailed to the invitee.
+  def emailed?
+    email_sent_at.present?
+  end
+
   def accept_for(user)
     return false if user.blank?
     return false unless pending?
