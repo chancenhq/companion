@@ -710,6 +710,44 @@ class AuthService {
     }
   }
 
+  /// Saves the member's country and the privacy/terms version they accepted
+  /// for it (PATCH /api/v1/users/me/country, issue #106).
+  Future<Map<String, dynamic>> updateCountry({
+    required String accessToken,
+    required String countryCode,
+    required String consentVersion,
+  }) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/users/me/country');
+      final response = await http.patch(
+        url,
+        headers: {
+          ...ApiConfig.getAuthHeaders(accessToken),
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'user': {'country_code': countryCode, 'consent_version': consentVersion},
+        }),
+      ).timeout(const Duration(seconds: 20));
+
+      final responseData = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        final user = User.fromJson(responseData['user']);
+        await _saveUser(user);
+        return {'success': true, 'user': user};
+      }
+
+      return {
+        'success': false,
+        'error': (responseData['errors'] as List?)?.join(', ') ??
+            responseData['error'] ??
+            'Could not save your country. Please try again.',
+      };
+    } catch (e) {
+      return {'success': false, 'error': 'Network unavailable. Please try again.'};
+    }
+  }
+
   Future<void> logout() async {
     await _storage.delete(key: _tokenKey);
     await _storage.delete(key: _userKey);
