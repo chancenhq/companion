@@ -303,6 +303,8 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
   }
 
   Future<void> _checkOnboarding() async {
+    // The country now lives on the server; drop the old on-device guess.
+    await PreferencesService.instance.clearLegacyUserCountry();
     final complete = await PreferencesService.instance.getOnboardingComplete();
     if (mounted) {
       setState(() => _onboardingComplete = complete);
