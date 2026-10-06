@@ -33,6 +33,16 @@ class Invitation < ApplicationRecord
     email_sent_at.present?
   end
 
+  # A seat reserved for this email that was never emailed (e.g. bulk
+  # invite), so an email sign-up can claim it without a token (issue #106).
+  # An emailed invitation needs its token: its address may belong to an
+  # existing household's invitee, and the email alone proves nothing.
+  def self.seat_for(email)
+    return if email.blank?
+
+    pending.where(email_sent_at: nil).find_by(email: email.to_s.strip.downcase)
+  end
+
   def accept_for(user)
     return false if user.blank?
     return false unless pending?

@@ -37,8 +37,8 @@ class RegistrationsController < ApplicationController
       @invitation_token = params[:invitation].presence || params.dig(:user, :invitation).presence
       @invitation = if @invitation_token
         Invitation.pending.find_by(token: @invitation_token)
-      elsif (email = params.dig(:user, :email).to_s.strip.downcase).present?
-        Invitation.pending.find_by(email: email)
+      else
+        Invitation.seat_for(params.dig(:user, :email))
       end
     end
 
