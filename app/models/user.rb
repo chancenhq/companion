@@ -44,6 +44,8 @@ class User < ApplicationRecord
   validates :default_period, inclusion: { in: Period::PERIODS.keys }
   validates :default_account_order, inclusion: { in: AccountOrder::ORDERS.keys }
   validates :locale, inclusion: { in: I18n.available_locales.map(&:to_s) }, allow_nil: true
+  # Issue #106: the member's own country, from config/chancen_countries.yml.
+  validates :country_code, :consent_country_code, inclusion: { in: ->(_) { ChancenCountry.codes } }, allow_nil: true
 
   # Password is required on create unless the user is being created via SSO JIT.
   # SSO JIT users have password_digest = nil and authenticate via OIDC only.
@@ -51,6 +53,7 @@ class User < ApplicationRecord
   validates :password, length: { minimum: 8 }, allow_nil: true
   normalizes :email, with: ->(email) { email.strip.downcase }
   normalizes :unconfirmed_email, with: ->(email) { email&.strip&.downcase }
+  normalizes :country_code, :consent_country_code, with: ->(code) { code.to_s.strip.upcase.presence }
 
   normalizes :first_name, :last_name, with: ->(value) { value.strip.presence }
 
@@ -131,6 +134,26 @@ class User < ApplicationRecord
     EmailConfirmationMailer.with(user: self).confirmation_email.deliver_later
   end
 
+  # Issue #106, Story 1.5: members without a country on the server confirm it
+  # once. The server never fills one in.
+  def requires_country_confirmation?
+    country_code.blank?
+  end
+
+  def chancen_country
+    ChancenCountry.find(country_code)
+  end
+
+  # Saves the member's country and, when given, which privacy/terms version
+  # they accepted for it (Story 1.1, D4).
+  def record_country!(code, consent_version: nil)
+    attrs = { country_code: code }
+    if consent_version.present?
+      attrs.merge!(consent_version: consent_version, consent_country_code: code, consent_accepted_at: Time.current)
+    end
+    update!(attrs)
+  end
+
   # User shape returned to the mobile app (auth responses, SSO exchange, /users/me).
   def mobile_payload
     {
@@ -140,7 +163,11 @@ class User < ApplicationRecord
       last_name: last_name,
       ui_layout: ui_layout,
       ai_enabled: ai_enabled?,
-      email_verified: email_verified?
+      email_verified: email_verified?,
+      country_code: country_code,
+      requires_country_confirmation: requires_country_confirmation?,
+      consent_version: consent_version,
+      consent_country_code: consent_country_code
     }
   end
 
