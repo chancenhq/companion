@@ -101,13 +101,16 @@ class User < ApplicationRecord
     update!(email_verified_at: Time.current) unless email_verified?
   end
 
-  # A trusted provider (Google/Apple) has just proven this email on an
-  # account that isn't verified yet, so it may have been registered by
-  # someone else first. Anything set up before verification could belong to
-  # them: drop the password and MFA, mark verified, end every other login.
-  # Returns false (and changes nothing) for already-verified accounts.
-  def claim_by_trusted_provider!
+  # A trusted provider (Google/Apple) has just proven `email` on an account
+  # that isn't verified yet, so it may have been registered by someone else
+  # first. Anything set up before verification could belong to them: drop the
+  # password and MFA, mark verified, end every other login.
+  # Only when the proven email is this account's: an identity linked with a
+  # different address proves nothing about this one. Returns false (and
+  # changes nothing) otherwise, or for already-verified accounts.
+  def claim_by_trusted_provider!(email:)
     return false if email_verified?
+    return false unless email.to_s.strip.casecmp?(self.email.to_s)
 
     transaction do
       disable_mfa!

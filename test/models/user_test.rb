@@ -755,7 +755,7 @@ class UserTest < ActiveSupport::TestCase
     user.enable_mfa!
     user.sessions.create!
 
-    assert user.claim_by_trusted_provider!
+    assert user.claim_by_trusted_provider!(email: user.email.upcase)
 
     user.reload
     assert user.email_verified?
@@ -767,8 +767,20 @@ class UserTest < ActiveSupport::TestCase
   test "claim_by_trusted_provider! leaves verified accounts alone" do
     password_digest = @user.password_digest
 
-    assert_not @user.claim_by_trusted_provider!
+    assert_not @user.claim_by_trusted_provider!(email: @user.email)
     assert_equal password_digest, @user.reload.password_digest
+  end
+
+  test "claim_by_trusted_provider! ignores a provider email that isn't the account's" do
+    user = users(:unverified)
+    password_digest = user.password_digest
+
+    assert_not user.claim_by_trusted_provider!(email: "someone-else@gmail.com")
+    assert_not user.claim_by_trusted_provider!(email: nil)
+
+    user.reload
+    assert_not user.email_verified?
+    assert_equal password_digest, user.password_digest
   end
 
   test "verify_after_password_reset! clears MFA only for unverified accounts" do

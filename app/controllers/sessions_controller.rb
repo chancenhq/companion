@@ -159,9 +159,10 @@ class SessionsController < ApplicationController
       user = oidc_identity.user
       oidc_identity.record_authentication!
       oidc_identity.sync_user_attributes!(auth)
-      # A trusted provider proving the email verifies an unverified account
-      # (dropping any password/MFA a first registrant may hold).
-      user.claim_by_trusted_provider! if provider_email_trusted?(auth)
+      # A trusted provider proving the account's own email verifies an
+      # unverified account (dropping any password/MFA a first registrant may
+      # hold). An identity linked with a different email proves nothing here.
+      user.claim_by_trusted_provider!(email: auth.info&.email) if provider_email_trusted?(auth)
 
       # Log successful SSO login
       SsoAuditLog.log_login!(user: user, provider: auth.provider, request: request)
@@ -299,7 +300,7 @@ class SessionsController < ApplicationController
         SsoAuditLog.log_link!(user: existing_user, provider: auth.provider, request: request)
         # Google has proven control of this email; end any login held by
         # whoever registered it first before issuing this device's token.
-        existing_user.claim_by_trusted_provider!
+        existing_user.claim_by_trusted_provider!(email: email)
         existing_user.revoke_all_access!
         handle_mobile_sso_callback(existing_user, device_info: device_info)
         return

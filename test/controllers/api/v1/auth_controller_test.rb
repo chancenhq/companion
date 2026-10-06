@@ -1549,6 +1549,35 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     assert_not_nil invitation.reload.accepted_at
   end
 
+  test "email signup without a token does not claim an invitation that was emailed" do
+    invitation = invitations(:one)
+    invitation.update!(email_sent_at: 1.day.ago)
+
+    post "/api/v1/auth/signup", params: {
+      user: { email: invitation.email, password: "SecurePass123!", first_name: "Not", last_name: "Invited" },
+      device: @device_info
+    }
+
+    assert_response :created
+    assert_not_equal invitation.family, User.find_by!(email: invitation.email).family
+    assert_nil invitation.reload.accepted_at
+  end
+
+  test "invite_only email signup without a token is refused for an emailed invitation" do
+    invitation = invitations(:one)
+    invitation.update!(email_sent_at: 1.day.ago)
+    Setting.onboarding_state = "invite_only"
+
+    assert_no_difference "User.count" do
+      post "/api/v1/auth/signup", params: {
+        user: { email: invitation.email, password: "SecurePass123!", first_name: "Not", last_name: "Invited" },
+        device: @device_info
+      }
+    end
+
+    assert_response :forbidden
+  end
+
   test "resend_email_verification sends to unverified users and is rate limited" do
     headers = bearer_headers_for(users(:unverified))
 
@@ -1616,6 +1645,19 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     assert user.email_verified?
     assert_nil user.password_digest
     assert_equal true, JSON.parse(response.body).dig("user", "email_verified")
+  end
+
+  test "apple_sign_in returning identity with a different email does not verify the account" do
+    user = users(:unverified)
+    OidcIdentity.create!(user: user, provider: "apple", uid: "apple.uid.other-email", issuer: AppleSignIn::ISSUER, info: { email: "relay@privaterelay.appleid.com" })
+    AppleSignIn.stubs(:verify!).returns({ "sub" => "apple.uid.other-email", "email" => "relay@privaterelay.appleid.com" })
+
+    post "/api/v1/auth/apple_sign_in", params: { identity_token: "fake.token", device: @device_info }
+
+    assert_response :success
+    user.reload
+    assert_not user.email_verified?
+    assert_not_nil user.password_digest
   end
 
   test "apple_sign_in new account is verified" do

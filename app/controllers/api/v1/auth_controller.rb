@@ -260,7 +260,7 @@ module Api
         identity = OidcIdentity.find_by(provider: "apple", uid: apple_uid)
 
         user = if identity
-          identity.user.tap(&:claim_by_trusted_provider!)
+          identity.user.tap { |identity_user| identity_user.claim_by_trusted_provider!(email: email) }
         elsif email.present? && (existing_user = User.find_by(email: email))
           OidcIdentity.create!(
             user: existing_user,
@@ -277,7 +277,7 @@ module Api
           # Apple has proven control of this email; end any login held by
           # whoever registered it first (and, if unverified, their password
           # and MFA). issue_mobile_tokens below then issues the only valid token.
-          existing_user.claim_by_trusted_provider!
+          existing_user.claim_by_trusted_provider!(email: email)
           existing_user.revoke_all_access!
           existing_user
         else
@@ -431,15 +431,15 @@ module Api
         end
 
         # The invitation for the token sent with the sign-up, otherwise the seat
-        # reserved for this email (bulk invites aren't emailed). An email match
+        # reserved for this email (only invitations never emailed, such as bulk
+        # invites; an emailed invitation needs its token). An email match
         # proves nothing about ownership: that account starts unverified, and
         # the real owner can reclaim it by password reset or Google/Apple.
         def pending_invitation_from_params
           token = invitation_token_param
           return Invitation.pending.find_by(token: token) if token.present?
 
-          email = params.dig(:user, :email).to_s.strip.downcase
-          Invitation.pending.find_by(email: email) if email.present?
+          Invitation.seat_for(params.dig(:user, :email))
         end
 
         def validate_password(password)
