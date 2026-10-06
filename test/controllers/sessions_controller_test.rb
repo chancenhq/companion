@@ -810,4 +810,30 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     assert user.email_verified?
     assert_nil user.password_digest
   end
+
+  test "returning Google sign-in with a different email does not verify the account" do
+    # Someone registers a victim's address, links their own Google with the
+    # password, then signs in with that Google again.
+    user = users(:unverified)
+    OidcIdentity.create!(user: user, provider: "openid_connect", uid: "other-google-uid", issuer: GOOGLE_ISSUER, info: { email: "attacker@gmail.com" })
+    setup_omniauth_mock(provider: "openid_connect", uid: "other-google-uid", email: "attacker@gmail.com", name: "Attacker", issuer: GOOGLE_ISSUER)
+
+    get "/auth/openid_connect/callback"
+
+    user.reload
+    assert_not user.email_verified?
+    assert_not_nil user.password_digest
+  end
+
+  test "returning Google sign-in with the account's own email verifies it" do
+    user = users(:unverified)
+    OidcIdentity.create!(user: user, provider: "openid_connect", uid: "own-google-uid", issuer: GOOGLE_ISSUER, info: { email: user.email })
+    setup_omniauth_mock(provider: "openid_connect", uid: "own-google-uid", email: user.email, name: "Unverified User", issuer: GOOGLE_ISSUER)
+
+    get "/auth/openid_connect/callback"
+
+    user.reload
+    assert user.email_verified?
+    assert_nil user.password_digest
+  end
 end

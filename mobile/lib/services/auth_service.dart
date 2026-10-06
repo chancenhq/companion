@@ -675,6 +675,41 @@ class AuthService {
     }
   }
 
+  Future<Map<String, dynamic>> resendEmailVerification({
+    required String accessToken,
+  }) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/resend_email_verification');
+      final response = await http.post(
+        url,
+        headers: ApiConfig.getAuthHeaders(accessToken),
+      ).timeout(const Duration(seconds: 30));
+
+      final responseData = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        final userJson = responseData['user'];
+        final user = userJson is Map<String, dynamic> ? User.fromJson(userJson) : null;
+        if (user != null) await _saveUser(user);
+        return {
+          'success': true,
+          'message': responseData['message'] ?? 'Verification email sent.',
+          'user': user,
+        };
+      }
+
+      return {
+        'success': false,
+        'error': responseData['error'] ?? 'Could not send the verification email. Please try again.',
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'error': 'Network unavailable',
+      };
+    }
+  }
+
   /// Saves the member's country and the privacy/terms version they accepted
   /// for it (PATCH /api/v1/users/me/country, issue #106).
   Future<Map<String, dynamic>> updateCountry({
@@ -710,41 +745,6 @@ class AuthService {
       };
     } catch (e) {
       return {'success': false, 'error': 'Network unavailable. Please try again.'};
-    }
-  }
-
-  Future<Map<String, dynamic>> resendEmailVerification({
-    required String accessToken,
-  }) async {
-    try {
-      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/resend_email_verification');
-      final response = await http.post(
-        url,
-        headers: ApiConfig.getAuthHeaders(accessToken),
-      ).timeout(const Duration(seconds: 30));
-
-      final responseData = jsonDecode(response.body);
-
-      if (response.statusCode == 200) {
-        final userJson = responseData['user'];
-        final user = userJson is Map<String, dynamic> ? User.fromJson(userJson) : null;
-        if (user != null) await _saveUser(user);
-        return {
-          'success': true,
-          'message': responseData['message'] ?? 'Verification email sent.',
-          'user': user,
-        };
-      }
-
-      return {
-        'success': false,
-        'error': responseData['error'] ?? 'Could not send the verification email. Please try again.',
-      };
-    } catch (e) {
-      return {
-        'success': false,
-        'error': 'Network unavailable',
-      };
     }
   }
 

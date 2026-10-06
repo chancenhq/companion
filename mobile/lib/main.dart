@@ -11,7 +11,6 @@ import 'providers/chat_provider.dart';
 import 'providers/my_account_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/backend_config_screen.dart';
-import 'screens/country_selection_screen.dart';
 import 'screens/email_verification_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/biometric_lock_screen.dart';
@@ -364,12 +363,6 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
         if (authProvider.isAuthenticated) {
           // Email sign-ups confirm their address once (issue #106); the
           // assistant stays available if they continue without verifying.
-          // Members the server has no country for confirm it once (issue
-          // #106, Story 1.5), before anything else in the app.
-          if (authProvider.countryConfirmationRequired) {
-            return const CountrySelectionScreen();
-          }
-
           if (authProvider.showEmailVerificationPrompt) {
             return const EmailVerificationScreen();
           }

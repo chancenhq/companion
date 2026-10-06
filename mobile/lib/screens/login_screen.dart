@@ -42,6 +42,27 @@ class _LoginFormBodyState extends State<LoginFormBody> {
   bool _obscurePassword = true;
   bool _isSignUp = false;
 
+  // Issue #106, Story 2.1: Google, Apple and "Continue with email" are equal
+  // first choices; the email form opens from the last one.
+  bool _emailChosen = false;
+  bool get _showEmailForm => !widget.branded || _emailChosen;
+
+  static const _passwordRules =
+      'At least 8 characters, with upper and lower case letters, a number and a symbol (like ! or ?).';
+
+  /// Mirrors the server's sign-up rules so problems show before submitting.
+  static String? _signUpPasswordError(String password) {
+    if (password.runes.length < 8) return 'Use at least 8 characters.';
+    if (!RegExp(r'[A-Z]').hasMatch(password) || !RegExp(r'[a-z]').hasMatch(password)) {
+      return 'Use both upper and lower case letters.';
+    }
+    if (!RegExp(r'\d').hasMatch(password)) return 'Add at least one number.';
+    if (!RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password)) {
+      return 'Add at least one symbol, like ! or ?.';
+    }
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -128,6 +149,20 @@ class _LoginFormBodyState extends State<LoginFormBody> {
             ),
             const SizedBox(height: 16),
           ],
+
+          if (_showEmailForm) ...[
+          if (widget.branded)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () {
+                  context.read<AuthProvider>().clearError();
+                  setState(() => _emailChosen = false);
+                },
+                icon: const Icon(Icons.arrow_back, size: 18),
+                label: const Text('Other ways to sign in'),
+              ),
+            ),
 
           // ── Sign In | Sign Up toggle ─────────────────────────────────
           if (widget.allowSignUp) ...[
@@ -236,6 +271,7 @@ class _LoginFormBodyState extends State<LoginFormBody> {
                     textInputAction: TextInputAction.next,
                     decoration: const InputDecoration(
                       labelText: 'Email',
+                      helperText: 'Use the email address you gave Chancen.',
                       prefixIcon: Icon(Icons.email_outlined),
                     ),
                     validator: (v) {
@@ -264,12 +300,24 @@ class _LoginFormBodyState extends State<LoginFormBody> {
                             setState(() => _obscurePassword = !_obscurePassword),
                       ),
                     ),
-                    validator: (v) =>
-                        (v == null || v.isEmpty) ? 'Please enter your password' : null,
+                    validator: (v) {
+                      if (v == null || v.isEmpty) return 'Please enter your password';
+                      return _isSignUp ? _signUpPasswordError(v) : null;
+                    },
                     onFieldSubmitted: showOtp
                         ? null
                         : (_) => _isSignUp ? _handleSignUp() : _handleLogin(),
                   ),
+
+                  if (_isSignUp) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      _passwordRules,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                  ],
 
                   // Forgot password — sign-in only
                   if (!_isSignUp) ...[
@@ -348,20 +396,11 @@ class _LoginFormBodyState extends State<LoginFormBody> {
             },
           ),
 
-          // ── Google SSO ───────────────────────────────────────────────
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(child: Divider(color: colorScheme.outlineVariant)),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text('or',
-                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
-              ),
-              Expanded(child: Divider(color: colorScheme.outlineVariant)),
-            ],
-          ),
-          const SizedBox(height: 16),
+          ],
+
+          // ── Sign-in choices: Google, Apple, email ────────────────────
+          if (!_showEmailForm) ...[
+          const SizedBox(height: 8),
           Consumer<AuthProvider>(
             builder: (context, authProvider, _) {
               return OutlinedButton.icon(
@@ -373,7 +412,7 @@ class _LoginFormBodyState extends State<LoginFormBody> {
                   width: 18,
                   height: 18,
                 ),
-                label: const Text('Sign in with Google'),
+                label: const Text('Continue with Google'),
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size(double.infinity, 50),
                   shape: RoundedRectangleBorder(
@@ -400,6 +439,28 @@ class _LoginFormBodyState extends State<LoginFormBody> {
                 );
               },
             ),
+          ],
+
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            key: const ValueKey('continue-with-email'),
+            onPressed: () {
+              context.read<AuthProvider>().clearError();
+              setState(() => _emailChosen = true);
+            },
+            icon: const Icon(Icons.mail_outline, size: 20),
+            label: const Text('Continue with email'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 50),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Use the email address you gave Chancen.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
+            textAlign: TextAlign.center,
+          ),
           ],
 
           const SizedBox(height: 24),

@@ -196,6 +196,27 @@ class RegistrationsControllerTest < ActionDispatch::IntegrationTest
     assert User.find_by!(email: invitation.email).email_verified?
   end
 
+  test "web sign-up without a token does not claim an invitation that was emailed" do
+    invitation = invitations(:one)
+    invitation.update!(email_sent_at: 1.day.ago)
+
+    post registration_url, params: { user: { email: invitation.email, password: "Password1!" } }
+
+    user = User.find_by!(email: invitation.email)
+    assert_not_equal invitation.family, user.family
+    assert_nil invitation.reload.accepted_at
+  end
+
+  test "web sign-up without a token takes a seat that was never emailed" do
+    invitation = invitations(:one)
+
+    post registration_url, params: { user: { email: invitation.email, password: "Password1!" } }
+
+    user = User.find_by!(email: invitation.email)
+    assert_equal invitation.family, user.family
+    assert_not user.email_verified?
+  end
+
   private
 
     def with_onboarding_state(state)

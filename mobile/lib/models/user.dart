@@ -124,10 +124,6 @@ class User {
       'ui_layout': uiLayout,
       'ai_enabled': aiEnabled,
       'email_verified': emailVerified,
-      'country_code': countryCode,
-      'requires_country_confirmation': requiresCountryConfirmation,
-      'consent_version': consentVersion,
-      'consent_country_code': consentCountryCode,
     };
   }
 
