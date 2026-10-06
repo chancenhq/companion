@@ -10,7 +10,9 @@ class Assistant::Function::GetMyAccount < Assistant::Function
   end
 
   def call(_params = {})
-    url         = Setting.metabase_url.presence
+    return { error: "email_verification_required", message: "Verify your email to see your Chancen Account" } unless user.email_verified?
+
+    url       = Setting.metabase_url.presence
     api_key     = Setting.metabase_api_key.presence
     question_id = Setting.metabase_student_question_id.presence
 
