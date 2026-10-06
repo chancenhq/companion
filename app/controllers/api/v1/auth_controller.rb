@@ -14,6 +14,7 @@ module Api
       def signup
         # invite_code_required? consults @invitation, so resolve it before checking invite-code requirements.
         @invitation = pending_invitation_from_params
+        return render_signup_not_permitted_json unless signup_permitted?(invitation: @invitation)
 
         # Check if invite code is required
         if invite_code_required? && params[:invite_code].blank?
@@ -186,6 +187,7 @@ module Api
 
         # Check for a pending invitation for this email
         invitation = Invitation.pending.find_by(email: email)
+        return render_signup_not_permitted_json unless signup_permitted?(invitation: invitation)
 
         unless invitation.present? || cached[:allow_account_creation]
           render json: { error: "SSO account creation is disabled. Please contact an administrator." }, status: :forbidden
@@ -449,6 +451,11 @@ module Api
 
         def jit_create_sso_user(email:, first_name:, last_name:, provider:, uid:, issuer:, new_family_fallback_role: :admin, invitation: nil, password: nil)
           invitation ||= Invitation.pending.find_by(email: email)
+
+          unless signup_permitted?(invitation: invitation)
+            render_signup_not_permitted_json
+            return nil
+          end
 
           if invitation.blank? && invite_only_default_family_missing?
             render json: { error: "Invite-only default family is unavailable. Please contact an administrator." }, status: :forbidden

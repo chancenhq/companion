@@ -597,6 +597,33 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     assert new_device.active_tokens.any?, "Expected the linking device to keep its new token"
   end
 
+  test "mobile SSO does not offer account creation under invite_only without an invitation" do
+    setup_omniauth_mock(
+      provider: "openid_connect",
+      uid: "uninvited-uid-12345",
+      email: "uninvited-sso@example.com",
+      name: "Uninvited User"
+    )
+    Rails.configuration.x.auth.stubs(:sso_providers).returns([
+      { name: "openid_connect", strategy: "openid_connect", label: "Google" }
+    ])
+    original_state = Setting.onboarding_state
+    Setting.onboarding_state = "invite_only"
+
+    get "/auth/mobile/openid_connect", params: {
+      device_id: "flutter-device-uninvited",
+      device_name: "Pixel 8",
+      device_type: "android"
+    }
+    get "/auth/openid_connect/callback"
+
+    params = Rack::Utils.parse_query(URI.parse(@response.redirect_url).query)
+    assert_equal "account_not_linked", params["status"]
+    assert_equal "false", params["allow_account_creation"]
+  ensure
+    Setting.onboarding_state = original_state if original_state
+  end
+
   test "mobile SSO redirects with error when no account exists for email" do
     setup_omniauth_mock(
       provider: "openid_connect",
