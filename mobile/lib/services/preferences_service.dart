@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class PreferencesService {
   static const _groupByTypeKey = 'dashboard_group_by_type';
+  static const _whatsappUrlsKey = 'app_config_whatsapp_urls';
   static const _biometricEnabledKey = 'biometric_enabled';
   static const _showCategoryFilterKey = 'dashboard_show_category_filter';
   static const _themeModeKey = 'theme_mode';
@@ -89,6 +91,22 @@ class PreferencesService {
   Future<void> setUserCountry(String country) async {
     final prefs = await _preferences;
     await prefs.setString(_userCountryKey, country);
+  }
+
+  // App config
+
+  Future<Map<String, String>> getWhatsappUrls() async {
+    final prefs = await _preferences;
+    final raw = prefs.getString(_whatsappUrlsKey);
+    if (raw == null) return {};
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map) return {};
+    return Map<String, String>.from(decoded);
+  }
+
+  Future<void> setWhatsappUrls(Map<String, String> urls) async {
+    final prefs = await _preferences;
+    await prefs.setString(_whatsappUrlsKey, jsonEncode(urls));
   }
 
   // Legal consent

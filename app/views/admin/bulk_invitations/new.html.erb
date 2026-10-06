@@ -1,0 +1,64 @@
+<%= content_for :page_title, t(".title") %>
+
+<div class="bg-container rounded-xl shadow-border-xs p-6 max-w-2xl">
+  <div class="mb-6">
+    <h1 class="text-xl font-semibold text-primary mb-1"><%= t(".title") %></h1>
+    <p class="text-sm text-secondary"><%= t(".description") %></p>
+  </div>
+
+  <% if @results.present? %>
+    <div class="mb-8 space-y-2">
+      <h2 class="text-sm font-semibold text-primary mb-3"><%= t(".results.heading", count: @results.size) %></h2>
+      <% @results.each do |result| %>
+        <div class="flex items-start gap-3 px-4 py-3 rounded-lg border <%= result[:status] == :error ? 'border-red-200 bg-red-50' : 'border-primary bg-container-inset' %>">
+          <% if result[:status] == :invited %>
+            <%= icon "mail", class: "w-4 h-4 text-secondary mt-0.5 shrink-0" %>
+            <div>
+              <p class="text-sm font-medium text-primary"><%= result[:email] %></p>
+              <p class="text-xs text-secondary"><%= t(".results.invited") %></p>
+            </div>
+          <% elsif result[:status] == :accepted %>
+            <%= icon "user-check", class: "w-4 h-4 text-green-600 mt-0.5 shrink-0" %>
+            <div>
+              <p class="text-sm font-medium text-primary"><%= result[:email] %></p>
+              <p class="text-xs text-secondary"><%= t(".results.accepted") %></p>
+            </div>
+          <% else %>
+            <%= icon "circle-x", class: "w-4 h-4 text-red-500 mt-0.5 shrink-0" %>
+            <div>
+              <p class="text-sm font-medium text-primary"><%= result[:email] %></p>
+              <p class="text-xs text-red-500"><%= result[:errors].join(", ") %></p>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+  <% end %>
+
+  <%= form_with url: admin_bulk_invitations_path, method: :post do |f| %>
+    <div class="space-y-5">
+      <div>
+        <%= f.label :family_id, t(".form.family_label"), class: "block text-sm font-medium text-primary mb-1" %>
+        <%= f.collection_select :family_id,
+              @families,
+              :id,
+              :name,
+              { prompt: t(".form.family_prompt") },
+              class: "w-full rounded-lg border border-primary px-3 py-2 text-sm bg-container-inset text-primary" %>
+      </div>
+
+      <div>
+        <%= f.label :emails, t(".form.emails_label"), class: "block text-sm font-medium text-primary mb-1" %>
+        <p class="text-xs text-secondary mb-2"><%= t(".form.emails_hint") %></p>
+        <%= f.text_area :emails,
+              rows: 8,
+              placeholder: t(".form.emails_placeholder"),
+              class: "w-full rounded-lg border border-primary px-3 py-2 text-sm bg-container-inset text-primary font-mono resize-y" %>
+      </div>
+
+      <div class="flex justify-end">
+        <%= render DS::Button.new(variant: :primary, size: :md, type: "submit", text: t(".form.submit")) %>
+      </div>
+    </div>
+  <% end %>
+</div>

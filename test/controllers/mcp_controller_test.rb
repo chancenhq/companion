@@ -149,6 +149,8 @@ class McpControllerTest < ActionDispatch::IntegrationTest
   # -- tools/list --
 
   test "tools/list returns all assistant function tools" do
+    @user = users(:sso_only) # verified, so every tool is listed
+
     with_mcp_env do
       post "/mcp", params: jsonrpc_request("tools/list").to_json,
            headers: mcp_headers(@token)
@@ -174,6 +176,22 @@ class McpControllerTest < ActionDispatch::IntegrationTest
         assert tool["inputSchema"].present?, "Tool #{tool['name']} missing inputSchema"
         assert_equal "object", tool["inputSchema"]["type"]
       end
+    end
+  end
+
+  test "tools/list and tools/call leave out ISA tools for an unverified MCP user" do
+    @user = User.create!(email: "unverified-#{SecureRandom.hex(4)}@example.com", password: "Password1!", family: families(:empty)) # unverified password account
+    with_mcp_env do
+      post "/mcp", params: jsonrpc_request("tools/list").to_json, headers: mcp_headers(@token)
+      tool_names = JSON.parse(response.body)["result"]["tools"].map { |t| t["name"] }
+
+      assert_not_includes tool_names, "get_my_account"
+      assert_not_includes tool_names, "get_isa_transactions"
+      assert_includes tool_names, "get_accounts"
+
+      post "/mcp", params: jsonrpc_request("tools/call", { name: "get_my_account", arguments: {} }).to_json,
+           headers: mcp_headers(@token)
+      assert_match(/Unknown tool/, JSON.parse(response.body).dig("error", "message"))
     end
   end
 

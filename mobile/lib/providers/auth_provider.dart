@@ -296,7 +296,7 @@ class AuthProvider with ChangeNotifier {
     required String password,
     required String firstName,
     required String lastName,
-    String? inviteCode,
+    String? invitationToken,
   }) async {
     _errorMessage = null;
     _isLoading = true;
@@ -310,7 +310,7 @@ class AuthProvider with ChangeNotifier {
         firstName: firstName,
         lastName: lastName,
         deviceInfo: deviceInfo,
-        inviteCode: inviteCode,
+        invitationToken: invitationToken ?? _pendingInvitationToken,
       );
 
       if (result['success'] == true) {

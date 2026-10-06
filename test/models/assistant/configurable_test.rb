@@ -1,6 +1,11 @@
 require "test_helper"
 
 class AssistantConfigurableTest < ActiveSupport::TestCase
+  ISA_FUNCTIONS = [
+    Assistant::Function::GetMyAccount,
+    Assistant::Function::GetISATransactions
+  ].freeze
+
   test "returns dashboard configuration by default" do
     chat = chats(:one)
 
@@ -10,7 +15,7 @@ class AssistantConfigurableTest < ActiveSupport::TestCase
     assert_includes config[:instructions], "You help students navigate their financial journey"
   end
 
-  test "returns intro configuration with search functions only" do
+  test "returns intro configuration with search function only for unverified users" do
     chat = chats(:intro)
 
     config = Assistant.config_for(chat)

@@ -532,6 +532,8 @@ Rails.application.routes.draw do
       resource :my_account, only: [ :show ], controller: :my_account
       resources :my_account_transactions, only: [ :index ], controller: :my_account_transactions
 
+      resource :app_config, only: [ :show ], controller: :app_config
+
       resources :chats, only: [ :index, :show, :create, :update, :destroy ] do
         resources :messages, only: [ :create ] do
           post :retry, on: :collection
@@ -674,6 +676,7 @@ Rails.application.routes.draw do
       end
     end
     resources :users, only: [ :index, :update ]
+    resource :bulk_invitations, only: [ :new, :create ]
     resources :invitations, only: [ :destroy ]
     resources :families, only: [] do
       member do
