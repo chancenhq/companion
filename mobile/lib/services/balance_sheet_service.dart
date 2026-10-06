@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'api_config.dart';
+import 'auth_events.dart';
 
 /// Service for fetching balance sheet data (net worth, assets, liabilities)
 /// from the Sure API.
@@ -19,6 +20,7 @@ class BalanceSheetService {
         url,
         headers: ApiConfig.getAuthHeaders(accessToken),
       ).timeout(const Duration(seconds: 30));
+      AuthEvents.instance.report(response);
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);

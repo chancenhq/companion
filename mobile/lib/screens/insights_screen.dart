@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/my_account_provider.dart';
+import '../widgets/verify_email_card.dart';
 import 'chat_conversation_screen.dart';
 
 const Color _kGreen     = Color(0xFF84BD00);
@@ -154,6 +155,11 @@ class _AccountSummaryView extends StatelessWidget {
               const SizedBox(height: 8),
               _AskAnythingTile(theme: theme),
               const SizedBox(height: 20),
+              // Issue #106: the server locks Chancen Account data until the
+              // email is verified, so show the way forward instead of the ISA.
+              if (provider.verificationRequired && !loading)
+                VerifyEmailCard(onVerified: onRefresh)
+              else ...[
               _SectionHeaderTile(theme: theme, isaStatus: isaStatus),
               const SizedBox(height: 16),
               if ((provider.networkError || provider.upstreamError || provider.unavailable) &&
@@ -218,6 +224,7 @@ class _AccountSummaryView extends StatelessWidget {
                     ],
                   ),
               },
+              ],
             ],
           ),
         ),
