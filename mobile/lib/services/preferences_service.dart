@@ -83,6 +83,14 @@ class PreferencesService {
 
   // Country
 
+  /// Removes the country the old onboarding saved on the phone (often an
+  /// auto-picked "Kenya"). The country now lives on the server (issue #106,
+  /// Story 1.5). Kept getUserCountry's signature for code on other lanes.
+  Future<void> clearLegacyUserCountry() async {
+    final prefs = await _preferences;
+    await prefs.remove(_userCountryKey);
+  }
+
   Future<String> getUserCountry() async {
     final prefs = await _preferences;
     return prefs.getString(_userCountryKey) ?? 'Kenya';
