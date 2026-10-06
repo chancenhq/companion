@@ -229,6 +229,8 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
       if (authProvider.isAuthenticated && authProvider.emailVerificationRequired) {
         authProvider.refreshUser();
       }
+      // Also refresh remote config so WhatsApp URLs stay current.
+      Provider.of<AppConfigProvider>(context, listen: false).load();
     }
   }
 
