@@ -46,9 +46,7 @@ module Admin
             invitation.accept_for(existing_user)
             { email: email, status: :accepted }
           else
-            # Bulk-invite seats are silent reservations: no email is sent so
-            # seat_for(email) can find the invitation at signup without a token.
-            { email: email, status: :invited }
+            { email: email, status: :reserved, invitation_id: invitation.id }
           end
         else
           { email: email, status: :error, errors: invitation.errors.full_messages }
