@@ -357,7 +357,10 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
         // Onboarding (country select + consent) must complete before the app
         // is accessible, even when the user signed up on page 1 of the flow.
         if (!_onboardingComplete) {
-          return OnboardingScreen(onComplete: _onOnboardingComplete);
+          return OnboardingScreen(
+            onComplete: _onOnboardingComplete,
+            initialPage: authProvider.isAuthenticated ? 2 : 0,
+          );
         }
 
         if (authProvider.isAuthenticated) {

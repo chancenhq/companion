@@ -80,6 +80,6 @@ class AssistantConfigurableTest < ActiveSupport::TestCase
     instructions = Assistant.config_for(chat)[:instructions]
 
     assert_includes instructions, "the Chancen team"
-    assert_includes instructions, "Do not default to Kenya"
+    assert_includes instructions, "do not default to Kenya or any other country-specific team"
   end
 end

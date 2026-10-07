@@ -13,6 +13,7 @@ class InvitationsController < ApplicationController
 
     @invitation = Current.family.invitations.build(invitation_params)
     @invitation.inviter = Current.user
+    @invitation.country_code = Current.family.chancen_country_code
 
     if @invitation.save
       normalized_email = @invitation.email.to_s.strip.downcase
@@ -22,7 +23,6 @@ class InvitationsController < ApplicationController
       elsif existing_user
         flash[:alert] = t(".failure")
       else
-        InvitationMailer.invite_email(@invitation).deliver_later unless self_hosted?
         flash[:notice] = t(".success")
       end
     else

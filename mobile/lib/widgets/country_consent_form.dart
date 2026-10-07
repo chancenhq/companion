@@ -15,6 +15,7 @@ class CountryConsentForm extends StatefulWidget {
     super.key,
     required this.onSubmit,
     this.loadCountries,
+    this.lockedCountryCode,
   });
 
   /// Saves the choice. Returns an error message, or null on success.
@@ -23,6 +24,10 @@ class CountryConsentForm extends StatefulWidget {
   /// Country source; defaults to GET /api/v1/countries (with a built-in
   /// fallback list when offline).
   final Future<List<ChancenCountry>> Function()? loadCountries;
+
+  /// When non-null, pre-selects this country and disables the picker.
+  /// Used when the invitation already set the user's country server-side.
+  final String? lockedCountryCode;
 
   @override
   State<CountryConsentForm> createState() => _CountryConsentFormState();
@@ -46,10 +51,17 @@ class _CountryConsentFormState extends State<CountryConsentForm> {
     _load();
   }
 
+  bool get _locked => widget.lockedCountryCode != null;
+
   Future<void> _load() async {
     final loader = widget.loadCountries ?? CountriesService().getCountries;
     final countries = await loader();
-    if (mounted) setState(() => _countries = countries);
+    if (mounted) {
+      setState(() {
+        _countries = countries;
+        if (_locked) _selectedCode = widget.lockedCountryCode;
+      });
+    }
   }
 
   Future<void> _submit() async {
@@ -99,12 +111,14 @@ class _CountryConsentFormState extends State<CountryConsentForm> {
           else
             ...countries.map((country) {
               final isSelected = country.code == _selectedCode;
+              final hidden = _locked && !isSelected;
+              if (hidden) return const SizedBox.shrink();
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: InkWell(
                   key: ValueKey('country-${country.code}'),
                   borderRadius: BorderRadius.circular(12),
-                  onTap: _saving ? null : () => setState(() => _selectedCode = country.code),
+                  onTap: (_saving || _locked) ? null : () => setState(() => _selectedCode = country.code),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     decoration: BoxDecoration(
@@ -126,13 +140,24 @@ class _CountryConsentFormState extends State<CountryConsentForm> {
                             style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
                           ),
                         ),
-                        if (isSelected) Icon(Icons.check_circle, size: 18, color: colorScheme.primary),
+                        if (isSelected && _locked)
+                          Icon(Icons.lock, size: 16, color: colorScheme.primary)
+                        else if (isSelected)
+                          Icon(Icons.check_circle, size: 18, color: colorScheme.primary),
                       ],
                     ),
                   ),
                 ),
               );
             }),
+          if (_locked) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Your country was set by your invitation and cannot be changed here.',
+              style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
+              textAlign: TextAlign.center,
+            ),
+          ],
           const SizedBox(height: 24),
           Text(
             selected == null

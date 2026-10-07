@@ -170,7 +170,8 @@ class User < ApplicationRecord
       country_code: country_code,
       requires_country_confirmation: requires_country_confirmation?,
       consent_version: consent_version,
-      consent_country_code: consent_country_code
+      consent_country_code: consent_country_code,
+      has_password: password_digest.present?
     }
   end
 
