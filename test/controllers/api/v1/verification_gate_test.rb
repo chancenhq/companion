@@ -16,7 +16,7 @@ class Api::V1::VerificationGateTest < ActionDispatch::IntegrationTest
     "Api::V1::AppConfigController" => :all, # public WhatsApp links (merge-2 lane, #100)
     "Api::V1::TestController" => :all,      # test-only routes
     "Api::V1::CountriesController" => :all, # country picker, before sign-up
-    "Api::V1::UsersController" => %w[me update_country destroy]
+    "Api::V1::UsersController" => %w[me update_country update_password destroy]
   }.freeze
 
   setup do

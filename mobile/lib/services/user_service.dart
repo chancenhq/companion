@@ -38,6 +38,37 @@ class UserService {
     }
   }
 
+  Future<Map<String, dynamic>> updatePassword({
+    required String accessToken,
+    String? currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/users/me/password');
+      final body = <String, dynamic>{'user': {'password': newPassword}};
+      if (currentPassword != null) body['user']['current_password'] = currentPassword;
+
+      final response = await http.patch(
+        url,
+        headers: {...ApiConfig.getAuthHeaders(accessToken), 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 30));
+      AuthEvents.instance.report(response);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': jsonDecode(response.body)};
+      } else {
+        final responseData = jsonDecode(response.body);
+        return {
+          'success': false,
+          'error': (responseData['errors'] as List?)?.join(', ') ?? responseData['message'] ?? 'Failed to update password',
+        };
+      }
+    } catch (e) {
+      return {'success': false, 'error': 'Network error: ${e.toString()}'};
+    }
+  }
+
   Future<Map<String, dynamic>> deleteAccount({
     required String accessToken,
   }) async {

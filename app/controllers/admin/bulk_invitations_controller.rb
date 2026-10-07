@@ -52,10 +52,11 @@ module Admin
         return { email: email, status: :existing } if existing_user && !move_existing
 
         invitation = Invitation.new(
-          email:   email,
-          role:    "member",
-          family:  family,
-          inviter: Current.user
+          email:        email,
+          role:         "member",
+          family:       family,
+          inviter:      Current.user,
+          country_code: family.chancen_country_code
         )
 
         if invitation.save

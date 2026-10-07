@@ -9,21 +9,38 @@ import '../widgets/country_consent_form.dart';
 class OnboardingScreen extends StatefulWidget {
   final VoidCallback onComplete;
 
-  const OnboardingScreen({super.key, required this.onComplete});
+  /// Starting page index. Pass 2 when the user is already authenticated (e.g.
+  /// after SSO account creation) so they skip the Welcome and Sign-in pages
+  /// and land directly on the Country/Consent screen.
+  final int initialPage;
+
+  const OnboardingScreen({
+    super.key,
+    required this.onComplete,
+    this.initialPage = 0,
+  });
 
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
-  final _pageController = PageController();
-  int _currentPage = 0;
+  late final PageController _pageController;
+  late int _currentPage;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentPage = widget.initialPage;
+    _pageController = PageController(initialPage: widget.initialPage);
+  }
 
   @override
   void dispose() {
     _pageController.dispose();
     super.dispose();
   }
+
 
   void _goToPage(int page) {
     _pageController.jumpToPage(page);
@@ -152,6 +169,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   // ── Screen 3: Country & Legal Consent ──
 
   Widget _buildConsentPage() {
+    final authProvider = context.read<AuthProvider>();
+    final lockedCode = (authProvider.user?.requiresCountryConfirmation == false)
+        ? authProvider.user?.countryCode
+        : null;
     return Column(
       children: [
         const SizedBox(height: 32),
@@ -162,7 +183,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
           textAlign: TextAlign.center,
         ),
-        Expanded(child: CountryConsentForm(onSubmit: _saveCountryAndFinish)),
+        Expanded(
+          child: CountryConsentForm(
+            onSubmit: _saveCountryAndFinish,
+            lockedCountryCode: lockedCode,
+          ),
+        ),
       ],
     );
   }

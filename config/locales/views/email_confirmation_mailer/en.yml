@@ -8,6 +8,6 @@ en:
       expiry_notice: This link will expire in %{hours} hours.
       greeting: Hello!
       subject: '%{product_name}: Confirm your email change'
-      verify_body: Please confirm this is your email address so you can see your Chancen Account. Click the button below to verify it.
+      verify_body: Click the button below to confirm your email address and access your Chancen Companion account.
       verify_cta: Verify email
-      verify_subject: '%{product_name}: Verify your email address'
+      verify_subject: Please verify your email address
