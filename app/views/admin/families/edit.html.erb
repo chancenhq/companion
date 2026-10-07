@@ -11,7 +11,7 @@
       <div>
         <%= f.label :chancen_country_code, t(".form.country_label"), class: "block text-sm font-medium text-primary mb-1" %>
         <%= f.select :chancen_country_code,
-              options_for_select(ChancenCountry.live.map { |code, name| [ name, code ] }, @family.chancen_country_code),
+              options_for_select(ChancenCountry.live.map { |c| [ c.name, c.code ] }, @family.chancen_country_code),
               { include_blank: t(".form.country_prompt") },
               class: "w-full rounded-lg border border-primary px-3 py-2 text-sm bg-container-inset text-primary" %>
       </div>

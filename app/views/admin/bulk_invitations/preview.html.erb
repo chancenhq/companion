@@ -15,7 +15,7 @@
       <span class="text-sm text-secondary"><%= t(".country_label") %></span>
       <span class="text-sm font-medium text-primary">
         <% if @family.chancen_country_code.present? %>
-          <%= ChancenCountry.live[@family.chancen_country_code] || @family.chancen_country_code %>
+          <%= ChancenCountry.find(@family.chancen_country_code)&.name || @family.chancen_country_code %>
         <% else %>
           <span class="italic"><%= t(".no_country") %></span>
         <% end %>

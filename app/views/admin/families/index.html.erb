@@ -20,7 +20,7 @@
             <td class="px-4 py-3 text-sm font-medium text-primary"><%= family.name.presence || t(".unnamed_family") %></td>
             <td class="px-4 py-3 text-sm text-secondary">
               <% if family.chancen_country_code.present? %>
-                <%= ChancenCountry.live[family.chancen_country_code] || family.chancen_country_code %>
+                <%= ChancenCountry.find(family.chancen_country_code)&.name || family.chancen_country_code %>
               <% else %>
                 <span class="italic"><%= t(".table.no_country") %></span>
               <% end %>
