@@ -50,6 +50,7 @@ class Invitation < ApplicationRecord
 
     transaction do
       user.update!(family_id: family_id, role: role.to_s)
+      user.record_country!(country_code) if country_code.present?
       update!(accepted_at: Time.current)
       auto_share_existing_accounts(user) if family.share_all_by_default?
     end

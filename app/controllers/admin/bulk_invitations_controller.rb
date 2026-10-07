@@ -32,10 +32,11 @@ module Admin
 
       def invite(email, family)
         invitation = Invitation.new(
-          email:   email,
-          role:    "member",
-          family:  family,
-          inviter: Current.user
+          email:        email,
+          role:         "member",
+          family:       family,
+          inviter:      Current.user,
+          country_code: family.chancen_country_code
         )
 
         if invitation.save
@@ -45,7 +46,8 @@ module Admin
             invitation.accept_for(existing_user)
             { email: email, status: :accepted }
           else
-            InvitationMailer.invite_email(invitation).deliver_later
+            # Bulk-invite seats are silent reservations: no email is sent so
+            # seat_for(email) can find the invitation at signup without a token.
             { email: email, status: :invited }
           end
         else
