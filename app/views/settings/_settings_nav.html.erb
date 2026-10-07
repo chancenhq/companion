@@ -36,7 +36,8 @@ nav_sections = [
         { label: t(".exports_label"), path: family_exports_path, icon: "upload" },
         { label: "SSO Providers", path: admin_sso_providers_path, icon: "key-round", if: Current.user&.super_admin? },
         { label: "Users", path: admin_users_path, icon: "users", if: Current.user&.super_admin? },
-        { label: "Bulk Invite", path: new_admin_bulk_invitations_path, icon: "user-plus", if: Current.user&.super_admin? }
+        { label: "Bulk Invite", path: new_admin_bulk_invitations_path, icon: "user-plus", if: Current.user&.super_admin? },
+        { label: "Families", path: admin_families_path, icon: "building-2", if: Current.user&.super_admin? }
       ]
     } : nil
   ),
