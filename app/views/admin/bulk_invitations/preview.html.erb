@@ -1,0 +1,49 @@
+<%= content_for :page_title, t(".title") %>
+
+<div class="bg-container rounded-xl shadow-border-xs p-6 max-w-2xl">
+  <div class="mb-6">
+    <h1 class="text-xl font-semibold text-primary mb-1"><%= t(".title") %></h1>
+    <p class="text-sm text-secondary"><%= t(".description") %></p>
+  </div>
+
+  <div class="space-y-4 mb-8">
+    <div class="flex items-center justify-between px-4 py-3 rounded-lg border border-primary bg-container-inset">
+      <span class="text-sm text-secondary"><%= t(".family_label") %></span>
+      <span class="text-sm font-medium text-primary"><%= @family.name.presence || t(".unnamed_family") %></span>
+    </div>
+    <div class="flex items-center justify-between px-4 py-3 rounded-lg border border-primary bg-container-inset">
+      <span class="text-sm text-secondary"><%= t(".country_label") %></span>
+      <span class="text-sm font-medium text-primary">
+        <% if @family.chancen_country_code.present? %>
+          <%= ChancenCountry.live[@family.chancen_country_code] || @family.chancen_country_code %>
+        <% else %>
+          <span class="italic"><%= t(".no_country") %></span>
+        <% end %>
+      </span>
+    </div>
+    <div class="flex items-center justify-between px-4 py-3 rounded-lg border border-primary bg-container-inset">
+      <span class="text-sm text-secondary"><%= t(".count_label") %></span>
+      <span class="text-sm font-medium text-primary"><%= t(".count_value", count: @emails.size) %></span>
+    </div>
+
+    <div class="px-4 py-3 rounded-lg border border-primary bg-container-inset">
+      <p class="text-sm text-secondary mb-2"><%= t(".emails_label") %></p>
+      <ul class="text-sm font-mono text-primary space-y-0.5">
+        <% @emails.each do |email| %>
+          <li><%= email %></li>
+        <% end %>
+      </ul>
+    </div>
+  </div>
+
+  <div class="flex justify-between items-center">
+    <%= link_to t(".back"), new_admin_bulk_invitations_path, class: "text-sm text-secondary hover:text-primary px-3 py-2" %>
+
+    <%= form_with url: admin_bulk_invitations_path, method: :post, data: { turbo: false } do |f| %>
+      <%= f.hidden_field :family_id, value: @family.id %>
+      <%= f.hidden_field :emails, value: @raw_emails %>
+      <%= f.hidden_field :move_existing, value: @move_existing ? "1" : "0" %>
+      <%= render DS::Button.new(variant: :primary, size: :md, type: "submit", text: t(".confirm")) %>
+    <% end %>
+  </div>
+</div>

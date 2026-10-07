@@ -1,0 +1,25 @@
+<%= content_for :page_title, t(".title") %>
+
+<div class="bg-container rounded-xl shadow-border-xs p-6 max-w-lg">
+  <div class="mb-6">
+    <h1 class="text-xl font-semibold text-primary mb-1"><%= @family.name.presence || t(".unnamed_family") %></h1>
+    <p class="text-sm text-secondary"><%= t(".description") %></p>
+  </div>
+
+  <%= form_with model: @family, url: admin_family_path(@family), method: :patch, data: { turbo: false } do |f| %>
+    <div class="space-y-5">
+      <div>
+        <%= f.label :chancen_country_code, t(".form.country_label"), class: "block text-sm font-medium text-primary mb-1" %>
+        <%= f.select :chancen_country_code,
+              options_for_select(ChancenCountry.live.map { |code, name| [ name, code ] }, @family.chancen_country_code),
+              { include_blank: t(".form.country_prompt") },
+              class: "w-full rounded-lg border border-primary px-3 py-2 text-sm bg-container-inset text-primary" %>
+      </div>
+
+      <div class="flex justify-end gap-3">
+        <%= link_to t(".form.back"), admin_families_path, class: "text-sm text-secondary hover:text-primary px-3 py-2" %>
+        <%= render DS::Button.new(variant: :primary, size: :md, type: "submit", text: t(".form.submit")) %>
+      </div>
+    </div>
+  <% end %>
+</div>

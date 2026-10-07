@@ -6,6 +6,19 @@ module Admin
       @families = Family.order(:name)
     end
 
+    def preview
+      @family = Family.find(params[:family_id])
+      @emails = parse_emails(params[:emails])
+      @move_existing = params[:move_existing] == "1"
+      @raw_emails = params[:emails]
+
+      if @emails.empty?
+        @families = Family.order(:name)
+        flash.now[:alert] = t("admin.bulk_invitations.new.no_emails")
+        return render :new, status: :unprocessable_entity
+      end
+    end
+
     def create
       family = Family.find(params[:family_id])
       emails = parse_emails(params[:emails])
@@ -22,8 +35,6 @@ module Admin
       move_existing = params[:move_existing] == "1"
       @results = emails.map { |email| invite(email, family, move_existing: move_existing) }
       @family = family
-      @families = Family.order(:name)
-      render :new
     end
 
     private
@@ -52,7 +63,7 @@ module Admin
             invitation.accept_for(existing_user)
             { email: email, status: :moved }
           else
-            { email: email, status: :reserved }
+            { email: email, status: :reserved, invitation_id: invitation.id }
           end
         else
           { email: email, status: :error, errors: invitation.errors.full_messages }

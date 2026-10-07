@@ -6,42 +6,7 @@
     <p class="text-sm text-secondary"><%= t(".description") %></p>
   </div>
 
-  <% if @results.present? %>
-    <div class="mb-8 space-y-2">
-      <h2 class="text-sm font-semibold text-primary mb-3"><%= t(".results.heading", count: @results.size) %></h2>
-      <% @results.each do |result| %>
-        <div class="flex items-start gap-3 px-4 py-3 rounded-lg border <%= result[:status] == :error ? 'border-red-200 bg-red-50' : 'border-primary bg-container-inset' %>">
-          <% if result[:status] == :reserved %>
-            <%= icon "user-plus", class: "w-4 h-4 text-secondary mt-0.5 shrink-0" %>
-            <div>
-              <p class="text-sm font-medium text-primary"><%= result[:email] %></p>
-              <p class="text-xs text-secondary"><%= t(".results.reserved") %></p>
-            </div>
-          <% elsif result[:status] == :existing %>
-            <%= icon "user", class: "w-4 h-4 text-secondary mt-0.5 shrink-0" %>
-            <div>
-              <p class="text-sm font-medium text-primary"><%= result[:email] %></p>
-              <p class="text-xs text-secondary"><%= t(".results.existing") %></p>
-            </div>
-          <% elsif result[:status] == :moved %>
-            <%= icon "user-check", class: "w-4 h-4 text-green-600 mt-0.5 shrink-0" %>
-            <div>
-              <p class="text-sm font-medium text-primary"><%= result[:email] %></p>
-              <p class="text-xs text-secondary"><%= t(".results.moved") %></p>
-            </div>
-          <% else %>
-            <%= icon "circle-x", class: "w-4 h-4 text-red-500 mt-0.5 shrink-0" %>
-            <div>
-              <p class="text-sm font-medium text-primary"><%= result[:email] %></p>
-              <p class="text-xs text-red-500"><%= result[:errors].join(", ") %></p>
-            </div>
-          <% end %>
-        </div>
-      <% end %>
-    </div>
-  <% end %>
-
-  <%= form_with url: admin_bulk_invitations_path, method: :post, data: { turbo: false } do |f| %>
+  <%= form_with url: preview_admin_bulk_invitations_path, method: :post, data: { turbo: false } do |f| %>
     <div class="space-y-5">
       <div>
         <%= f.label :family_id, t(".form.family_label"), class: "block text-sm font-medium text-primary mb-1" %>
