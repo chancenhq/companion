@@ -15,7 +15,7 @@ module Admin
       if @emails.empty?
         @families = Family.order(:name)
         flash.now[:alert] = t("admin.bulk_invitations.new.no_emails")
-        return render :new, status: :unprocessable_entity
+        render :new, status: :unprocessable_entity
       end
     end
 
