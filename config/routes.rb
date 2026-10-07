@@ -672,9 +672,11 @@ Rails.application.routes.draw do
       end
     end
     resources :users, only: [ :index, :update ]
-    resource :bulk_invitations, only: [ :new, :create ]
+    resource :bulk_invitations, only: [ :new, :create ] do
+      post :preview, on: :collection
+    end
     resources :invitations, only: [ :destroy ]
-    resources :families, only: [] do
+    resources :families, only: [ :index, :edit, :update ] do
       member do
         delete :invitations, to: "invitations#destroy_all"
       end

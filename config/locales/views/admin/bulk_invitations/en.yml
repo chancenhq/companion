@@ -6,11 +6,6 @@ en:
         title: "Bulk Invite Students"
         description: "Reserve places in a country family for a list of students. No email is sent: each student downloads the Companion app and signs up with the email address on this list (or with Google/Apple on it), and joins this family. Students who already have an account are left where they are unless you tick the box below."
         no_emails: "Please enter at least one email address."
-        results:
-          heading: "Results (%{count} processed)"
-          reserved: "Place reserved: signs up in the app with this email"
-          existing: "Already has an account: not moved"
-          moved: "Already had an account: moved to this family"
         form:
           family_label: "Country family"
           family_prompt: "Select a country..."
@@ -20,3 +15,25 @@ en:
           move_existing_label: "Also move students who already have an account into this family"
           move_existing_hint: "Leave unticked to report existing accounts without changing them."
           submit: "Reserve places"
+      preview:
+        title: "Review before sending"
+        description: "Nothing is saved yet. Check the family, country, and email list, then confirm."
+        family_label: "Country family"
+        country_label: "Chancen country"
+        unnamed_family: "Unnamed family"
+        no_country: "Not set"
+        count_label: "Emails"
+        count_value:
+          one: "1 email"
+          other: "%{count} emails"
+        emails_label: "These students will be processed:"
+        back: "Back"
+        confirm: "Confirm and reserve places"
+      create:
+        heading: "Results (%{count} processed)"
+        reserved: "Place reserved: signs up in the app with this email"
+        existing: "Already has an account: not moved"
+        moved: "Already had an account: moved to this family"
+        revoke: "Revoke"
+        revoke_confirm: "Remove this invitation?"
+        invite_more: "Invite more students"

@@ -1,0 +1,26 @@
+---
+en:
+  admin:
+    families:
+      index:
+        title: "Families"
+        description: "Set the Chancen country for each country family so invitations can lock the country picker at sign-up."
+        unnamed_family: "Unnamed family"
+        no_families: "No families yet."
+        table:
+          name: "Name"
+          country: "Chancen country"
+          no_country: "Not set"
+          actions: "Actions"
+          edit: "Edit"
+      edit:
+        title: "Edit family"
+        unnamed_family: "Unnamed family"
+        description: "Choose the Chancen country this family belongs to."
+        form:
+          country_label: "Chancen country"
+          country_prompt: "Select a country..."
+          back: "Back"
+          submit: "Save"
+      update:
+        success: "Family updated."
