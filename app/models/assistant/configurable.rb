@@ -211,9 +211,9 @@ module Assistant::Configurable
       # country (config/chancen_countries.yml); never Kenya by default.
       def country_escalation_guidance(country)
         if country
-          "When directing students to escalate, refer to the #{country.team_name} and share #{country.escalation_contact} when contact details are needed."
+          "When directing students to escalate or providing contact details, refer only to the #{country.team_name} and always use #{country.escalation_contact} as the contact email. Never share any other email address, website, or contact detail — not even as an example."
         else
-          "When directing students to escalate, use neutral wording: 'the Chancen team'. Do not default to Kenya or any other country-specific team."
+          "When directing students to escalate, use neutral wording: 'the Chancen team'. Do not share any email address or contact detail, and do not default to Kenya or any other country-specific team."
         end
       end
 

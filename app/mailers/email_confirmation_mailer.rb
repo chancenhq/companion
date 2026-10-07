@@ -8,7 +8,7 @@ class EmailConfirmationMailer < ApplicationMailer
     @user = params[:user]
     # Initial sign-up verification (issue #106) has no pending address change.
     prefix = @user.pending_email_change? ? "" : "verify_"
-    @subject = t(".#{prefix}subject", product_name: product_name)
+    @subject = prefix.empty? ? t(".subject", product_name: product_name) : t(".verify_subject")
     @body = t(".#{prefix}body")
     @cta = t(".#{prefix}cta")
     @confirmation_url = new_email_confirmation_url(token: @user.generate_token_for(:email_confirmation))

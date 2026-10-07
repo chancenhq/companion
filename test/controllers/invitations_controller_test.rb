@@ -17,7 +17,7 @@ class InvitationsControllerTest < ActionDispatch::IntegrationTest
     Rails.application.config.stubs(:app_mode).returns("managed".inquiry)
 
     assert_difference("Invitation.count") do
-      assert_enqueued_with(job: ActionMailer::MailDeliveryJob) do
+      assert_no_enqueued_jobs only: ActionMailer::MailDeliveryJob do
         post invitations_url, params: {
           invitation: {
             email: "new@example.com",

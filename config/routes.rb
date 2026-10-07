@@ -544,6 +544,7 @@ Rails.application.routes.draw do
       delete "users/reset", to: "users#reset"
       get "users/me", to: "users#me"
       patch "users/me/country", to: "users#update_country"
+      patch "users/me/password", to: "users#update_password"
       delete "users/me", to: "users#destroy"
 
       # Test routes for API controller testing (only available in test environment)

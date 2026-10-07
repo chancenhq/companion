@@ -32,10 +32,11 @@ module Admin
 
       def invite(email, family)
         invitation = Invitation.new(
-          email:   email,
-          role:    "member",
-          family:  family,
-          inviter: Current.user
+          email:        email,
+          role:         "member",
+          family:       family,
+          inviter:      Current.user,
+          country_code: family.chancen_country_code
         )
 
         if invitation.save
@@ -45,8 +46,7 @@ module Admin
             invitation.accept_for(existing_user)
             { email: email, status: :accepted }
           else
-            InvitationMailer.invite_email(invitation).deliver_later
-            { email: email, status: :invited }
+            { email: email, status: :reserved, invitation_id: invitation.id }
           end
         else
           { email: email, status: :error, errors: invitation.errors.full_messages }

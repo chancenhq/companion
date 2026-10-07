@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 class Api::V1::UsersController < Api::V1::BaseController
-  # Profile, country and account deletion stay available before email verification.
-  skip_before_action :ensure_verified_for_financial_data, only: %i[me update_country destroy]
+  # Profile, country, password and account deletion stay available before email verification.
+  skip_before_action :ensure_verified_for_financial_data, only: %i[me update_country update_password destroy]
   before_action :ensure_read_scope, only: %i[reset_status me]
   before_action :ensure_write_scope, except: %i[reset_status me]
   before_action :ensure_admin, only: %i[reset reset_status]
@@ -20,6 +20,23 @@ class Api::V1::UsersController < Api::V1::BaseController
     render json: { user: user.mobile_payload }
   rescue ActiveRecord::RecordInvalid
     render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
+  end
+
+  # PATCH /api/v1/users/me/password
+  def update_password
+    user = current_resource_owner
+
+    if user.password_digest.present?
+      unless user.authenticate(password_params[:current_password].to_s)
+        return render json: { error: "current_password_incorrect", message: "Current password is incorrect" }, status: :unprocessable_entity
+      end
+    end
+
+    unless user.update(password: password_params[:password], password_confirmation: password_params[:password])
+      return render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
+    end
+
+    render json: { user: user.mobile_payload }
   end
 
   def reset
@@ -73,6 +90,10 @@ class Api::V1::UsersController < Api::V1::BaseController
 
     def country_params
       params.require(:user).permit(:country_code, :consent_version)
+    end
+
+    def password_params
+      params.require(:user).permit(:current_password, :password)
     end
 
     def ensure_write_scope

@@ -298,6 +298,84 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _handleChangePassword(BuildContext context, {required bool hasPassword}) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final currentController = TextEditingController();
+    final newController = TextEditingController();
+    final confirmController = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(hasPassword ? 'Change Password' : 'Set Password'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (hasPassword)
+                TextField(
+                  controller: currentController,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: 'Current password'),
+                ),
+              if (hasPassword) const SizedBox(height: 8),
+              TextField(
+                controller: newController,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'New password (min 8 characters)'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: confirmController,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'Confirm new password'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final newPassword = newController.text.trim();
+    final confirmPassword = confirmController.text.trim();
+
+    if (newPassword.runes.length < 8) {
+      messenger.showSnackBar(const SnackBar(content: Text('Password must be at least 8 characters.')));
+      return;
+    }
+    if (newPassword != confirmPassword) {
+      messenger.showSnackBar(const SnackBar(content: Text('Passwords do not match.')));
+      return;
+    }
+
+    try {
+      final accessToken = await authProvider.getValidAccessToken();
+      if (accessToken == null) return;
+
+      final result = await UserService().updatePassword(
+        accessToken: accessToken,
+        currentPassword: hasPassword ? currentController.text.trim() : null,
+        newPassword: newPassword,
+      );
+
+      if (result['success'] == true) {
+        messenger.showSnackBar(const SnackBar(content: Text('Password updated.')));
+        if (mounted) await authProvider.refreshUser();
+      } else {
+        messenger.showSnackBar(SnackBar(content: Text(result['error'] ?? 'Failed to update password.')));
+      }
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Failed to update password: $e')));
+    }
+  }
+
   Future<void> _handleDeleteAccount(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -690,6 +768,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
               value: _biometricEnabled,
               onChanged: _isTogglingBiometric ? null : _toggleBiometric,
             ),
+
+            Builder(builder: (context) {
+              final user = Provider.of<AuthProvider>(context, listen: false).user;
+              final hasPassword = user?.hasPassword ?? false;
+              return ListTile(
+                leading: const Icon(Icons.lock_outline),
+                title: Text(hasPassword ? 'Change Password' : 'Set Password'),
+                subtitle: Text(hasPassword
+                    ? 'Update your current password'
+                    : 'Add a password to your account'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _handleChangePassword(context, hasPassword: hasPassword),
+              );
+            }),
           ],
 
           const Divider(),

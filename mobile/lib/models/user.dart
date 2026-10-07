@@ -21,6 +21,10 @@ class User {
   final String? consentVersion;
   final String? consentCountryCode;
 
+  /// Whether the account has a password set. False for SSO-only users who
+  /// have never set a password; null when the server didn't say (treat as false).
+  final bool? hasPassword;
+
   User({
     required this.id,
     required this.email,
@@ -33,6 +37,7 @@ class User {
     this.requiresCountryConfirmation,
     this.consentVersion,
     this.consentCountryCode,
+    this.hasPassword,
   });
 
   bool get isIntroLayout => uiLayout == 'intro';
@@ -53,6 +58,9 @@ class User {
           : _coerceBool(json['requires_country_confirmation'], defaultValue: false),
       consentVersion: json['consent_version'] as String?,
       consentCountryCode: json['consent_country_code'] as String?,
+      hasPassword: json['has_password'] == null
+          ? null
+          : _coerceBool(json['has_password'], defaultValue: false),
     );
   }
 
@@ -99,6 +107,7 @@ class User {
     bool? requiresCountryConfirmation,
     String? consentVersion,
     String? consentCountryCode,
+    bool? hasPassword,
   }) {
     return User(
       id: id ?? this.id,
@@ -112,6 +121,7 @@ class User {
       requiresCountryConfirmation: requiresCountryConfirmation ?? this.requiresCountryConfirmation,
       consentVersion: consentVersion ?? this.consentVersion,
       consentCountryCode: consentCountryCode ?? this.consentCountryCode,
+      hasPassword: hasPassword ?? this.hasPassword,
     );
   }
 

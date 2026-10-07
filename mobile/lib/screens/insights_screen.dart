@@ -971,14 +971,11 @@ class _IsaFinancingCard extends StatelessWidget {
             const SizedBox(height: 20),
             Divider(height: 1, color: theme.dividerColor),
             const SizedBox(height: 16),
-            Align(
-              alignment: Alignment.centerRight,
-              child: _StatItem(
-                label: 'Repayments\nReceived',
-                value: loading ? null : repaymentsReceived,
-                theme: theme,
-                align: CrossAxisAlignment.end,
-              ),
+            _StatItem(
+              label: 'Repayments\nReceived',
+              value: loading ? null : repaymentsReceived,
+              theme: theme,
+              align: CrossAxisAlignment.start,
             ),
           ],
         ),
