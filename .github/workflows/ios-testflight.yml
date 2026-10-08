@@ -160,7 +160,7 @@ jobs:
 
           export APP_BUNDLE_IDENTIFIER="${APP_BUNDLE_ID}"
 
-          IOS_VERSION="$(tr -d '[:space:]' < ../.sure-version | sed 's/-.*$//')"
+          IOS_VERSION="$(grep '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//' | sed 's/+.*//' | tr -d '[:space:]')"
           IOS_BUILD_NUMBER="$(date -u +%Y%m%d%H%M)"
           ARCHIVE_PATH="$RUNNER_TEMP/Runner.xcarchive"
           EXPORT_PATH="$PWD/build/ios/ipa"
