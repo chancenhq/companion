@@ -287,6 +287,27 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     assert_not_nil invitation.reload.accepted_at
   end
 
+  test "signup applies invitation country_code to user" do
+    invitation = invitations(:two)
+    invitation.update_column(:country_code, "RW")
+
+    post "/api/v1/auth/signup", params: {
+      user: {
+        email: invitation.email,
+        password: "SecurePass123!",
+        first_name: "Test",
+        last_name: "User",
+        invitation: invitation.token
+      },
+      device: @device_info
+    }
+
+    assert_response :created
+    user = User.find_by!(email: invitation.email)
+    assert_equal "RW", user.country_code
+    assert_not user.requires_country_confirmation?
+  end
+
   test "should require invite code when enabled" do
     # Mock invite code requirement
     Api::V1::AuthController.any_instance.stubs(:invite_code_required?).returns(true)
@@ -1197,6 +1218,23 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     assert_equal invitation.role, new_user.role
     assert_nil new_user.password_digest
     assert invitation.reload.accepted_at.present?, "invitation should be marked accepted"
+  end
+
+  test "apple_sign_in applies invitation country_code to new user" do
+    invitation = invitations(:one)
+    invitation.update_column(:country_code, "RW")
+
+    AppleSignIn.stubs(:verify!).returns({ "sub" => "apple.uid.rw", "email" => invitation.email })
+
+    post "/api/v1/auth/apple_sign_in", params: {
+      identity_token: "fake.token",
+      device: @device_info
+    }
+
+    assert_response :success
+    new_user = User.find_by!(email: invitation.email)
+    assert_equal "RW", new_user.country_code
+    assert_not new_user.requires_country_confirmation?
   end
 
   test "apple_sign_in new account without an invitation is rejected under invite_only" do

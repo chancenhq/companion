@@ -170,9 +170,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Widget _buildConsentPage() {
     final authProvider = context.read<AuthProvider>();
-    final lockedCode = (authProvider.user?.requiresCountryConfirmation == false)
-        ? authProvider.user?.countryCode
-        : null;
     return Column(
       children: [
         const SizedBox(height: 32),
@@ -186,7 +183,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         Expanded(
           child: CountryConsentForm(
             onSubmit: _saveCountryAndFinish,
-            lockedCountryCode: lockedCode,
+            initialCountryCode: authProvider.user?.countryCode,
           ),
         ),
       ],
