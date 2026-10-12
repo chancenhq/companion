@@ -225,9 +225,10 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
       _markLockedIfEnabled();
     } else if (state == AppLifecycleState.resumed) {
       // Lock screen (if any) is already showing via build(); biometric auto-triggers there.
-      // Pick up an email verification done in the browser while the app was away.
+      // Refresh on every resume: email verification or a country change via accept_for
+      // while backgrounded can both leave stale user state that skips required screens.
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      if (authProvider.isAuthenticated && authProvider.emailVerificationRequired) {
+      if (authProvider.isAuthenticated) {
         authProvider.refreshUser();
       }
       // Also refresh remote config so WhatsApp URLs stay current.

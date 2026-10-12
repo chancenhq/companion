@@ -90,7 +90,7 @@ class Invitation < ApplicationRecord
     end
 
     def set_country_from_family
-      self.country_code = family&.chancen_country_code if country_code.blank?
+      self.country_code = family&.chancen_country_code
     end
 
     # Members get their country from the invitation, so it must carry one.

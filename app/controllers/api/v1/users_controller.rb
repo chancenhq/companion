@@ -18,11 +18,14 @@ class Api::V1::UsersController < Api::V1::BaseController
     user = current_resource_owner
     requested_code = country_params[:country_code].to_s.strip.upcase
 
-    if user.country_locked? && requested_code != user.country_code
-      return render json: { errors: [ "Your country is already set and can't be changed" ] }, status: :unprocessable_entity
+    user.with_lock do
+      if user.country_locked? && requested_code != user.country_code
+        return render json: { errors: [ "Your country is already set and can't be changed" ] }, status: :unprocessable_entity
+      end
+
+      user.record_country!(requested_code, consent_version: country_params[:consent_version])
     end
 
-    user.record_country!(requested_code, consent_version: country_params[:consent_version])
     render json: { user: user.mobile_payload }
   rescue ActiveRecord::RecordInvalid
     render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
