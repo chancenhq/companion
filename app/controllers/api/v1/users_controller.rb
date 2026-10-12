@@ -12,8 +12,8 @@ class Api::V1::UsersController < Api::V1::BaseController
     render json: { user: current_resource_owner.mobile_payload }
   end
 
-  # PATCH /api/v1/users/me/country — the member's country (issue #106,
-  # Stories 1.2 and 1.5), with the privacy/terms version they accepted for it.
+  # PATCH /api/v1/users/me/country — the member's country
+  # With the privacy/terms version they accepted for it.
   def update_country
     user = current_resource_owner
     requested_code = country_params[:country_code].to_s.strip.upcase

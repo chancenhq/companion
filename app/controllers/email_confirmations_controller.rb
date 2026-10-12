@@ -17,7 +17,7 @@ class EmailConfirmationsController < ApplicationController
         redirect_to root_path, alert: t(".invalid_token")
       end
     else
-      # Initial sign-up verification (issue #106): send them back to the app,
+      # Initial sign-up verification: send them back to the app,
       # not to the web sign-in page.
       @user.mark_email_verified!
       render :verified, layout: "auth"

@@ -1,6 +1,6 @@
 class InvitationMailer < ApplicationMailer
   # Only an invitation that reached the inbox makes its token proof of email
-  # ownership at sign-up (Invitation#emailed?, issue #106).
+  # ownership at sign-up (Invitation#emailed?).
   after_deliver :record_email_sent
 
   def invite_email(invitation)

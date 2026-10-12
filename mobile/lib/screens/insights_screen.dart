@@ -155,7 +155,7 @@ class _AccountSummaryView extends StatelessWidget {
               const SizedBox(height: 8),
               _AskAnythingTile(theme: theme),
               const SizedBox(height: 20),
-              // Issue #106: the server locks Chancen Account data until the
+              // The server locks Chancen Account data until the
               // email is verified, so show the way forward instead of the ISA.
               if (provider.verificationRequired && !loading)
                 VerifyEmailCard(onVerified: onRefresh)

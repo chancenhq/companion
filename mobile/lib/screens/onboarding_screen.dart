@@ -48,7 +48,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   /// Saves the chosen country and accepted consent on the server (issue
-  /// #106, Stories 1.1/1.2) before finishing onboarding. Nothing is
+  /// Accepted before finishing onboarding. Nothing is
   /// pre-selected and no location service is used.
   Future<String?> _saveCountryAndFinish(String countryCode) async {
     final error = await context.read<AuthProvider>().updateCountry(countryCode);

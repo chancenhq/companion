@@ -36,7 +36,7 @@ class Invitation < ApplicationRecord
   end
 
   # A seat reserved for this email that was never emailed (e.g. bulk
-  # invite), so an email sign-up can claim it without a token (issue #106).
+  # invite), so an email sign-up can claim it without a token.
   # An emailed invitation needs its token: its address may belong to an
   # existing household's invitee, and the email alone proves nothing.
   def self.seat_for(email)

@@ -5,7 +5,7 @@ import '../screens/web_page_screen.dart';
 import '../services/api_config.dart';
 import '../services/countries_service.dart';
 
-/// Country choice plus privacy/terms consent (issue #106, Stories 1.1 and
+/// Country choice plus privacy/terms consent
 /// 1.5). The legal links follow the chosen country. Used by onboarding and by
 /// the one-time confirmation for members who signed up before countries were
 /// stored on the server.

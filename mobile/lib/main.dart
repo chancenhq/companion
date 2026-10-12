@@ -366,13 +366,12 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
         }
 
         if (authProvider.isAuthenticated) {
-          // Members accept the privacy/terms for their country once (issue
-          // #106, Story 1.5), before anything else in the app.
+          // Members accept the privacy/terms for their country once
           if (authProvider.countryConfirmationRequired) {
             return const CountrySelectionScreen();
           }
 
-          // Email sign-ups confirm their address once (issue #106); the
+          // Email sign-ups confirm their address once; the
           // assistant stays available if they continue without verifying.
           if (authProvider.showEmailVerificationPrompt) {
             return const EmailVerificationScreen();
