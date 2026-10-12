@@ -143,6 +143,11 @@ class User < ApplicationRecord
     country_code.blank?
   end
 
+  # Once a member has a country, only an invitation can change it.
+  def country_locked?
+    country_code.present?
+  end
+
   def chancen_country
     ChancenCountry.find(country_code)
   end

@@ -282,6 +282,16 @@ class OidcAccountsControllerTest < ActionController::TestCase
     assert_not_nil invitation.reload.accepted_at
   end
 
+  test "create_user gives the new user the invitation's country" do
+    invitation = invitations(:two)
+    invitation.update_column(:country_code, "RW")
+    session[:pending_oidc_auth] = new_user_auth.merge("email" => invitation.email)
+
+    post :create_user
+
+    assert_equal "RW", User.find_by!(email: invitation.email).country_code
+  end
+
   test "create_user uses form params for name when provided" do
     session[:pending_oidc_auth] = new_user_auth
 

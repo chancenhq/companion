@@ -9,12 +9,17 @@ void main() {
     ChancenCountry(code: 'RW', name: 'Rwanda', live: true, privacyUrl: '/privacy/rw', termsUrl: '/terms/rw'),
   ];
 
-  Future<List<String>> pumpForm(WidgetTester tester, {String? Function(String code)? result}) async {
+  Future<List<String>> pumpForm(
+    WidgetTester tester, {
+    String? Function(String code)? result,
+    String? lockedCountryCode,
+  }) async {
     final submitted = <String>[];
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: CountryConsentForm(
           loadCountries: () async => countries,
+          lockedCountryCode: lockedCountryCode,
           onSubmit: (code) async {
             submitted.add(code);
             return result?.call(code);
@@ -62,5 +67,36 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Network unavailable. Please try again.'), findsOneWidget);
+  });
+
+  testWidgets('a locked country is the only one shown and cannot be changed', (tester) async {
+    final submitted = await pumpForm(tester, lockedCountryCode: 'RW');
+
+    expect(find.text('Rwanda'), findsOneWidget);
+    expect(find.text('Kenya'), findsNothing);
+    expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+    expect(continueButton(tester).onPressed, isNull, reason: 'consent is still required');
+
+    await tester.tap(find.byKey(const ValueKey('country-RW')));
+    await tester.tap(find.byType(Checkbox));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
+    await tester.pumpAndSettle();
+
+    expect(submitted, ['RW']);
+  });
+
+  testWidgets('a locked country missing from the list can still be accepted', (tester) async {
+    final submitted = await pumpForm(tester, lockedCountryCode: 'gh');
+
+    expect(find.byKey(const ValueKey('country-GH')), findsOneWidget);
+    expect(find.text('Kenya'), findsNothing);
+
+    await tester.tap(find.byType(Checkbox));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
+    await tester.pumpAndSettle();
+
+    expect(submitted, ['GH']);
   });
 }

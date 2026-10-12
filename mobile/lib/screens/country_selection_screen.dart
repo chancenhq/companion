@@ -45,7 +45,12 @@ class CountrySelectionScreen extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
             ),
-            Expanded(child: CountryConsentForm(onSubmit: (code) => _save(context, code))),
+            Expanded(
+              child: CountryConsentForm(
+                onSubmit: (code) => _save(context, code),
+                lockedCountryCode: context.read<AuthProvider>().user?.countryCode,
+              ),
+            ),
           ],
         ),
       ),

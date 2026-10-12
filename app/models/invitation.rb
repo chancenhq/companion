@@ -16,8 +16,10 @@ class Invitation < ApplicationRecord
   validate :no_duplicate_pending_invitation_in_family
   validate :inviter_is_admin
   validate :no_other_pending_invitation, on: :create
+  validate :family_has_country, on: :create
 
   before_validation :normalize_email
+  before_validation :set_country_from_family, on: :create
   before_validation :generate_token, on: :create
   before_create :set_expiration
 
@@ -57,6 +59,13 @@ class Invitation < ApplicationRecord
     true
   end
 
+  # Marks the invitation used by a newly created account and gives that
+  # account the invitation's country.
+  def accept_signup!(user)
+    update!(accepted_at: Time.current)
+    user.record_country!(country_code) if country_code.present?
+  end
+
   private
 
     def emails_match?(user)
@@ -78,6 +87,15 @@ class Invitation < ApplicationRecord
 
     def normalize_email
       self.email = email.to_s.strip.downcase if email.present?
+    end
+
+    def set_country_from_family
+      self.country_code = family&.chancen_country_code if country_code.blank?
+    end
+
+    # Members get their country from the invitation, so it must carry one.
+    def family_has_country
+      errors.add(:base, :family_country_missing) if country_code.blank?
     end
 
     def no_other_pending_invitation

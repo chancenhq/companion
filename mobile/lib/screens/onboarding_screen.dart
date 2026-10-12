@@ -183,7 +183,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         Expanded(
           child: CountryConsentForm(
             onSubmit: _saveCountryAndFinish,
-            initialCountryCode: authProvider.user?.countryCode,
+            lockedCountryCode: authProvider.user?.countryCode,
           ),
         ),
       ],

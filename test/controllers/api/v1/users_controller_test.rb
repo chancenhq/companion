@@ -205,6 +205,29 @@ class Api::V1::UsersControllerTest < ActionDispatch::IntegrationTest
     assert_response :unprocessable_entity
   end
 
+  test "update country refuses to change a country that is already set" do
+    @user.update!(country_code: "KE")
+
+    patch "/api/v1/users/me/country", params: { user: { country_code: "RW", consent_version: "1.0" } }, headers: api_headers(@api_key)
+
+    assert_response :unprocessable_entity
+    @user.reload
+    assert_equal "KE", @user.country_code
+    assert_nil @user.consent_version
+  end
+
+  test "update country records consent for the country that is already set" do
+    @user.update!(country_code: "KE")
+
+    patch "/api/v1/users/me/country", params: { user: { country_code: "ke", consent_version: "1.0" } }, headers: api_headers(@api_key)
+
+    assert_response :ok
+    @user.reload
+    assert_equal "KE", @user.country_code
+    assert_equal "1.0", @user.consent_version
+    assert_equal "KE", @user.consent_country_code
+  end
+
   test "unverified members can still set their country" do
     user = users(:unverified)
     key = ApiKey.create!(user: user, name: "Unverified", scopes: [ "read_write" ], source: "web", display_key: "unv_#{SecureRandom.hex(8)}")

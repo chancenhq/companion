@@ -16,7 +16,13 @@ class Api::V1::UsersController < Api::V1::BaseController
   # Stories 1.2 and 1.5), with the privacy/terms version they accepted for it.
   def update_country
     user = current_resource_owner
-    user.record_country!(country_params[:country_code], consent_version: country_params[:consent_version])
+    requested_code = country_params[:country_code].to_s.strip.upcase
+
+    if user.country_locked? && requested_code != user.country_code
+      return render json: { errors: [ "Your country is already set and can't be changed" ] }, status: :unprocessable_entity
+    end
+
+    user.record_country!(requested_code, consent_version: country_params[:consent_version])
     render json: { user: user.mobile_payload }
   rescue ActiveRecord::RecordInvalid
     render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
