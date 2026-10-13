@@ -29,6 +29,12 @@ class PasswordResetsController < ApplicationController
     @user = User.new
   end
 
+  def mobile_redirect
+    @token = params[:token].to_s
+    @deep_link = "sureapp://password-reset?token=#{ERB::Util.url_encode(@token)}"
+    render layout: false
+  end
+
   def update
     # Security: Block password setting for SSO-only users.
     # Defense-in-depth: even if they somehow get a reset token, block the update.
