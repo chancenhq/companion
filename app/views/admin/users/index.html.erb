@@ -92,6 +92,7 @@
                     <th class="px-4 py-2 text-left text-xs font-medium text-secondary uppercase"><%= t(".table.user") %></th>
                     <th class="px-4 py-2 text-left text-xs font-medium text-secondary uppercase"><%= t(".table.last_login") %></th>
                     <th class="px-4 py-2 text-right text-xs font-medium text-secondary uppercase"><%= t(".table.session_count") %></th>
+                    <th class="px-4 py-2 text-right text-xs font-medium text-secondary uppercase"><%= t(".table.country") %></th>
                     <th class="px-4 py-2 text-right text-xs font-medium text-secondary uppercase"><%= t(".table.role") %></th>
                   </tr>
                 </thead>
@@ -114,6 +115,23 @@
                       </td>
                       <td class="px-4 py-3 text-sm text-primary text-right whitespace-nowrap">
                         <%= number_with_delimiter(@sessions_count_by_user[user.id] || 0) %>
+                      </td>
+                      <td class="px-4 py-3 text-right">
+                        <% if user.id == Current.user.id %>
+                          <span class="text-sm text-secondary"><%= user.country_code.presence || "—" %></span>
+                        <% else %>
+                          <%= form_with url: update_country_admin_user_path(user), method: :patch, class: "flex items-center justify-end gap-2", data: { controller: "auto-submit-form" } do |form| %>
+                            <%= form.select :country_code,
+                                options_for_select(
+                                  [["— #{t(".table.country_unset")} —", ""]] + ChancenCountry.all.map { |c| [c.name, c.code] },
+                                  user.country_code
+                                ),
+                                {},
+                                name: "user[country_code]",
+                                class: "text-sm rounded-lg border border-primary bg-container text-primary px-2 py-1",
+                                data: { auto_submit_form_target: "auto" } %>
+                          <% end %>
+                        <% end %>
                       </td>
                       <td class="px-4 py-3 text-right">
                         <% if user.id == Current.user.id %>
@@ -154,6 +172,9 @@
                         </td>
                         <td class="px-4 py-3 text-sm text-secondary text-right whitespace-nowrap">
                           —
+                        </td>
+                        <td class="px-4 py-3 text-sm text-secondary text-right whitespace-nowrap">
+                          <%= invitation.country_code.presence || "—" %>
                         </td>
                         <td class="px-4 py-3 text-right">
                           <%= form_with url: admin_invitation_path(invitation), method: :delete, class: "inline" do |f| %>

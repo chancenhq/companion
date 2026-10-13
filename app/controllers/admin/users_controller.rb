@@ -2,7 +2,7 @@
 
 module Admin
   class UsersController < Admin::BaseController
-    before_action :set_user, only: %i[update]
+    before_action :set_user, only: %i[update update_country]
 
     def index
       authorize User
@@ -61,6 +61,25 @@ module Admin
       end
     end
 
+    def update_country
+      authorize @user
+
+      code = country_params[:country_code].to_s.strip.upcase.presence
+
+      if code.nil? || ChancenCountry.valid_code?(code)
+        @user.update_column(:country_code, code)
+        Rails.logger.info(
+          "[Admin::Users] Country overridden - " \
+          "by_user_id=#{Current.user.id} " \
+          "target_user_id=#{@user.id} " \
+          "new_country=#{code.inspect}"
+        )
+        redirect_to admin_users_path, notice: t(".update_country.success")
+      else
+        redirect_to admin_users_path, alert: t(".update_country.invalid")
+      end
+    end
+
     private
 
       def set_user
@@ -69,6 +88,10 @@ module Admin
 
       def user_params
         params.require(:user).permit(:role)
+      end
+
+      def country_params
+        params.require(:user).permit(:country_code)
       end
 
       def apply_trial_filter(scope)

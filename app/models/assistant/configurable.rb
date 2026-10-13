@@ -21,7 +21,7 @@ module Assistant::Configurable
     end
 
     private
-      # Unverified users keep the assistant (issue #106, Story 3.2) but none of
+      # Unverified users keep the assistant but none of
       # the tools that read household or Chancen Account data.
       def permitted_functions(user, functions)
         return functions if user.email_verified?
@@ -207,7 +207,7 @@ module Assistant::Configurable
         PROMPT
       end
 
-      # Issue #106, Story 1.3: escalation and ISA content follow the member's
+      # Escalation and ISA content follow the member's
       # country (config/chancen_countries.yml); never Kenya by default.
       def country_escalation_guidance(country)
         if country

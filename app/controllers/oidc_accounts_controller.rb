@@ -162,7 +162,7 @@ class OidcAccountsController < ApplicationController
       end
 
       # Mark invitation as accepted if one was used
-      invitation&.update!(accepted_at: Time.current)
+      invitation&.accept_signup!(@user)
 
       if identity.persisted? && identity.email_trusted?
         @user.mark_email_verified!

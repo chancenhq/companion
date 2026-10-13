@@ -1,8 +1,10 @@
 empty:
   name: Family
+  chancen_country_code: KE
 
 dylan_family:
   name: The Dylan Family
+  chancen_country_code: KE
 
 inactive_trial:
   name: Inactive Trial Family

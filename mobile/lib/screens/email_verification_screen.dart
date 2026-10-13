@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
 
-/// "Check your email" after an email sign-up (issue #106, Story 3.1). The
+/// "Check your email" after an email sign-up. The
 /// assistant stays usable while unverified, so the user can continue past it.
 class EmailVerificationScreen extends StatefulWidget {
   const EmailVerificationScreen({super.key});

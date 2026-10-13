@@ -676,10 +676,12 @@ Rails.application.routes.draw do
         post :test_connection
       end
     end
-    resources :users, only: [ :index, :update ]
-    resource :bulk_invitations, only: [ :new, :create ] do
-      post :preview, on: :collection
+    resources :users, only: [ :index, :update ] do
+      member do
+        patch :update_country
+      end
     end
+    resource :bulk_invitations, only: [ :new, :create ]
     resources :invitations, only: [ :destroy ]
     resources :families, only: [ :index, :edit, :update ] do
       member do

@@ -11,6 +11,7 @@ import 'providers/chat_provider.dart';
 import 'providers/my_account_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/backend_config_screen.dart';
+import 'screens/country_selection_screen.dart';
 import 'screens/email_verification_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/biometric_lock_screen.dart';
@@ -224,9 +225,10 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
       _markLockedIfEnabled();
     } else if (state == AppLifecycleState.resumed) {
       // Lock screen (if any) is already showing via build(); biometric auto-triggers there.
-      // Pick up an email verification done in the browser while the app was away.
+      // Refresh on every resume: email verification or a country change via accept_for
+      // while backgrounded can both leave stale user state that skips required screens.
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      if (authProvider.isAuthenticated && authProvider.emailVerificationRequired) {
+      if (authProvider.isAuthenticated) {
         authProvider.refreshUser();
       }
       // Also refresh remote config so WhatsApp URLs stay current.
@@ -364,7 +366,12 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
         }
 
         if (authProvider.isAuthenticated) {
-          // Email sign-ups confirm their address once (issue #106); the
+          // Members accept the privacy/terms for their country once
+          if (authProvider.countryConfirmationRequired) {
+            return const CountrySelectionScreen();
+          }
+
+          // Email sign-ups confirm their address once; the
           // assistant stays available if they continue without verifying.
           if (authProvider.showEmailVerificationPrompt) {
             return const EmailVerificationScreen();

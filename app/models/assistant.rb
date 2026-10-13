@@ -40,7 +40,7 @@ module Assistant
     end
 
     # Function classes this user may use: ISA functions need a verified email
-    # (issue #106, Story 3.2). Used by the assistant config and MCP.
+    # Used by the assistant config and MCP.
     def function_classes_for(user)
       return function_classes if user.email_verified?
 

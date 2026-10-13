@@ -711,7 +711,7 @@ class AuthService {
   }
 
   /// Saves the member's country and the privacy/terms version they accepted
-  /// for it (PATCH /api/v1/users/me/country, issue #106).
+  /// for it (PATCH /api/v1/users/me/country).
   Future<Map<String, dynamic>> updateCountry({
     required String accessToken,
     required String countryCode,

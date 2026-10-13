@@ -6,7 +6,7 @@ class EmailConfirmationMailer < ApplicationMailer
   #
   def confirmation_email
     @user = params[:user]
-    # Initial sign-up verification (issue #106) has no pending address change.
+    # Initial sign-up verification has no pending address change.
     prefix = @user.pending_email_change? ? "" : "verify_"
     @subject = prefix.empty? ? t(".subject", product_name: product_name) : t(".verify_subject")
     @body = t(".#{prefix}body")
