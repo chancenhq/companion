@@ -12,6 +12,10 @@ class UserPolicy < ApplicationPolicy
     user.id != record.id
   end
 
+  def update_country?
+    update?
+  end
+
   class Scope < ApplicationPolicy::Scope
     def resolve
       if user&.super_admin?

@@ -164,6 +164,20 @@ class RegistrationsControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "web sign-up with an invitation gives the new user the invitation's country" do
+    invitation = invitations(:one)
+    invitation.update_column(:country_code, "RW")
+
+    with_onboarding_state("invite_only") do
+      post registration_url, params: { user: {
+        email: invitation.email,
+        password: "Password1!",
+        invitation: invitation.token } }
+    end
+
+    assert_equal "RW", User.find_by!(email: invitation.email).country_code
+  end
+
   test "closed blocks sign-up even with an invitation token" do
     invitation = invitations(:one)
 

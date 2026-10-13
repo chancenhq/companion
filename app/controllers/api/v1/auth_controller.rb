@@ -60,10 +60,7 @@ module Api
               raise ActiveRecord::Rollback
             end
             InviteCode.claim!(params[:invite_code]) if params[:invite_code].present?
-            if @invitation.present?
-              @invitation.update!(accepted_at: Time.current)
-              user.record_country!(@invitation.country_code) if @invitation.country_code.present?
-            end
+            @invitation&.accept_signup!(user)
             device = MobileDevice.upsert_device!(user, device_params)
             token_response = device.issue_token!
           end
@@ -529,10 +526,7 @@ module Api
               info:                  { email: email, first_name: user.first_name, last_name: user.last_name },
               last_authenticated_at: Time.current
             )
-            if invitation.present?
-              invitation.update!(accepted_at: Time.current)
-              user.record_country!(invitation.country_code) if invitation.country_code.present?
-            end
+            invitation&.accept_signup!(user)
             user.mark_email_verified! if OidcIdentity.email_trusted?(provider: provider, issuer: issuer)
             SsoAuditLog.log_jit_account_created!(user: user, provider: provider, request: request)
           end

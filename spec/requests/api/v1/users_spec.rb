@@ -127,7 +127,7 @@ RSpec.describe 'API V1 Users', type: :request do
   path '/api/v1/users/me/country' do
     patch 'Set country and consent' do
       tags 'Users'
-      description "Saves the member's country (issue #106) and, when given, the privacy/terms version accepted for it. "                   'Available before email verification.'
+      description "Saves the member's country (issue #106) and, when given, the privacy/terms version accepted for it. "                   'Available before email verification. Once a country is set it cannot be changed here; '                   'sending the same country again records consent for it.'
       security [ { apiKeyAuth: [] } ]
       consumes 'application/json'
       produces 'application/json'
@@ -150,7 +150,7 @@ RSpec.describe 'API V1 Users', type: :request do
         run_test!
       end
 
-      response '422', 'country not in the Chancen list' do
+      response '422', 'country not in the Chancen list, or different from the one already set' do
         let(:body) { { user: { country_code: 'US' } } }
         run_test!
       end

@@ -9,7 +9,7 @@ import 'package:http/http.dart' as http;
 /// - 401: the session was revoked (password reset, Google/Apple link) or
 ///   expired beyond refresh, so the app signs out.
 /// - 403 `email_verification_required`: the server locks financial and
-///   Chancen Account data until the email is verified (issue #106).
+///   Chancen Account data until the email is verified.
 class AuthEvents {
   AuthEvents._();
 

@@ -9,7 +9,7 @@ class PasswordMailer < ApplicationMailer
 
   def mobile_password_reset
     @user = params[:user]
-    @reset_url = "sureapp://password-reset?token=#{ERB::Util.url_encode(params[:token])}"
+    @reset_url = mobile_redirect_password_reset_url(token: params[:token])
     @subject = t("password_mailer.password_reset.subject", product_name: product_name)
 
     mail to: @user.email, subject: @subject

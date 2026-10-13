@@ -213,7 +213,9 @@ Rails.application.routes.draw do
     get :new_user, on: :collection
     post :create_user, on: :collection
   end
-  resource :password_reset, only: %i[new create edit update]
+  resource :password_reset, only: %i[new create edit update] do
+    get :mobile_redirect, on: :collection
+  end
   resource :password, only: %i[edit update]
   resource :email_confirmation, only: :new
 
@@ -676,7 +678,11 @@ Rails.application.routes.draw do
         post :test_connection
       end
     end
-    resources :users, only: [ :index, :update ]
+    resources :users, only: [ :index, :update ] do
+      member do
+        patch :update_country
+      end
+    end
     resource :bulk_invitations, only: [ :new, :create ]
     resources :invitations, only: [ :destroy ]
     resources :families, only: [] do

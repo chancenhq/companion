@@ -69,7 +69,7 @@ class RegistrationsController < ApplicationController
           raise ActiveRecord::Rollback
         end
 
-        @invitation&.update!(accepted_at: Time.current)
+        @invitation&.accept_signup!(@user)
         @session = create_session_for(@user)
         success = true
       end

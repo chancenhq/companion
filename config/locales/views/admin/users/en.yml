@@ -31,6 +31,8 @@ en:
           last_login: "Last login"
           session_count: "Session count"
           never: "Never"
+          country: "Country"
+          country_unset: "No country"
           role: "Role"
         role_descriptions_title: "Role Descriptions"
         roles:
@@ -51,3 +53,6 @@ en:
       update:
         success: "User role updated successfully."
         failure: "Failed to update user role."
+      update_country:
+        success: "User country updated."
+        invalid: "Invalid country code."
