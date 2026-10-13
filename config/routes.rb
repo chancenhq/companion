@@ -213,7 +213,9 @@ Rails.application.routes.draw do
     get :new_user, on: :collection
     post :create_user, on: :collection
   end
-  resource :password_reset, only: %i[new create edit update]
+  resource :password_reset, only: %i[new create edit update] do
+    get :mobile_redirect, on: :collection
+  end
   resource :password, only: %i[edit update]
   resource :email_confirmation, only: :new
 
