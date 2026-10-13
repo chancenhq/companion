@@ -364,10 +364,15 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
         }
 
         if (authProvider.isAuthenticated) {
-          // Email sign-ups confirm their address once (issue #106); the
+          // Email sign-ups confirm their address once; the
           // assistant stays available if they continue without verifying.
           if (authProvider.showEmailVerificationPrompt) {
             return const EmailVerificationScreen();
+          }
+
+          // SSO users must set a password before they can be locked out.
+          if (authProvider.user?.hasPassword == false) {
+            return const SsoOnboardingScreen(passwordOnlyMode: true);
           }
 
           return Stack(

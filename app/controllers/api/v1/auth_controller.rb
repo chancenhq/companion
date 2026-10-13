@@ -117,7 +117,11 @@ module Api
 
           render json: token_response.merge(user: user.mobile_payload)
         else
-          render json: { error: "Invalid email or password" }, status: :unauthorized
+          if user&.sso_only?
+            render json: { error: "sso_account", message: "This account uses social sign-in. Sign in with Google or Apple instead." }, status: :unprocessable_entity
+          else
+            render json: { error: "Invalid email or password" }, status: :unauthorized
+          end
         end
       end
 
