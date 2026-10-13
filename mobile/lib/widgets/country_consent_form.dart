@@ -5,7 +5,7 @@ import '../screens/web_page_screen.dart';
 import '../services/api_config.dart';
 import '../services/countries_service.dart';
 
-/// Country choice plus privacy/terms consent (issue #106, Stories 1.1 and
+/// Country choice plus privacy/terms consent
 /// 1.5). The legal links follow the chosen country. Used by onboarding and by
 /// the one-time confirmation for members who signed up before countries were
 /// stored on the server.
@@ -14,7 +14,7 @@ class CountryConsentForm extends StatefulWidget {
     super.key,
     required this.onSubmit,
     this.loadCountries,
-    this.initialCountryCode,
+    this.lockedCountryCode,
   });
 
   /// Saves the choice. Returns an error message, or null on success.
@@ -24,8 +24,9 @@ class CountryConsentForm extends StatefulWidget {
   /// fallback list when offline).
   final Future<List<ChancenCountry>> Function()? loadCountries;
 
-  /// When non-null, pre-selects this country. The user can still change it.
-  final String? initialCountryCode;
+  /// The country the server already has for this member (e.g. from their
+  /// invitation). When non-null it is the only one shown and can't be changed.
+  final String? lockedCountryCode;
 
   @override
   State<CountryConsentForm> createState() => _CountryConsentFormState();
@@ -54,12 +55,24 @@ class _CountryConsentFormState extends State<CountryConsentForm> {
     final countries = await loader();
     if (mounted) {
       setState(() {
-        _countries = countries;
-        if (widget.initialCountryCode != null) {
-          _selectedCode = widget.initialCountryCode;
-        }
+        final locked = widget.lockedCountryCode?.toUpperCase();
+        _countries = locked == null ? countries : [_lockedCountry(locked, countries)];
+        _selectedCode = locked;
       });
     }
+  }
+
+  /// The locked country from the list, or one built from its code when the
+  /// list doesn't have it, so the member can always read and accept its terms.
+  ChancenCountry _lockedCountry(String code, List<ChancenCountry> countries) {
+    return countries.where((c) => c.code == code).firstOrNull ??
+        ChancenCountry(
+          code: code,
+          name: code,
+          live: true,
+          privacyUrl: '/privacy/${code.toLowerCase()}',
+          termsUrl: '/terms/${code.toLowerCase()}',
+        );
   }
 
   Future<void> _submit() async {
@@ -90,6 +103,7 @@ class _CountryConsentFormState extends State<CountryConsentForm> {
     final colorScheme = theme.colorScheme;
     final countries = _countries;
     final selected = _selected;
+    final locked = widget.lockedCountryCode != null;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
@@ -97,7 +111,7 @@ class _CountryConsentFormState extends State<CountryConsentForm> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Select your country',
+            locked ? 'Your country' : 'Select your country',
             style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
@@ -114,7 +128,7 @@ class _CountryConsentFormState extends State<CountryConsentForm> {
                 child: InkWell(
                   key: ValueKey('country-${country.code}'),
                   borderRadius: BorderRadius.circular(12),
-                  onTap: _saving ? null : () => setState(() {
+                  onTap: _saving || locked ? null : () => setState(() {
                     _selectedCode = country.code;
                     _consentChecked = false;
                   }),
@@ -140,13 +154,22 @@ class _CountryConsentFormState extends State<CountryConsentForm> {
                           ),
                         ),
                         if (isSelected)
-                          Icon(Icons.check_circle, size: 18, color: colorScheme.primary),
+                          Icon(
+                            locked ? Icons.lock_outline : Icons.check_circle,
+                            size: 18,
+                            color: colorScheme.primary,
+                          ),
                       ],
                     ),
                   ),
                 ),
               );
             }),
+          if (locked)
+            Text(
+              'Your country is set by Chancen. Contact support if it is wrong.',
+              style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
+            ),
           const SizedBox(height: 24),
           Text(
             selected == null

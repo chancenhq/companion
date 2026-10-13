@@ -44,7 +44,7 @@ class User < ApplicationRecord
   validates :default_period, inclusion: { in: Period::PERIODS.keys }
   validates :default_account_order, inclusion: { in: AccountOrder::ORDERS.keys }
   validates :locale, inclusion: { in: I18n.available_locales.map(&:to_s) }, allow_nil: true
-  # Issue #106: the member's own country, from config/chancen_countries.yml.
+  # The member's own country, from config/chancen_countries.yml.
   validates :country_code, :consent_country_code, inclusion: { in: ->(_) { ChancenCountry.codes } }, allow_nil: true
 
   # Password is required on create unless the user is being created via SSO JIT.
@@ -91,7 +91,7 @@ class User < ApplicationRecord
     unconfirmed_email.present?
   end
 
-  # Proof that the account holder controls `email` (issue #106). Gates all
+  # Proof that the account holder controls `email`. Gates all
   # financial and Chancen Account (ISA) data.
   def email_verified?
     email_verified_at.present?
@@ -137,10 +137,15 @@ class User < ApplicationRecord
     EmailConfirmationMailer.with(user: self).confirmation_email.deliver_later
   end
 
-  # Issue #106, Story 1.5: members without a country on the server confirm it
+  # Members without a country on the server confirm it
   # once. The server never fills one in.
   def requires_country_confirmation?
     country_code.blank?
+  end
+
+  # Once a member has a country, only an invitation can change it.
+  def country_locked?
+    country_code.present?
   end
 
   def chancen_country

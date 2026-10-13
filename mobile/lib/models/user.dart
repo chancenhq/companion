@@ -6,12 +6,12 @@ class User {
   final String uiLayout;
   final bool aiEnabled;
 
-  /// Whether the server has confirmed this email (issue #106). Null when the
+  /// Whether the server has confirmed this email. Null when the
   /// server didn't say (older server or stored user); the server's 403
   /// `email_verification_required` is the real lock, so null never locks.
   final bool? emailVerified;
 
-  /// The member's country on the server (issue #106, Epic 1).
+  /// The member's country on the server.
   final String? countryCode;
 
   /// Null when the server didn't say (older server); null never prompts.

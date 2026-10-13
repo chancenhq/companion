@@ -38,7 +38,7 @@ class AuthProvider with ChangeNotifier {
   // Invitation deep-link state
   String? _pendingInvitationToken;
 
-  // Email verification (issue #106)
+  // Email verification
   bool _emailVerificationLocked = false;
   bool _verificationPromptDismissed = false;
   StreamSubscription<void>? _unauthorizedSub;
@@ -197,14 +197,16 @@ class AuthProvider with ChangeNotifier {
   /// Current privacy/terms version. Bump to ask every member to accept again.
   static const String consentVersion = '1.0';
 
-  /// Issue #106, Story 1.5: show the country picker when the server has no
-  /// country for this member, or their consent is for an older version.
+  /// Show the country screen when the server has no
+  /// country for this member, or their consent is for an older version or a
+  /// different country (e.g. one an invitation has since assigned).
   /// Unknown (older server) never prompts.
   bool get countryConfirmationRequired {
     final user = _user;
     if (user == null || _isApiKeyAuth) return false;
     if (user.requiresCountryConfirmation == true) return true;
-    return user.requiresCountryConfirmation == false && user.consentVersion != consentVersion;
+    if (user.requiresCountryConfirmation != false) return false;
+    return user.consentVersion != consentVersion || user.consentCountryCode != user.countryCode;
   }
 
   /// Saves the country and accepted consent on the server. Returns an error

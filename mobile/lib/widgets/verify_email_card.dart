@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 
 /// Shown in place of Chancen Account data while the server locks it until the
-/// email is verified (issue #106, Story 3.2).
+/// email is verified.
 class VerifyEmailCard extends StatefulWidget {
   const VerifyEmailCard({super.key, required this.onVerified});
 

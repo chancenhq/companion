@@ -17,7 +17,7 @@ class AccountNetworkException implements Exception {
   const AccountNetworkException();
 }
 
-/// The server locks Chancen Account data until the email is verified (issue #106).
+/// The server locks Chancen Account data until the email is verified.
 class EmailVerificationRequiredException implements Exception {
   const EmailVerificationRequiredException();
 }

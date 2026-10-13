@@ -13,7 +13,6 @@ class InvitationsController < ApplicationController
 
     @invitation = Current.family.invitations.build(invitation_params)
     @invitation.inviter = Current.user
-    @invitation.country_code = Current.family.chancen_country_code
 
     if @invitation.save
       normalized_email = @invitation.email.to_s.strip.downcase
@@ -26,7 +25,7 @@ class InvitationsController < ApplicationController
         flash[:notice] = t(".success")
       end
     else
-      flash[:alert] = t(".failure")
+      flash[:alert] = @invitation.errors[:base].first || t(".failure")
     end
 
     redirect_to settings_profile_path

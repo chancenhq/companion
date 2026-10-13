@@ -42,7 +42,7 @@ class _LoginFormBodyState extends State<LoginFormBody> {
   bool _obscurePassword = true;
   bool _isSignUp = false;
 
-  // Issue #106, Story 2.1: Google, Apple and "Continue with email" are equal
+  // Google, Apple and "Continue with email" are equal
   // first choices; the email form opens from the last one.
   bool _emailChosen = false;
   bool get _showEmailForm => !widget.branded || _emailChosen;

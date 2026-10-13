@@ -7,8 +7,8 @@ import '../services/preferences_service.dart';
 import '../widgets/country_consent_form.dart';
 
 /// One-time country confirmation for members the server has no country for,
-/// or whose consent is for an older privacy/terms version (issue #106,
-/// Story 1.5). Shown before the home screen even when already signed in.
+/// or whose consent is for an older privacy/terms version
+/// Shown before the home screen even when already signed in.
 class CountrySelectionScreen extends StatelessWidget {
   const CountrySelectionScreen({super.key});
 
@@ -45,7 +45,12 @@ class CountrySelectionScreen extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
             ),
-            Expanded(child: CountryConsentForm(onSubmit: (code) => _save(context, code))),
+            Expanded(
+              child: CountryConsentForm(
+                onSubmit: (code) => _save(context, code),
+                lockedCountryCode: context.read<AuthProvider>().user?.countryCode,
+              ),
+            ),
           ],
         ),
       ),
