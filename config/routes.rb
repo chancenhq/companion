@@ -683,7 +683,11 @@ Rails.application.routes.draw do
         patch :update_country
       end
     end
-    resource :bulk_invitations, only: [ :new, :create ]
+    resource :bulk_invitations, only: [ :new, :create ] do
+      collection do
+        post :preview
+      end
+    end
     resources :invitations, only: [ :destroy ]
     resources :families, only: [ :index, :edit, :update ] do
       member do
