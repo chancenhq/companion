@@ -377,6 +377,11 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
             return const EmailVerificationScreen();
           }
 
+          // SSO users must set a password before they can be locked out.
+          if (authProvider.user?.hasPassword == false) {
+            return const SsoOnboardingScreen(passwordOnlyMode: true);
+          }
+
           return Stack(
             children: [
               const MainNavigationScreen(),

@@ -212,7 +212,9 @@ class _LoginFormBodyState extends State<LoginFormBody> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        authProvider.errorMessage!,
+                        authProvider.errorMessage == 'sso_account'
+                            ? 'This email is linked to a Google or Apple account. Sign in with SSO instead.'
+                            : authProvider.errorMessage!,
                         style: TextStyle(color: colorScheme.onErrorContainer),
                       ),
                     ),

@@ -77,6 +77,7 @@ class AuthService {
         return {
           'success': false,
           'error': responseData['error'] ?? responseData['errors']?.join(', ') ?? 'Login failed',
+          'message': responseData['message'],
         };
       }
     } on SocketException catch (e, stackTrace) {
