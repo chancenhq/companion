@@ -214,7 +214,7 @@ class _RecentTransactionsScreenState extends State<RecentTransactionsScreen> {
 
     String formattedDate;
     try {
-      final date = DateTime.parse(transaction.date);
+      final date = DateTime.parse(transaction.date).toLocal();
       formattedDate = DateFormat('yyyy-MM-dd HH:mm').format(date);
     } catch (e) {
       formattedDate = transaction.date;
