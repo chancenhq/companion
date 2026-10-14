@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../services/analytics_service.dart';
 import '../services/app_config_service.dart';
 import '../services/preferences_service.dart';
 
@@ -33,6 +34,15 @@ class AppConfigProvider extends ChangeNotifier {
       _whatsappUrls = fresh;
       await PreferencesService.instance.setWhatsappUrls(fresh);
       notifyListeners();
+    }
+
+    final ph = config?['posthog'];
+    if (ph is Map) {
+      final host = ph['host'] as String?;
+      final key = ph['api_key'] as String?;
+      if (host != null && key != null) {
+        await AnalyticsService.instance.init(host: host, apiKey: key);
+      }
     }
   }
 }
