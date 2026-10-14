@@ -3,7 +3,7 @@ countries:
     name: Kenya
     live: true
     team_name: Chancen Kenya team
-    escalation_contact: support.ke@chancen.org
+    escalation_contact: Companion_support@chancen.international
     privacy_url: /privacy/ke
     terms_url: /terms/ke
     isa_content_source: kenya
@@ -11,7 +11,7 @@ countries:
     name: Rwanda
     live: true
     team_name: Chancen Rwanda team
-    escalation_contact: support.rw@chancen.org
+    escalation_contact: Companion_support@chancen.international
     privacy_url: /privacy/rw
     terms_url: /terms/rw
     isa_content_source: rwanda
@@ -19,7 +19,7 @@ countries:
     name: South Africa
     live: true
     team_name: Chancen South Africa team
-    escalation_contact: support.za@chancen.org
+    escalation_contact: Companion_support@chancen.international
     privacy_url: /privacy/za
     terms_url: /terms/za
     isa_content_source: south_africa
@@ -27,7 +27,7 @@ countries:
     name: Ghana
     live: true
     team_name: Chancen team
-    escalation_contact: support@chancen.org
+    escalation_contact: Companion_support@chancen.international
     privacy_url: /privacy/gh
     terms_url: /terms/gh
     isa_content_source: general
