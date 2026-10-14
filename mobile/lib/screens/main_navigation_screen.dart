@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import '../services/analytics_service.dart';
 import 'chat_list_screen.dart';
 import 'insights_screen.dart';
 import 'isa_transactions_screen.dart';
@@ -56,8 +57,16 @@ class MainNavigationScreen extends StatefulWidget {
   State<MainNavigationScreen> createState() => _MainNavigationScreenState();
 }
 
+const _tabScreenNames = ['chat_list', 'my_account', 'isa_transactions', 'settings'];
+
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    AnalyticsService.instance.screen(_tabScreenNames[0]);
+  }
 
   Future<void> _handleDestinationSelected(
     int index,
@@ -68,7 +77,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       setState(() {
         _currentIndex = index;
       });
-
+      final name = index < _tabScreenNames.length ? _tabScreenNames[index] : 'unknown';
+      AnalyticsService.instance.screen(name);
     }
   }
 

@@ -31,6 +31,11 @@ class AnalyticsService {
     Posthog().capture(eventName: event, properties: properties);
   }
 
+  void screen(String screenName) {
+    if (!_enabled) return;
+    Posthog().screen(screenName: screenName);
+  }
+
   void reset() {
     if (!_enabled) return;
     Posthog().reset();
