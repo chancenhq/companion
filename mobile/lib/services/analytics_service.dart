@@ -16,18 +16,17 @@ class AnalyticsService {
 
   void identify(User user) {
     if (!_enabled) return;
-    Posthog().identify(
-      userId: user.id,
-      userProperties: {
-        'country_code': user.countryCode,
-        'has_password': user.hasPassword ?? false,
-        'ui_layout': user.uiLayout,
-        'ai_enabled': user.aiEnabled,
-      },
-    );
+    final props = <String, Object>{
+      'has_password': user.hasPassword ?? false,
+      'ai_enabled': user.aiEnabled,
+      'ui_layout': user.uiLayout,
+    };
+    if (user.countryCode != null) props['country_code'] = user.countryCode!;
+
+    Posthog().identify(userId: user.id, userProperties: props);
   }
 
-  void capture(String event, [Map<String, Object?> properties = const {}]) {
+  void capture(String event, [Map<String, Object> properties = const {}]) {
     if (!_enabled) return;
     Posthog().capture(eventName: event, properties: properties);
   }

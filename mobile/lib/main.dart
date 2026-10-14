@@ -19,6 +19,7 @@ import 'screens/main_navigation_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/reset_password_screen.dart';
 import 'screens/sso_onboarding_screen.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
 import 'services/api_config.dart';
 import 'services/connectivity_service.dart';
 import 'services/log_service.dart';
@@ -176,6 +177,7 @@ class SureApp extends StatelessWidget {
           ),
         ),
         themeMode: themeProvider.themeMode,
+        navigatorObservers: [PosthogObserver()],
         routes: {
           '/config': (context) => const BackendConfigScreen(),
           '/login': (context) => const LoginScreen(),
