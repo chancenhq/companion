@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../models/student_account.dart';
+import '../services/analytics_service.dart';
 import '../services/my_account_service.dart';
 
 class MyAccountProvider with ChangeNotifier {
@@ -43,6 +44,7 @@ class MyAccountProvider with ChangeNotifier {
       _account = await _service.fetchMyAccount(apiKey);
       _loaded = true;
       _lastSyncedAt = DateTime.now();
+      AnalyticsService.instance.capture('isa_screen_viewed', {'isa_status': _account!.status});
     } on EmailVerificationRequiredException {
       // Drop anything cached: it may predate the lock or belong to whoever
       // registered this email first.
@@ -56,15 +58,19 @@ class MyAccountProvider with ChangeNotifier {
     } on AccountServiceUnavailableException {
       _unavailable = true;
       _loaded = true;
+      AnalyticsService.instance.capture('isa_load_failed', {'error_type': 'unavailable'});
     } on AccountNetworkException {
       _networkError = true;
       _loaded = true;
+      AnalyticsService.instance.capture('isa_load_failed', {'error_type': 'network'});
     } on AccountUpstreamException {
       _upstreamError = true;
       _loaded = true;
+      AnalyticsService.instance.capture('isa_load_failed', {'error_type': 'upstream'});
     } catch (e) {
       _upstreamError = true;
       _loaded = true;
+      AnalyticsService.instance.capture('isa_load_failed', {'error_type': 'upstream'});
       debugPrint('MyAccountProvider.load error: $e');
     } finally {
       _isLoading = false;
