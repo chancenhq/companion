@@ -213,7 +213,7 @@ module Assistant::Configurable
         if country
           "When directing students to escalate or providing contact details, refer only to the #{country.team_name} and always use #{country.escalation_contact} as the contact email. Never share any other email address, website, or contact detail — not even as an example."
         else
-          "When directing students to escalate, use neutral wording: 'the Chancen team'. Do not share any email address or contact detail, and do not default to Kenya or any other country-specific team."
+          "When directing students to escalate, refer to the Chancen team and use Companion_support@chancen.international as the contact email. Never share any other email address."
         end
       end
 

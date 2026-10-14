@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/preferences_service.dart';
+import 'backend_config_screen.dart';
 import 'login_screen.dart';
 import '../widgets/country_consent_form.dart';
 
@@ -27,6 +28,10 @@ class OnboardingScreen extends StatefulWidget {
 class _OnboardingScreenState extends State<OnboardingScreen> {
   late final PageController _pageController;
   late int _currentPage;
+
+  int _logoTapCount = 0;
+  DateTime? _firstLogoTapAt;
+  bool _devUnlocked = false;
 
   @override
   void initState() {
@@ -158,11 +163,66 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         if (authProvider.isAuthenticated && _currentPage == 1) {
           WidgetsBinding.instance.addPostFrameCallback((_) => _goToPage(2));
         }
-        return SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: const LoginFormBody(branded: true, allowSignUp: true),
+        return Stack(
+          children: [
+            SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: LoginFormBody(
+                branded: true,
+                allowSignUp: true,
+                onLogoTap: _handleLogoTap,
+              ),
+            ),
+            if (_devUnlocked)
+              Positioned(
+                right: 8,
+                top: 8,
+                child: IconButton(
+                  icon: const Icon(Icons.settings_outlined),
+                  tooltip: 'Backend Settings',
+                  onPressed: _openBackendSettings,
+                ),
+              ),
+          ],
         );
       },
+    );
+  }
+
+  // Same 7-tap gesture as LoginScreen: a first launch never reaches that
+  // screen, so the backend could not be switched from here without it.
+  void _handleLogoTap() {
+    final now = DateTime.now();
+    if (_firstLogoTapAt == null ||
+        now.difference(_firstLogoTapAt!) > const Duration(seconds: 5)) {
+      _firstLogoTapAt = now;
+      _logoTapCount = 1;
+    } else {
+      _logoTapCount++;
+      if (_logoTapCount >= 7 && !_devUnlocked) {
+        setState(() => _devUnlocked = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Developer options enabled'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  void _openBackendSettings() {
+    final authProvider = context.read<AuthProvider>();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (routeContext) => BackendConfigScreen(
+          onConfigSaved: () {
+            // Errors from the previous backend no longer apply.
+            authProvider.clearError();
+            Navigator.of(routeContext).pop();
+          },
+        ),
+      ),
     );
   }
 
