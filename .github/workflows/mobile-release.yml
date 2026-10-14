@@ -5,6 +5,11 @@ on:
     tags:
       - 'mobile-v*'
   workflow_dispatch:
+    inputs:
+      base_tag:
+        description: 'Existing v* or mobile-v* version tag (required for branch runs; builds selected ref)'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -29,18 +34,38 @@ jobs:
 
       - name: Resolve release tag
         id: release_tag
+        env:
+          BASE_TAG_INPUT: ${{ inputs.base_tag }}
         run: |
           set -euo pipefail
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            BASE_STABLE_TAG="$(git tag --list 'v*' --sort=-v:refname | { grep -Ev 'alpha|beta|rc' || true; } | head -n 1)"
-            if [ -z "$BASE_STABLE_TAG" ]; then
-              echo "::error::No stable v* tag found to base mobile patch release on"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+              SOURCE_TAG="$GITHUB_REF_NAME"
+              if [ -n "$BASE_TAG_INPUT" ] && [ "$BASE_TAG_INPUT" != "$SOURCE_TAG" ]; then
+                echo "::error::For tag runs, omit base_tag or match the selected tag"
+                exit 1
+              fi
+            else
+              SOURCE_TAG="$BASE_TAG_INPUT"
+              if [ -z "$SOURCE_TAG" ]; then
+                echo "::error::Branch runs require base_tag (an existing v* or mobile-v* tag, including prereleases)"
+                exit 1
+              fi
+            fi
+
+            if [[ "$SOURCE_TAG" != v* && "$SOURCE_TAG" != mobile-v* ]] ||
+               ! git check-ref-format "refs/tags/$SOURCE_TAG" ||
+               ! git rev-parse --verify "refs/tags/$SOURCE_TAG^{commit}" >/dev/null 2>&1; then
+              echo "::error::base_tag must identify an existing v* or mobile-v* commit tag"
               exit 1
             fi
 
+            # The base tag supplies the version, not the source checkout.
+            # Both builds and this new tag use the selected workflow ref.
+            BASE_VERSION="${SOURCE_TAG#mobile-}"
             STAMP="$(date -u +'%Y%m%d%H%M')"
-            BASE_TAG="mobile-${BASE_STABLE_TAG}-p${STAMP}"
+            BASE_TAG="mobile-${BASE_VERSION}-p${STAMP}"
             TAG_NAME="$BASE_TAG"
             TAG_SUFFIX=1
 
