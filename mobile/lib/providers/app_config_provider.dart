@@ -6,18 +6,11 @@ class AppConfigProvider extends ChangeNotifier {
   static const _fallbackUrl =
       'https://chat.whatsapp.com/IVBXS2QtJpqIFlZYoSPD1t';
 
-  static const _countryNameToCode = {
-    'Kenya': 'ke',
-    'Rwanda': 'rw',
-    'South Africa': 'za',
-    'Ghana': 'gh',
-  };
-
   Map<String, String> _whatsappUrls = {};
 
-  String whatsappUrlForCountry(String countryName) {
-    final code = _countryNameToCode[countryName];
-    return (code != null ? _whatsappUrls[code] : null) ?? _fallbackUrl;
+  String whatsappUrlForCode(String? countryCode) {
+    if (countryCode == null) return _fallbackUrl;
+    return _whatsappUrls[countryCode.toLowerCase()] ?? _fallbackUrl;
   }
 
   Future<void> load() async {

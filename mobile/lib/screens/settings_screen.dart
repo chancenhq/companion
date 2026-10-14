@@ -287,8 +287,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _launchContactUrl(BuildContext context) async {
     final appConfig = Provider.of<AppConfigProvider>(context, listen: false);
-    final country = await PreferencesService.instance.getUserCountry();
-    final whatsappUrl = appConfig.whatsappUrlForCountry(country);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final whatsappUrl = appConfig.whatsappUrlForCode(authProvider.user?.countryCode);
     final uri = Uri.parse(whatsappUrl);
     final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!launched && context.mounted) {
