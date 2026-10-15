@@ -6,16 +6,26 @@ class AnalyticsService {
   AnalyticsService._();
 
   bool _enabled = false;
+  User? _pendingUser;
 
   Future<void> init({required String host, required String apiKey}) async {
     if (_enabled) return;
     final config = PostHogConfig(apiKey)..host = host;
     await Posthog().setup(config);
     _enabled = true;
+    // Replay identify if the user was already authenticated before init finished.
+    final pending = _pendingUser;
+    if (pending != null) {
+      _pendingUser = null;
+      identify(pending);
+    }
   }
 
   void identify(User user) {
-    if (!_enabled) return;
+    if (!_enabled) {
+      _pendingUser = user;
+      return;
+    }
     final props = <String, Object>{
       'has_password': user.hasPassword ?? false,
       'ai_enabled': user.aiEnabled,

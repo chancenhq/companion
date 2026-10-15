@@ -24,6 +24,16 @@ class AppConfigProvider extends ChangeNotifier {
 
     // Phase 2: refresh from API in background; persist + notify only if changed.
     final config = await AppConfigService().fetchConfig();
+
+    final ph = config?['posthog'];
+    if (ph is Map) {
+      final host = ph['host'] as String?;
+      final key = ph['api_key'] as String?;
+      if (host != null && key != null) {
+        await AnalyticsService.instance.init(host: host, apiKey: key);
+      }
+    }
+
     final raw = config?['whatsapp_group_urls'];
     if (raw is! Map) return;
 
@@ -34,15 +44,6 @@ class AppConfigProvider extends ChangeNotifier {
       _whatsappUrls = fresh;
       await PreferencesService.instance.setWhatsappUrls(fresh);
       notifyListeners();
-    }
-
-    final ph = config?['posthog'];
-    if (ph is Map) {
-      final host = ph['host'] as String?;
-      final key = ph['api_key'] as String?;
-      if (host != null && key != null) {
-        await AnalyticsService.instance.init(host: host, apiKey: key);
-      }
     }
   }
 }

@@ -265,8 +265,8 @@ class AuthProvider with ChangeNotifier {
         final user = result['user'] as User?;
         _setUser(user);
         if (user != null) {
-          AnalyticsService.instance.capture('login_completed', {'method': 'email'});
           AnalyticsService.instance.identify(user);
+          AnalyticsService.instance.capture('login_completed', {'method': 'email'});
         }
         _mfaRequired = false;
         _showMfaInput = false; // Reset on successful login
@@ -369,8 +369,8 @@ class AuthProvider with ChangeNotifier {
         final user = result['user'] as User?;
         _setUser(user);
         if (user != null) {
-          AnalyticsService.instance.capture('signup_completed', {'method': 'email'});
           AnalyticsService.instance.identify(user);
+          AnalyticsService.instance.capture('signup_completed', {'method': 'email'});
         }
         _pendingInvitationToken = null;
         _isLoading = false;
@@ -486,8 +486,8 @@ class AuthProvider with ChangeNotifier {
         final user = result['user'] as User?;
         _setUser(user);
         if (user != null) {
-          AnalyticsService.instance.capture('sso_login_completed', {'method': 'sso'});
           AnalyticsService.instance.identify(user);
+          AnalyticsService.instance.capture('sso_login_completed', {'method': 'sso'});
         }
         _ssoOnboardingPending = false;
         _isLoading = false;
@@ -591,8 +591,8 @@ class AuthProvider with ChangeNotifier {
         final user = result['user'] as User?;
         _setUser(user);
         if (user != null) {
-          AnalyticsService.instance.capture('sso_signup_completed', {'method': 'sso'});
           AnalyticsService.instance.identify(user);
+          AnalyticsService.instance.capture('sso_signup_completed', {'method': 'sso'});
         }
         _clearSsoOnboardingState();
         _isLoading = false;
