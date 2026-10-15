@@ -11,6 +11,10 @@ class Api::V1::AppConfigController < Api::V1::BaseController
         rw: Setting.whatsapp_group_url_rw.presence,
         za: Setting.whatsapp_group_url_za.presence,
         gh: Setting.whatsapp_group_url_gh.presence
+      }.compact,
+      posthog: {
+        host: Setting.posthog_host.presence,
+        api_key: Setting.posthog_public_key.presence
       }.compact
     }
   end

@@ -19,6 +19,8 @@ import 'screens/main_navigation_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/reset_password_screen.dart';
 import 'screens/sso_onboarding_screen.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
+import 'services/analytics_service.dart';
 import 'services/api_config.dart';
 import 'services/connectivity_service.dart';
 import 'services/log_service.dart';
@@ -176,6 +178,7 @@ class SureApp extends StatelessWidget {
           ),
         ),
         themeMode: themeProvider.themeMode,
+        navigatorObservers: [PosthogObserver()],
         routes: {
           '/config': (context) => const BackendConfigScreen(),
           '/login': (context) => const LoginScreen(),
@@ -199,6 +202,7 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
   bool _hasBackendUrl = false;
   bool _isLocked = false;
   bool _onboardingComplete = true; // assume complete until checked
+  String? _lastScreenName;
   late final AppLinks _appLinks;
   StreamSubscription<Uri>? _linkSubscription;
 
@@ -323,6 +327,14 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
     });
   }
 
+  void _trackScreenIfChanged(String name) {
+    if (_lastScreenName == name) return;
+    _lastScreenName = name;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      AnalyticsService.instance.screen(name);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isCheckingConfig) {
@@ -353,12 +365,14 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
         // SSO callbacks must win over everything — including first-launch
         // onboarding — so the deep link is never dropped from the widget tree.
         if (authProvider.ssoOnboardingPending) {
+          _trackScreenIfChanged('sso_onboarding');
           return const SsoOnboardingScreen();
         }
 
         // Onboarding (country select + consent) must complete before the app
         // is accessible, even when the user signed up on page 1 of the flow.
         if (!_onboardingComplete) {
+          _trackScreenIfChanged('onboarding');
           return OnboardingScreen(
             onComplete: _onOnboardingComplete,
             initialPage: authProvider.isAuthenticated ? 2 : 0,
@@ -368,20 +382,24 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
         if (authProvider.isAuthenticated) {
           // Members accept the privacy/terms for their country once
           if (authProvider.countryConfirmationRequired) {
+            _trackScreenIfChanged('country_selection');
             return const CountrySelectionScreen();
           }
 
           // Email sign-ups confirm their address once; the
           // assistant stays available if they continue without verifying.
           if (authProvider.showEmailVerificationPrompt) {
+            _trackScreenIfChanged('email_verification');
             return const EmailVerificationScreen();
           }
 
           // SSO users must set a password before they can be locked out.
           if (authProvider.user?.hasPassword == false) {
+            _trackScreenIfChanged('sso_set_password');
             return const SsoOnboardingScreen(passwordOnlyMode: true);
           }
 
+          // MainNavigationScreen tracks its own tab screens via initState/onTap.
           return Stack(
             children: [
               const MainNavigationScreen(),
@@ -401,6 +419,7 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
           });
         }
 
+        _trackScreenIfChanged('login');
         return const LoginScreen();
       },
     );

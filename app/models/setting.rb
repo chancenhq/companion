@@ -35,6 +35,10 @@ class Setting < RailsSettings::Base
   field :whatsapp_group_url_za, type: :string, default: ENV["WHATSAPP_GROUP_URL_ZA"]
   field :whatsapp_group_url_gh, type: :string, default: ENV["WHATSAPP_GROUP_URL_GH"]
 
+  # Chancen companion — PostHog mobile analytics (public write-only key, safe to deliver to client)
+  field :posthog_public_key, type: :string, default: ENV["POSTHOG_PUBLIC_KEY"]
+  field :posthog_host, type: :string, default: ENV.fetch("POSTHOG_HOST", "https://us.i.posthog.com")
+
   field :brand_fetch_client_id, type: :string, default: ENV["BRAND_FETCH_CLIENT_ID"]
   field :brand_fetch_high_res_logos, type: :boolean, default: ENV.fetch("BRAND_FETCH_HIGH_RES_LOGOS", "false") == "true"
 

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/chat.dart';
 import '../models/message.dart';
+import '../services/analytics_service.dart';
 import '../services/chat_service.dart';
 
 class ChatProvider with ChangeNotifier {
@@ -201,6 +202,7 @@ class ChatProvider with ChangeNotifier {
           _chats.insert(0, chat);
         }
 
+        AnalyticsService.instance.capture('new_chat_started');
         _isLoading = false;
         notifyListeners();
         return _currentChat!;
@@ -282,6 +284,7 @@ class ChatProvider with ChangeNotifier {
 
         _errorMessage = null;
 
+        AnalyticsService.instance.capture('chat_message_sent', {'chat_id': chatId});
         // Start polling for AI response
         _startPolling(accessToken, chatId);
         return true;

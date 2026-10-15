@@ -6,6 +6,7 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/user.dart';
 import '../models/auth_tokens.dart';
+import '../services/analytics_service.dart';
 import '../services/auth_events.dart';
 import '../services/auth_service.dart';
 import '../services/device_service.dart';
@@ -175,6 +176,7 @@ class AuthProvider with ChangeNotifier {
     if (user == null) return _user?.emailVerified == true;
 
     _setUser(user);
+    AnalyticsService.instance.identify(user);
     notifyListeners();
     return user.emailVerified == true;
   }
@@ -260,7 +262,12 @@ class AuthProvider with ChangeNotifier {
 
       if (result['success'] == true) {
         _tokens = result['tokens'] as AuthTokens?;
-        _setUser(result['user'] as User?);
+        final user = result['user'] as User?;
+        _setUser(user);
+        if (user != null) {
+          AnalyticsService.instance.identify(user);
+          AnalyticsService.instance.capture('login_completed', {'method': 'email'});
+        }
         _mfaRequired = false;
         _showMfaInput = false; // Reset on successful login
         _isLoading = false;
@@ -359,7 +366,12 @@ class AuthProvider with ChangeNotifier {
 
       if (result['success'] == true) {
         _tokens = result['tokens'] as AuthTokens?;
-        _setUser(result['user'] as User?);
+        final user = result['user'] as User?;
+        _setUser(user);
+        if (user != null) {
+          AnalyticsService.instance.identify(user);
+          AnalyticsService.instance.capture('signup_completed', {'method': 'email'});
+        }
         _pendingInvitationToken = null;
         _isLoading = false;
         notifyListeners();
@@ -471,7 +483,12 @@ class AuthProvider with ChangeNotifier {
 
       if (result['success'] == true) {
         _tokens = result['tokens'] as AuthTokens?;
-        _setUser(result['user'] as User?);
+        final user = result['user'] as User?;
+        _setUser(user);
+        if (user != null) {
+          AnalyticsService.instance.identify(user);
+          AnalyticsService.instance.capture('sso_login_completed', {'method': 'sso'});
+        }
         _ssoOnboardingPending = false;
         _isLoading = false;
         notifyListeners();
@@ -571,7 +588,12 @@ class AuthProvider with ChangeNotifier {
 
       if (result['success'] == true) {
         _tokens = result['tokens'] as AuthTokens?;
-        _setUser(result['user'] as User?);
+        final user = result['user'] as User?;
+        _setUser(user);
+        if (user != null) {
+          AnalyticsService.instance.identify(user);
+          AnalyticsService.instance.capture('sso_signup_completed', {'method': 'sso'});
+        }
         _clearSsoOnboardingState();
         _isLoading = false;
         notifyListeners();
@@ -608,6 +630,8 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> logout() async {
     await _authService.logout();
+    AnalyticsService.instance.capture('logout');
+    AnalyticsService.instance.reset();
     _tokens = null;
     _setUser(null);
     _apiKey = null;
