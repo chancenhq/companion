@@ -127,3 +127,6 @@ logs/security/
 
 # Added by codex
 .codex
+
+# JKS File
+*.jks*
