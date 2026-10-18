@@ -1,0 +1,41 @@
+<%= content_for :page_title, t(".title") %>
+
+<div class="bg-container rounded-xl shadow-border-xs p-4">
+  <div class="mb-6">
+    <p class="text-sm text-secondary"><%= t(".description") %></p>
+  </div>
+
+  <% if @families.any? %>
+    <table class="w-full">
+      <thead class="bg-surface-default border-b border-primary">
+        <tr>
+          <th class="px-4 py-2 text-left text-xs font-medium text-secondary uppercase"><%= t(".table.name") %></th>
+          <th class="px-4 py-2 text-left text-xs font-medium text-secondary uppercase"><%= t(".table.country") %></th>
+          <th class="px-4 py-2 text-right text-xs font-medium text-secondary uppercase"><%= t(".table.actions") %></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-alpha-black-200 theme-dark:divide-alpha-white-200">
+        <% @families.each do |family| %>
+          <tr>
+            <td class="px-4 py-3 text-sm font-medium text-primary"><%= family.name.presence || t(".unnamed_family") %></td>
+            <td class="px-4 py-3 text-sm text-secondary">
+              <% if family.chancen_country_code.present? %>
+                <%= ChancenCountry.find(family.chancen_country_code)&.name || family.chancen_country_code %>
+              <% else %>
+                <span class="italic"><%= t(".table.no_country") %></span>
+              <% end %>
+            </td>
+            <td class="px-4 py-3 text-right">
+              <%= link_to t(".table.edit"), edit_admin_family_path(family), class: "text-sm text-primary underline hover:no-underline" %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% else %>
+    <div class="bg-container-inset rounded-lg p-8 text-center">
+      <%= icon "users", class: "w-12 h-12 mx-auto text-secondary mb-3" %>
+      <p class="text-secondary"><%= t(".no_families") %></p>
+    </div>
+  <% end %>
+</div>

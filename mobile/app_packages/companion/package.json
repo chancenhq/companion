@@ -1,0 +1,26 @@
+{
+  "name": "companion",
+  "bundleId": "tech.chancen.companion",
+  "displayName": "Companion",
+  "teamId": "C8WT3YC922",
+  "platforms": {
+    "ios": {
+      "productName": "Runner",
+      "iconSource": "app_icon.png",
+      "storeConnectName": "Companion"
+    }
+  },
+  "testflightAssets": {
+    "required": [
+      "iOS Distribution certificate (.p12)",
+      "App Store provisioning profile for tech.chancen.companion (.mobileprovision)",
+      "App Store Connect API key (.p8) and key id/issuer id",
+      "Keychain password and certificate/provisioning passphrases",
+      "App icon 1024x1024 PNG for App Store Connect"
+    ],
+    "generatedDuringBuild": [
+      "Signed IPA (Runner.ipa)",
+      "ExportOptions.plist with provisioningProfiles[tech.chancen.companion]"
+    ]
+  }
+}

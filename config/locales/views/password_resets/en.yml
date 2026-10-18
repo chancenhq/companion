@@ -12,4 +12,4 @@ en:
       back: Back
     update:
       invalid_token: Invalid token.
-      success: Your password has been reset.
+      success: Your password has been reset. You have been signed out on all devices.

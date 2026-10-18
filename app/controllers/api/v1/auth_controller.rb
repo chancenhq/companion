@@ -6,12 +6,19 @@ module Api
       skip_before_action :authenticate_request!
       skip_before_action :check_api_key_rate_limit
       skip_before_action :log_api_access
-      before_action :authenticate_request!, only: :enable_ai
-      before_action :ensure_write_scope, only: :enable_ai
-      before_action :check_api_key_rate_limit, only: :enable_ai
-      before_action :log_api_access, only: :enable_ai
+      skip_before_action :ensure_verified_for_financial_data
+      before_action :authenticate_request!, only: %i[enable_ai resend_email_verification]
+      before_action :ensure_write_scope, only: %i[enable_ai resend_email_verification]
+      before_action :check_api_key_rate_limit, only: %i[enable_ai resend_email_verification]
+      before_action :log_api_access, only: %i[enable_ai resend_email_verification]
+
+      EMAIL_VERIFICATION_RESENDS_PER_HOUR = 3
 
       def signup
+        # invite_code_required? consults @invitation, so resolve it before checking invite-code requirements.
+        @invitation = pending_invitation_from_params
+        return render_signup_not_permitted_json unless signup_permitted?(invitation: @invitation)
+
         # Check if invite code is required
         if invite_code_required? && params[:invite_code].blank?
           render json: { error: "Invite code is required" }, status: :forbidden
@@ -39,11 +46,7 @@ module Api
 
         user = User.new(user_signup_params)
 
-        # Create family for new user
-        # First user of an instance becomes super_admin
-        family = Family.new
-        user.family = family
-        user.role = User.role_for_new_family_creator
+        assign_signup_family_and_role(user, invitation: @invitation)
 
         # Atomic: user creation, invite-code claim, and device/token issuance
         # either all commit or none do. Without this, a post-commit device
@@ -57,6 +60,7 @@ module Api
               raise ActiveRecord::Rollback
             end
             InviteCode.claim!(params[:invite_code]) if params[:invite_code].present?
+            @invitation&.accept_signup!(user)
             device = MobileDevice.upsert_device!(user, device_params)
             token_response = device.issue_token!
           end
@@ -66,7 +70,15 @@ module Api
           return
         end
 
-        render json: token_response.merge(user: mobile_user_payload(user)), status: :created if token_response
+        return unless token_response
+
+        if invitation_token_proves_email?(@invitation, invitation_token_param)
+          user.mark_email_verified!
+        else
+          user.send_email_verification
+        end
+
+        render json: token_response.merge(user: user.mobile_payload), status: :created
       end
 
       def login
@@ -100,9 +112,13 @@ module Api
             return
           end
 
-          render json: token_response.merge(user: mobile_user_payload(user))
+          render json: token_response.merge(user: user.mobile_payload)
         else
-          render json: { error: "Invalid email or password" }, status: :unauthorized
+          if user&.sso_only?
+            render json: { error: "sso_account", message: "This account uses social sign-in. Sign in with Google or Apple instead." }, status: :unprocessable_entity
+          else
+            render json: { error: "Invalid email or password" }, status: :unauthorized
+          end
         end
       end
 
@@ -141,7 +157,10 @@ module Api
             first_name: cached[:user_first_name],
             last_name: cached[:user_last_name],
             ui_layout: cached[:user_ui_layout],
-            ai_enabled: cached[:user_ai_enabled]
+            ai_enabled: cached[:user_ai_enabled],
+            email_verified: cached[:user_email_verified],
+            country_code: cached[:user_country_code],
+            requires_country_confirmation: cached.fetch(:user_requires_country_confirmation, cached[:user_country_code].blank?)
           }
         }
       end
@@ -168,6 +187,13 @@ module Api
 
         OidcIdentity.create_from_omniauth(build_omniauth_hash(cached), user)
 
+        # The password proves the account, the provider proves its own email.
+        # Only when that is the account's email does this verify it.
+        if OidcIdentity.email_trusted?(provider: cached[:provider], issuer: cached[:issuer]) &&
+            cached[:email].to_s.casecmp?(user.email)
+          user.mark_email_verified!
+        end
+
         SsoAuditLog.log_link!(
           user: user,
           provider: cached[:provider],
@@ -186,50 +212,141 @@ module Api
 
         # Check for a pending invitation for this email
         invitation = Invitation.pending.find_by(email: email)
+        return render_signup_not_permitted_json unless signup_permitted?(invitation: invitation)
 
         unless invitation.present? || cached[:allow_account_creation]
           render json: { error: "SSO account creation is disabled. Please contact an administrator." }, status: :forbidden
           return
         end
 
+        if invitation.blank? && invite_only_default_family_missing?
+          render json: { error: "Invite-only default family is unavailable. Please contact an administrator." }, status: :forbidden
+          return
+        end
+
         # Atomically claim the code before creating the user
         return render json: { error: "Linking code is invalid or expired" }, status: :unauthorized unless consume_linking_code!(linking_code)
 
-        user = User.new(
-          email: email,
-          first_name: params[:first_name].presence || cached[:first_name],
-          last_name: params[:last_name].presence || cached[:last_name],
-          skip_password_validation: true
+        user = jit_create_sso_user(
+          email:                    email,
+          first_name:               params[:first_name].presence || cached[:first_name],
+          last_name:                params[:last_name].presence  || cached[:last_name],
+          provider:                 cached[:provider],
+          uid:                      cached[:uid],
+          issuer:                   cached[:issuer],
+          new_family_fallback_role: sso_provider_default_role(cached[:provider]) || :admin,
+          invitation:               invitation,
+          password:                 params[:password].presence
         )
+        return unless user
 
-        if invitation.present?
-          # Accept the pending invitation: join the existing family
-          user.family_id = invitation.family_id
-          user.role = invitation.role
-        else
-          user.family = Family.new
+        issue_mobile_tokens(user, cached[:device_info])
+      end
 
-          provider_config = Rails.configuration.x.auth.sso_providers&.find { |p| p[:name] == cached[:provider] }
-          provider_default_role = provider_config&.dig(:settings, :default_role)
-          user.role = User.role_for_new_family_creator(fallback_role: provider_default_role || :admin)
+      def apple_sign_in
+        unless valid_device_info?
+          render json: { error: "Device information is required" }, status: :bad_request
+          return
         end
 
-        if user.save
-          # Mark invitation as accepted if one was used
-          invitation&.update!(accepted_at: Time.current)
+        identity_token = params[:identity_token]
+        if identity_token.blank?
+          render json: { error: "identity_token is required" }, status: :bad_request
+          return
+        end
 
-          OidcIdentity.create_from_omniauth(build_omniauth_hash(cached), user)
+        claims = AppleSignIn.verify!(identity_token)
+        apple_uid = claims["sub"]
+        # Only the email inside Apple's signed token proves anything. A client-
+        # supplied email must never link to, verify or create an account.
+        email     = claims["email"].presence
 
-          SsoAuditLog.log_jit_account_created!(
-            user: user,
-            provider: cached[:provider],
-            request: request
+        identity = OidcIdentity.find_by(provider: "apple", uid: apple_uid)
+
+        user = if identity
+          identity.user.tap { |identity_user| identity_user.claim_by_trusted_provider!(email: email) }
+        elsif email.present? && (existing_user = User.find_by(email: email))
+          OidcIdentity.create!(
+            user: existing_user,
+            provider: "apple",
+            uid: apple_uid,
+            issuer: AppleSignIn::ISSUER,
+            info: {
+              email: email,
+              first_name: params[:first_name].presence || existing_user.first_name,
+              last_name: params[:last_name].presence || existing_user.last_name
+            },
+            last_authenticated_at: Time.current
           )
-
-          issue_mobile_tokens(user, cached[:device_info])
+          # Apple has proven control of this email; end any login held by
+          # whoever registered it first (and, if unverified, their password
+          # and MFA). issue_mobile_tokens below then issues the only valid token.
+          existing_user.claim_by_trusted_provider!(email: email)
+          existing_user.revoke_all_access!
+          existing_user
         else
-          render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
+          unless email.present?
+            render json: { error: "Please share your email address with Companion to continue." }, status: :unprocessable_entity
+            return
+          end
+
+          new_user = jit_create_sso_user(
+            email:      email,
+            first_name: params[:first_name].presence || email.split("@").first,
+            last_name:  params[:last_name].presence  || "",
+            provider:   "apple",
+            uid:        apple_uid,
+            issuer:     AppleSignIn::ISSUER
+          )
+          return unless new_user
+          new_user
         end
+
+        issue_mobile_tokens(user, device_params)
+      rescue AppleSignIn::Error => e
+        Rails.logger.warn("[Auth] Apple Sign-In verification failed: #{e.message}")
+        render json: { error: "Invalid Apple identity token" }, status: :unauthorized
+      end
+
+      def request_password_reset
+        email = params[:email].to_s.strip.downcase
+        user = User.find_by(email: email)
+
+        if user && !user.sso_only? && AuthConfig.password_features_enabled?
+          token = user.generate_token_for(:password_reset)
+          PasswordMailer.with(user: user, token: token).mobile_password_reset.deliver_later
+        end
+
+        render json: { message: "If an account exists, you'll receive a reset link shortly." }
+      end
+
+      def reset_password
+        unless AuthConfig.password_features_enabled?
+          render json: { error: "Password reset is not available." }, status: :forbidden
+          return
+        end
+
+        user = User.find_by_token_for(:password_reset, params[:token].to_s)
+
+        unless user
+          render json: { error: "Reset link is invalid or has expired." }, status: :unprocessable_entity
+          return
+        end
+
+        if user.sso_only?
+          render json: { error: "This account uses social sign-in. Password reset is not available." }, status: :unprocessable_entity
+          return
+        end
+
+        unless user.update(password: params[:password], password_confirmation: params[:password_confirmation])
+          render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
+          return
+        end
+
+        user.revoke_all_access!
+        user.verify_after_password_reset!
+
+        render json: { message: "Password updated. You've been signed out on all devices." }
       end
 
       def enable_ai
@@ -241,10 +358,26 @@ module Api
         end
 
         if user.update(ai_enabled: true)
-          render json: { user: mobile_user_payload(user) }
+          render json: { user: user.mobile_payload }
         else
           render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
         end
+      end
+
+      def resend_email_verification
+        user = current_resource_owner
+
+        if user.email_verified?
+          return render json: { message: "Your email is already verified.", user: user.mobile_payload }
+        end
+
+        sent = Rails.cache.increment("email_verification_resend:#{user.id}", 1, expires_in: 1.hour).to_i
+        if sent > EMAIL_VERIFICATION_RESENDS_PER_HOUR
+          return render json: { error: "Too many verification emails. Please try again in an hour." }, status: :too_many_requests
+        end
+
+        user.send_email_verification
+        render json: { message: "Verification email sent.", user: user.mobile_payload }
       end
 
       def refresh
@@ -294,7 +427,23 @@ module Api
       private
 
         def user_signup_params
-          params.require(:user).permit(:email, :password, :first_name, :last_name)
+          params.require(:user).permit(:email, :password, :first_name, :last_name, :country_code)
+        end
+
+        def invitation_token_param
+          params[:invitation].presence || params.dig(:user, :invitation).presence
+        end
+
+        # The invitation for the token sent with the sign-up, otherwise the seat
+        # reserved for this email (only invitations never emailed, such as bulk
+        # invites; an emailed invitation needs its token). An email match
+        # proves nothing about ownership: that account starts unverified, and
+        # the real owner can reclaim it by password reset or Google/Apple.
+        def pending_invitation_from_params
+          token = invitation_token_param
+          return Invitation.pending.find_by(token: token) if token.present?
+
+          Invitation.seat_for(params.dig(:user, :email))
         end
 
         def validate_password(password)
@@ -342,15 +491,49 @@ module Api
           params.require(:code)
         end
 
-        def mobile_user_payload(user)
-          {
-            id: user.id,
-            email: user.email,
-            first_name: user.first_name,
-            last_name: user.last_name,
-            ui_layout: user.ui_layout,
-            ai_enabled: user.ai_enabled?
-          }
+        def jit_create_sso_user(email:, first_name:, last_name:, provider:, uid:, issuer:, new_family_fallback_role: :admin, invitation: nil, password: nil)
+          invitation ||= Invitation.pending.find_by(email: email)
+
+          unless signup_permitted?(invitation: invitation)
+            render_signup_not_permitted_json
+            return nil
+          end
+
+          if invitation.blank? && invite_only_default_family_missing?
+            render json: { error: "Invite-only default family is unavailable. Please contact an administrator." }, status: :forbidden
+            return nil
+          end
+
+          user = User.new(
+            email:      email,
+            first_name: first_name,
+            last_name:  last_name,
+            skip_password_validation: password.blank?
+          )
+          user.password = password if password.present?
+          assign_signup_family_and_role(user, invitation: invitation, new_family_fallback_role: new_family_fallback_role)
+
+          ActiveRecord::Base.transaction do
+            unless user.save
+              render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
+              raise ActiveRecord::Rollback
+            end
+            OidcIdentity.create!(
+              user:                  user,
+              provider:              provider,
+              uid:                   uid,
+              issuer:                issuer,
+              info:                  { email: email, first_name: user.first_name, last_name: user.last_name },
+              last_authenticated_at: Time.current
+            )
+            invitation&.accept_signup!(user)
+            user.mark_email_verified! if OidcIdentity.email_trusted?(provider: provider, issuer: issuer)
+            SsoAuditLog.log_jit_account_created!(user: user, provider: provider, request: request)
+          end
+
+          return nil if performed?
+          user.send_email_verification unless user.email_verified?
+          user
         end
 
         def build_omniauth_hash(cached)
@@ -390,7 +573,7 @@ module Api
           device = MobileDevice.upsert_device!(user, device_info)
           token_response = device.issue_token!
 
-          render json: token_response.merge(user: mobile_user_payload(user))
+          render json: token_response.merge(user: user.mobile_payload)
         rescue ActiveRecord::RecordInvalid => e
           Rails.logger.error("[Auth] Device registration failed: #{e.message}")
           render json: { error: "Failed to register device" }, status: :unprocessable_entity

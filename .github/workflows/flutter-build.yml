@@ -55,6 +55,23 @@ jobs:
         working-directory: mobile
         run: flutter test
 
+      - name: Compute Play-safe version numbers
+        working-directory: mobile
+        run: |
+          VERSION_NAME="$(tr -d '[:space:]' < ../.sure-version | sed 's/-.*$//')"
+          if [ -z "$VERSION_NAME" ]; then
+            echo "❌ ERROR: .sure-version is empty or unreadable"
+            exit 1
+          fi
+          VERSION_CODE="$(date -u +%Y%m%d%H)"
+          if [ -z "$VERSION_CODE" ]; then
+            echo "❌ ERROR: Failed to generate version code"
+            exit 1
+          fi
+          echo "✓ Extracted version: $VERSION_NAME (code: $VERSION_CODE)"
+          echo "APP_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "APP_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+
       - name: Check if keystore secrets exist
         id: check_secrets
         run: |
@@ -86,10 +103,10 @@ jobs:
         run: |
           if [ "${{ steps.check_secrets.outputs.has_keystore }}" == "true" ]; then
             echo "Building signed release APK..."
-            flutter build apk --release
+            flutter build apk --release --build-name "$APP_VERSION_NAME" --build-number "$APP_VERSION_CODE"
           else
             echo "Building debug-signed APK..."
-            flutter build apk --debug
+            flutter build apk --debug --build-name "$APP_VERSION_NAME" --build-number "$APP_VERSION_CODE"
           fi
 
       - name: Upload APK artifact
@@ -105,7 +122,7 @@ jobs:
       - name: Build App Bundle (Release)
         if: steps.check_secrets.outputs.has_keystore == 'true'
         working-directory: mobile
-        run: flutter build appbundle --release
+        run: flutter build appbundle --release --build-name "$APP_VERSION_NAME" --build-number "$APP_VERSION_CODE"
 
       - name: Upload AAB artifact
         if: steps.check_secrets.outputs.has_keystore == 'true'

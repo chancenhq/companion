@@ -5,28 +5,43 @@ module Assistant::Configurable
     def config_for(chat)
       preferred_currency = Money::Currency.new(chat.user.family.currency)
       preferred_date_format = chat.user.family.date_format
+      country = ChancenCountry.find(chat.user.country_code)
 
       if chat.user.ui_layout_intro?
         {
-          instructions: intro_instructions(preferred_currency, preferred_date_format),
-          functions: intro_functions
+          instructions: intro_instructions(preferred_currency, preferred_date_format, country),
+          functions: permitted_functions(chat.user, intro_functions)
         }
       else
         {
-          instructions: default_instructions(preferred_currency, preferred_date_format),
-          functions: default_functions
+          instructions: default_instructions(preferred_currency, preferred_date_format, country),
+          functions: permitted_functions(chat.user, default_functions)
         }
       end
     end
 
     private
+      # Unverified users keep the assistant but none of
+      # the tools that read household or Chancen Account data.
+      def permitted_functions(user, functions)
+        return functions if user.email_verified?
+
+        functions & unverified_functions
+      end
+
+      def unverified_functions
+        [ Assistant::Function::SearchFamilyFiles ]
+      end
+
       def intro_functions
         [
-          Assistant::Function::SearchFamilyFiles
+          Assistant::Function::SearchFamilyFiles,
+          Assistant::Function::GetMyAccount,
+          Assistant::Function::GetISATransactions
         ]
       end
 
-      def intro_instructions(preferred_currency, preferred_date_format)
+      def intro_instructions(preferred_currency, preferred_date_format, country)
         <<~PROMPT
         ## Your identity
 
@@ -63,10 +78,18 @@ module Assistant::Configurable
 
         - Always base ISA information on provided training materials
         - If you do not have specific information about an ISA detail, be transparent about limitations
-        - Help students understand their specific ISA terms and repayment structure
-        - Guide students through ISA calculations when relevant
-        - Address common ISA concerns like early repayment, income changes, and payment caps
+        - Chancen has multiple contract types. Different contracts have different terms, including financing amounts, repayment amounts, repayment mechanisms, contract durations, maximum repayment caps, income thresholds, commitment payments, and cancellation windows. You must never assume that any specific figure or term applies to a member. Always ask for contract details before answering any questions which require a specific contract answer
+        - When a student asks a question that requires contract-specific information, always ask them which contract type they are on before giving any answer. If they are unsure, ask them to look at their contract document and share the relevant numbers with you directly, for example, their repayment amount, contract duration, or income threshold, so you can help them understand what those numbers mean. Always end this kind of exchange by reminding them that for anything they are unsure about, they can reach out to the Chancen team directly for personalised support
+        - Once you have identified the contract type, guide the member to understand what the relevant term means for them. Do not state specific figures as facts. Help them understand how the term works and what determines the answer, then direct them to their contract document or the Chancen team for the exact figure if needed
+        - There are ISA terms and concepts that apply to all members regardless of contract type. You can explain these freely without needing to identify the contract first. These include: what an ISA is, the difference between financing amount and final amount, how the maximum repayment amount works, what counts as income, the minimum income threshold concept, what the pre-graduation meeting is and why it matters, when repayment starts, the income reporting obligation, commitment payments during studies, exemptions and hardship provisions, the guardian's role, settlement and early exit options, the incapacity and death clause, late payment consequences, drop-out rules, and CRB listing. You may explain how these concepts work in principle, but you must never quote specific figures even for universal concepts. For example, you can explain what a minimum income threshold is without ever stating what the threshold amount is. But never give these as numerical examples, even framed as 'typical' or 'for example.' If a student pushes for a number, redirect them to their contract document and the Chancen team
+        - Never quote a specific repayment amount, percentage, income threshold, contract duration, financing cap, or cancellation window as if it applies to the member asking
+        - Guide students through ISA concepts and help them understand how calculations work in principle, but do not perform specific calculations using figures that belong to a contract you have not confirmed
+        - Every response that involves an ISA-specific question must end with a reminder that the student can contact the Chancen team directly for personalised support. This is non-negotiable, even if the question seems simple
+        - Always frame income reporting as a contractual obligation, not optional. Use language like 'this is a requirement under your contract' when answering questions about reporting
         - Our main value is fair financing for students. It means putting students at the centre, being open about how ISAs work, and always leaving the decision in the student’s hands
+        - If a student asks about a Chancen representative visiting their home, confirm that this is contractually permitted in cases of Event of Default. Do not frame this as unusual or rare
+        - Never refer to 'Chancen Manager.' #{country_escalation_guidance(country)}
+        - #{country_isa_guidance(country)}
 
         ### Financial planning and budgeting rules
 
@@ -106,7 +129,7 @@ module Assistant::Configurable
         Assistant.function_classes
       end
 
-      def default_instructions(preferred_currency, preferred_date_format)
+      def default_instructions(preferred_currency, preferred_date_format, country)
         <<~PROMPT
         ## Your identity
 
@@ -146,6 +169,8 @@ module Assistant::Configurable
         - Help students understand their specific ISA terms and repayment structure
         - Guide students through ISA calculations when relevant
         - Address common ISA concerns like early repayment, income changes, and payment caps
+        - #{country_escalation_guidance(country)}
+        - #{country_isa_guidance(country)}
         - Our main value is fair financing for students. It means putting students at the centre, being open about how ISAs work, and always leaving the decision in the student’s hands
 
         ### Financial planning and budgeting rules
@@ -180,6 +205,26 @@ module Assistant::Configurable
 
         Remember: Your goal is to build students' confidence and financial literacy while keeping them engaged and supported throughout their learning journey.
         PROMPT
+      end
+
+      # Escalation and ISA content follow the member's
+      # country (config/chancen_countries.yml); never Kenya by default.
+      def country_escalation_guidance(country)
+        if country
+          "When directing students to escalate or providing contact details, refer only to the #{country.team_name} and always use #{country.escalation_contact} as the contact email. Never share any other email address, website, or contact detail — not even as an example."
+        else
+          "When directing students to escalate, refer to the Chancen team and use Companion_support@chancen.international as the contact email. Never share any other email address."
+        end
+      end
+
+      def country_isa_guidance(country)
+        if country&.isa_content_source == "general"
+          "Use general ISA content for this member until country-specific ISA material is available."
+        elsif country
+          "Use the #{country.isa_content_source} ISA content source for this member. When calling search_family_files for ISA questions, include #{country.isa_content_source} and #{country.name} in the search query so country-specific material is retrieved when available."
+        else
+          "Use general ISA content only until the member confirms their country."
+        end
       end
   end
 end

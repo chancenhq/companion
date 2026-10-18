@@ -44,6 +44,8 @@ class User < ApplicationRecord
   validates :default_period, inclusion: { in: Period::PERIODS.keys }
   validates :default_account_order, inclusion: { in: AccountOrder::ORDERS.keys }
   validates :locale, inclusion: { in: I18n.available_locales.map(&:to_s) }, allow_nil: true
+  # The member's own country, from config/chancen_countries.yml.
+  validates :country_code, :consent_country_code, inclusion: { in: ->(_) { ChancenCountry.codes } }, allow_nil: true
 
   # Password is required on create unless the user is being created via SSO JIT.
   # SSO JIT users have password_digest = nil and authenticate via OIDC only.
@@ -51,6 +53,7 @@ class User < ApplicationRecord
   validates :password, length: { minimum: 8 }, allow_nil: true
   normalizes :email, with: ->(email) { email.strip.downcase }
   normalizes :unconfirmed_email, with: ->(email) { email&.strip&.downcase }
+  normalizes :country_code, :consent_country_code, with: ->(code) { code.to_s.strip.upcase.presence }
 
   normalizes :first_name, :last_name, with: ->(value) { value.strip.presence }
 
@@ -78,19 +81,111 @@ class User < ApplicationRecord
     password_salt&.last(10)
   end
 
+  # Keyed on the address being confirmed and the verification state, so a
+  # link dies once it has been used or the email changes.
   generates_token_for :email_confirmation, expires_in: 1.day do
-    unconfirmed_email
+    [ unconfirmed_email, email, email_verified_at&.to_i ]
   end
 
   def pending_email_change?
     unconfirmed_email.present?
   end
 
+  # Proof that the account holder controls `email`. Gates all
+  # financial and Chancen Account (ISA) data.
+  def email_verified?
+    email_verified_at.present?
+  end
+
+  def mark_email_verified!
+    update!(email_verified_at: Time.current) unless email_verified?
+  end
+
+  # A trusted provider (Google/Apple) has just proven `email` on an account
+  # that isn't verified yet, so it may have been registered by someone else
+  # first. Anything set up before verification could belong to them: drop the
+  # password and MFA, mark verified, end every other login.
+  # Only when the proven email is this account's: an identity linked with a
+  # different address proves nothing about this one. Returns false (and
+  # changes nothing) otherwise, or for already-verified accounts.
+  def claim_by_trusted_provider!(email:)
+    return false if email_verified?
+    return false unless email.to_s.strip.casecmp?(self.email.to_s)
+
+    transaction do
+      disable_mfa!
+      update!(password_digest: nil, email_verified_at: Time.current)
+    end
+    revoke_all_access!
+    true
+  end
+
+  # The reset link was emailed to this address, so ownership is proven. MFA
+  # set up before verification may belong to whoever registered it first.
+  def verify_after_password_reset!
+    transaction do
+      disable_mfa! unless email_verified?
+      mark_email_verified!
+    end
+  end
+
+  def email_confirmation_address
+    unconfirmed_email.presence || email
+  end
+
+  def send_email_verification
+    EmailConfirmationMailer.with(user: self).confirmation_email.deliver_later
+  end
+
+  # Members without a country on the server confirm it
+  # once. The server never fills one in.
+  def requires_country_confirmation?
+    country_code.blank?
+  end
+
+  # Once a member has a country, only an invitation can change it.
+  def country_locked?
+    country_code.present?
+  end
+
+  def chancen_country
+    ChancenCountry.find(country_code)
+  end
+
+  # Saves the member's country and, when given, which privacy/terms version
+  # they accepted for it (Story 1.1, D4).
+  def record_country!(code, consent_version: nil)
+    attrs = { country_code: code }
+    if consent_version.present?
+      attrs.merge!(consent_version: consent_version, consent_country_code: code, consent_accepted_at: Time.current)
+    end
+    update!(attrs)
+  end
+
+  # User shape returned to the mobile app (auth responses, SSO exchange, /users/me).
+  def mobile_payload
+    {
+      id: id,
+      email: email,
+      first_name: first_name,
+      last_name: last_name,
+      ui_layout: ui_layout,
+      ai_enabled: ai_enabled?,
+      email_verified: email_verified?,
+      country_code: country_code,
+      requires_country_confirmation: requires_country_confirmation?,
+      consent_version: consent_version,
+      consent_country_code: consent_country_code,
+      has_password: password_digest.present?
+    }
+  end
+
   def initiate_email_change(new_email)
     return false if new_email == email
 
     if Rails.application.config.app_mode.self_hosted? && !Setting.require_email_confirmation
-      update(email: new_email)
+      # No confirmation step, so nothing proves the new address yet.
+      update(email: new_email, email_verified_at: nil)
     else
       if update(unconfirmed_email: new_email)
         EmailConfirmationMailer.with(user: self).confirmation_email.deliver_later
@@ -173,6 +268,18 @@ class User < ApplicationRecord
   # They cannot use password reset or local login.
   def sso_only?
     password_digest.nil? && oidc_identities.exists?
+  end
+
+  # Ends every existing way into this account: OAuth/mobile tokens on all
+  # devices (refresh tokens included), web sessions and API keys. Used when
+  # control of the email is (re)proven, so whoever registered the address
+  # first cannot keep a login: password reset and Google/Apple auto-link.
+  def revoke_all_access!
+    now = Time.current
+    Doorkeeper::AccessToken.where(resource_owner_id: id, revoked_at: nil).update_all(revoked_at: now)
+    Doorkeeper::AccessGrant.where(resource_owner_id: id, revoked_at: nil).update_all(revoked_at: now)
+    sessions.destroy_all
+    api_keys.active.update_all(revoked_at: now)
   end
 
   # Check if user has a local password set (can authenticate locally)

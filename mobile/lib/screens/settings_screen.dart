@@ -1,7 +1,11 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../providers/app_config_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/categories_provider.dart';
 import '../providers/theme_provider.dart';
@@ -282,12 +286,93 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _launchContactUrl(BuildContext context) async {
-    final uri = Uri.parse('https://chat.whatsapp.com/IVBXS2QtJpqIFlZYoSPD1t');
+    final appConfig = Provider.of<AppConfigProvider>(context, listen: false);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final whatsappUrl = appConfig.whatsappUrlForCode(authProvider.user?.countryCode);
+    final uri = Uri.parse(whatsappUrl);
     final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!launched && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Unable to open link')),
       );
+    }
+  }
+
+  Future<void> _handleChangePassword(BuildContext context, {required bool hasPassword}) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final currentController = TextEditingController();
+    final newController = TextEditingController();
+    final confirmController = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(hasPassword ? 'Change Password' : 'Set Password'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (hasPassword)
+                TextField(
+                  controller: currentController,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: 'Current password'),
+                ),
+              if (hasPassword) const SizedBox(height: 8),
+              TextField(
+                controller: newController,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'New password (min 8 characters)'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: confirmController,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'Confirm new password'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final newPassword = newController.text.trim();
+    final confirmPassword = confirmController.text.trim();
+
+    if (newPassword.runes.length < 8) {
+      messenger.showSnackBar(const SnackBar(content: Text('Password must be at least 8 characters.')));
+      return;
+    }
+    if (newPassword != confirmPassword) {
+      messenger.showSnackBar(const SnackBar(content: Text('Passwords do not match.')));
+      return;
+    }
+
+    try {
+      final accessToken = await authProvider.getValidAccessToken();
+      if (accessToken == null) return;
+
+      final result = await UserService().updatePassword(
+        accessToken: accessToken,
+        currentPassword: hasPassword ? currentController.text.trim() : null,
+        newPassword: newPassword,
+      );
+
+      if (result['success'] == true) {
+        messenger.showSnackBar(const SnackBar(content: Text('Password updated.')));
+        if (mounted) await authProvider.refreshUser();
+      } else {
+        messenger.showSnackBar(SnackBar(content: Text(result['error'] ?? 'Failed to update password.')));
+      }
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Failed to update password: $e')));
     }
   }
 
@@ -447,6 +532,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             onTap: () => _launchContactUrl(context),
+          ),
+
+          ListTile(
+            leading: const Icon(Icons.share_rounded),
+            title: const Text('Share Companion'),
+            subtitle: const Text('Invite friends and colleagues'),
+            onTap: () {
+              final box = context.findRenderObject() as RenderBox?;
+              final storeUrl = Platform.isIOS
+                  ? 'https://apps.apple.com/us/app/chancen-companion/id6794429424'
+                  : 'https://play.google.com/store/apps/details?id=tech.chancen.companion';
+              Share.share(
+                "I've been using Chancen Companion to track my ISA and stay on top of my finances. Check it out!\n\n"
+                "$storeUrl",
+                subject: 'Try Chancen Companion',
+                sharePositionOrigin: box == null ? null : box.localToGlobal(Offset.zero) & box.size,
+              );
+            },
           ),
 
           ListTile(
@@ -665,6 +768,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
               value: _biometricEnabled,
               onChanged: _isTogglingBiometric ? null : _toggleBiometric,
             ),
+
+            Builder(builder: (context) {
+              final user = Provider.of<AuthProvider>(context, listen: false).user;
+              final hasPassword = user?.hasPassword ?? false;
+              return ListTile(
+                leading: const Icon(Icons.lock_outline),
+                title: Text(hasPassword ? 'Change Password' : 'Set Password'),
+                subtitle: Text(hasPassword
+                    ? 'Update your current password'
+                    : 'Add a password to your account'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _handleChangePassword(context, hasPassword: hasPassword),
+              );
+            }),
           ],
 
           const Divider(),

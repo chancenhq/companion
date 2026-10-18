@@ -33,6 +33,22 @@ Rails.application.routes.draw do
     end
   end
 
+  resources :brex_items, only: %i[index new create show edit update destroy] do
+    collection do
+      get :preload_accounts, to: "brex_items/account_flows#preload_accounts"
+      get :select_accounts, to: "brex_items/account_flows#select_accounts"
+      post :link_accounts, to: "brex_items/account_flows#link_accounts"
+      get :select_existing_account, to: "brex_items/account_flows#select_existing_account"
+      post :link_existing_account, to: "brex_items/account_flows#link_existing_account"
+    end
+
+    member do
+      post :sync
+      get :setup_accounts, to: "brex_items/account_setups#setup_accounts"
+      post :complete_account_setup, to: "brex_items/account_setups#complete_account_setup"
+    end
+  end
+
   resources :coinbase_items, only: [ :index, :new, :create, :show, :edit, :update, :destroy ] do
     collection do
       get :preload_accounts
@@ -97,6 +113,20 @@ Rails.application.routes.draw do
       get :connections
       delete :delete_connection
       delete :delete_orphaned_user
+    end
+  end
+
+  resources :ibkr_items, only: [ :create, :update, :destroy ] do
+    collection do
+      get :select_accounts
+      get :select_existing_account
+      post :link_existing_account
+    end
+
+    member do
+      post :sync
+      get :setup_accounts
+      post :complete_account_setup
     end
   end
 
@@ -183,7 +213,9 @@ Rails.application.routes.draw do
     get :new_user, on: :collection
     post :create_user, on: :collection
   end
-  resource :password_reset, only: %i[new create edit update]
+  resource :password_reset, only: %i[new create edit update] do
+    get :mobile_redirect, on: :collection
+  end
   resource :password, only: %i[edit update]
   resource :email_confirmation, only: :new
 
@@ -210,6 +242,7 @@ Rails.application.routes.draw do
       delete :clear_cache, on: :collection
       delete :disconnect_external_assistant, on: :collection
     end
+    resource :chancen, only: %i[show update]
     resource :payment, only: :show
     resource :security, only: :show
     resources :webauthn_credentials, only: %i[create destroy] do
@@ -258,6 +291,7 @@ Rails.application.routes.draw do
     get :export_transactions, on: :collection
     get :google_sheets_instructions, on: :collection
     get :print, on: :collection
+    get :picker, on: :collection
   end
 
   resources :budgets, only: %i[index show edit update], param: :month_year do
@@ -404,6 +438,14 @@ Rails.application.routes.draw do
     resource :sharing, only: [ :show, :update ], controller: "account_sharings"
   end
 
+  resources :account_statements, only: %i[index show create update destroy] do
+    member do
+      patch :link
+      patch :unlink
+      patch :reject
+    end
+  end
+
   # Convenience routes for polymorphic paths
   # Example: account_path(Account.new(accountable: Depository.new)) => /depositories/123
   direct :edit_account do |model, options|
@@ -443,12 +485,17 @@ Rails.application.routes.draw do
       post "auth/signup", to: "auth#signup"
       post "auth/login", to: "auth#login"
       post "auth/refresh", to: "auth#refresh"
+      post "auth/apple_sign_in", to: "auth#apple_sign_in"
       post "auth/sso_exchange", to: "auth#sso_exchange"
       post "auth/sso_link", to: "auth#sso_link"
       post "auth/sso_create_account", to: "auth#sso_create_account"
       patch "auth/enable_ai", to: "auth#enable_ai"
+      post  "auth/resend_email_verification", to: "auth#resend_email_verification"
+      post  "auth/password_reset", to: "auth#request_password_reset"
+      patch "auth/password_reset", to: "auth#reset_password"
 
       # Production API endpoints
+      resources :countries, only: [ :index ]
       resources :accounts, only: [ :index, :show ]
       resources :balances, only: [ :index, :show ]
       resources :budgets, only: [ :index, :show ]
@@ -484,6 +531,11 @@ Rails.application.routes.draw do
       end
       resources :provider_connections, only: [ :index ]
 
+      resource :my_account, only: [ :show ], controller: :my_account
+      resources :my_account_transactions, only: [ :index ], controller: :my_account_transactions
+
+      resource :app_config, only: [ :show ], controller: :app_config
+
       resources :chats, only: [ :index, :show, :create, :update, :destroy ] do
         resources :messages, only: [ :create ] do
           post :retry, on: :collection
@@ -492,6 +544,9 @@ Rails.application.routes.draw do
 
       get "users/reset/status", to: "users#reset_status"
       delete "users/reset", to: "users#reset"
+      get "users/me", to: "users#me"
+      patch "users/me/country", to: "users#update_country"
+      patch "users/me/password", to: "users#update_password"
       delete "users/me", to: "users#destroy"
 
       # Test routes for API controller testing (only available in test environment)
@@ -608,19 +663,33 @@ Rails.application.routes.draw do
   terms_url = ENV["LEGAL_TERMS_URL"].presence
   get "privacy", to: privacy_url ? redirect(privacy_url) : "pages#privacy"
   get "terms", to: terms_url ? redirect(terms_url) : "pages#terms"
+  get "privacy/ke", to: "pages#privacy", defaults: { country: "ke" }
+  get "terms/ke", to: "pages#terms", defaults: { country: "ke" }
+  get "privacy/:country", to: "pages#privacy"
+  get "terms/:country", to: "pages#terms"
   get "intro", to: "pages#intro"
 
   # Admin namespace for super admin functionality
   namespace :admin do
+    resource :chancen, only: %i[show update]
     resources :sso_providers do
       member do
         patch :toggle
         post :test_connection
       end
     end
-    resources :users, only: [ :index, :update ]
+    resources :users, only: [ :index, :update ] do
+      member do
+        patch :update_country
+      end
+    end
+    resource :bulk_invitations, only: [ :new, :create ] do
+      collection do
+        post :preview
+      end
+    end
     resources :invitations, only: [ :destroy ]
-    resources :families, only: [] do
+    resources :families, only: [ :index, :edit, :update ] do
       member do
         delete :invitations, to: "invitations#destroy_all"
       end

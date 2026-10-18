@@ -359,7 +359,8 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                   return !(m.isAssistant && m == allMessages.lastOrNull);
                 }).toList()
               : allMessages;
-          final firstName = authProvider.user?.firstName;
+          final firstName =
+              authProvider.user?.firstName;
 
           return Column(
             children: [

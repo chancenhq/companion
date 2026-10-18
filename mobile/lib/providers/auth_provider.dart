@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/user.dart';
 import '../models/auth_tokens.dart';
+import '../services/analytics_service.dart';
+import '../services/auth_events.dart';
 import '../services/auth_service.dart';
 import '../services/device_service.dart';
 import '../services/api_config.dart';
@@ -31,8 +36,17 @@ class AuthProvider with ChangeNotifier {
   bool _ssoAllowAccountCreation = false;
   bool _ssoHasPendingInvitation = false;
 
+  // Invitation deep-link state
+  String? _pendingInvitationToken;
+
+  // Email verification
+  bool _emailVerificationLocked = false;
+  bool _verificationPromptDismissed = false;
+  StreamSubscription<void>? _unauthorizedSub;
+  StreamSubscription<void>? _verificationSub;
+
   User? get user => _user;
-  bool get isIntroLayout => _user?.isIntroLayout ?? false;
+  bool get isIntroLayout => true;
   bool get aiEnabled => _user?.aiEnabled ?? false;
   AuthTokens? get tokens => _tokens;
   bool get isLoading => _isLoading;
@@ -54,8 +68,52 @@ class AuthProvider with ChangeNotifier {
   bool get ssoAllowAccountCreation => _ssoAllowAccountCreation;
   bool get ssoHasPendingInvitation => _ssoHasPendingInvitation;
 
+  String? get pendingInvitationToken => _pendingInvitationToken;
+
+  void setPendingInvitationToken(String? token) {
+    _pendingInvitationToken = token;
+    notifyListeners();
+  }
+
+  /// True when the server has refused financial or Chancen Account data until
+  /// the email is verified, or reported the user as unverified.
+  bool get emailVerificationRequired =>
+      !_isApiKeyAuth && (_emailVerificationLocked || _user?.emailVerified == false);
+
+  /// The full-screen "Check your email" prompt: only when the server said the
+  /// user is unverified, and only until they choose to continue to the app.
+  bool get showEmailVerificationPrompt =>
+      !_isApiKeyAuth && _user?.emailVerified == false && !_verificationPromptDismissed;
+
   AuthProvider() {
+    _unauthorizedSub = AuthEvents.instance.onUnauthorized.listen((_) {
+      if (isAuthenticated) logout();
+    });
+    _verificationSub = AuthEvents.instance.onEmailVerificationRequired.listen((_) {
+      if (!_emailVerificationLocked) {
+        _emailVerificationLocked = true;
+        notifyListeners();
+      }
+    });
     _loadStoredAuth();
+  }
+
+  @override
+  void dispose() {
+    _unauthorizedSub?.cancel();
+    _verificationSub?.cancel();
+    super.dispose();
+  }
+
+  /// Sets the signed-in user, resetting per-user verification state when a
+  /// different account signs in on this device.
+  void _setUser(User? user) {
+    if (user?.id != _user?.id) {
+      _emailVerificationLocked = false;
+      _verificationPromptDismissed = false;
+    }
+    if (user?.emailVerified == true) _emailVerificationLocked = false;
+    _user = user;
   }
 
   Future<void> _loadStoredAuth() async {
@@ -74,7 +132,7 @@ class AuthProvider with ChangeNotifier {
         }
       } else {
         _tokens = await _authService.getStoredTokens();
-        _user = await _authService.getStoredUser();
+        _setUser(await _authService.getStoredUser());
 
         // If tokens exist but are expired, try to refresh only when online
         if (_tokens != null && _tokens!.isExpired) {
@@ -101,6 +159,79 @@ class AuthProvider with ChangeNotifier {
 
     _isLoading = false;
     _isInitializing = false;
+    notifyListeners();
+
+    // Pick up a verification that happened since the user was stored.
+    if (isAuthenticated && !_isApiKeyAuth) unawaited(refreshUser());
+  }
+
+  /// Re-reads the user from the server (GET /users/me). Returns true when the
+  /// email is verified. Called on launch, on resume and from "I've verified".
+  Future<bool> refreshUser() async {
+    if (_isApiKeyAuth) return false;
+    final token = await getValidAccessToken();
+    if (token == null) return false;
+
+    final user = await _authService.fetchCurrentUser(accessToken: token);
+    if (user == null) return _user?.emailVerified == true;
+
+    _setUser(user);
+    AnalyticsService.instance.identify(user);
+    notifyListeners();
+    return user.emailVerified == true;
+  }
+
+  /// Sends a new verification link. Returns a message for the user.
+  Future<String> resendEmailVerification() async {
+    final token = await getValidAccessToken();
+    if (token == null) return 'Please sign in again.';
+
+    final result = await _authService.resendEmailVerification(accessToken: token);
+    final user = result['user'];
+    if (user is User) {
+      _setUser(user);
+      notifyListeners();
+    }
+    return (result['success'] == true ? result['message'] : result['error']) as String? ??
+        'Something went wrong. Please try again.';
+  }
+
+  /// Current privacy/terms version. Bump to ask every member to accept again.
+  static const String consentVersion = '1.0';
+
+  /// Show the country screen when the server has no
+  /// country for this member, or their consent is for an older version or a
+  /// different country (e.g. one an invitation has since assigned).
+  /// Unknown (older server) never prompts.
+  bool get countryConfirmationRequired {
+    final user = _user;
+    if (user == null || _isApiKeyAuth) return false;
+    if (user.requiresCountryConfirmation == true) return true;
+    if (user.requiresCountryConfirmation != false) return false;
+    return user.consentVersion != consentVersion || user.consentCountryCode != user.countryCode;
+  }
+
+  /// Saves the country and accepted consent on the server. Returns an error
+  /// message, or null on success.
+  Future<String?> updateCountry(String countryCode) async {
+    final token = await getValidAccessToken();
+    if (token == null) return 'Please sign in again.';
+
+    final result = await _authService.updateCountry(
+      accessToken: token,
+      countryCode: countryCode,
+      consentVersion: consentVersion,
+    );
+    if (result['success'] == true) {
+      _setUser(result['user'] as User?);
+      notifyListeners();
+      return null;
+    }
+    return result['error'] as String? ?? 'Could not save your country. Please try again.';
+  }
+
+  void dismissEmailVerificationPrompt() {
+    _verificationPromptDismissed = true;
     notifyListeners();
   }
 
@@ -131,7 +262,12 @@ class AuthProvider with ChangeNotifier {
 
       if (result['success'] == true) {
         _tokens = result['tokens'] as AuthTokens?;
-        _user = result['user'] as User?;
+        final user = result['user'] as User?;
+        _setUser(user);
+        if (user != null) {
+          AnalyticsService.instance.identify(user);
+          AnalyticsService.instance.capture('login_completed', {'method': 'email'});
+        }
         _mfaRequired = false;
         _showMfaInput = false; // Reset on successful login
         _isLoading = false;
@@ -211,7 +347,7 @@ class AuthProvider with ChangeNotifier {
     required String password,
     required String firstName,
     required String lastName,
-    String? inviteCode,
+    String? invitationToken,
   }) async {
     _errorMessage = null;
     _isLoading = true;
@@ -225,12 +361,18 @@ class AuthProvider with ChangeNotifier {
         firstName: firstName,
         lastName: lastName,
         deviceInfo: deviceInfo,
-        inviteCode: inviteCode,
+        invitationToken: invitationToken ?? _pendingInvitationToken,
       );
 
       if (result['success'] == true) {
         _tokens = result['tokens'] as AuthTokens?;
-        _user = result['user'] as User?;
+        final user = result['user'] as User?;
+        _setUser(user);
+        if (user != null) {
+          AnalyticsService.instance.identify(user);
+          AnalyticsService.instance.capture('signup_completed', {'method': 'email'});
+        }
+        _pendingInvitationToken = null;
         _isLoading = false;
         notifyListeners();
         return true;
@@ -242,6 +384,64 @@ class AuthProvider with ChangeNotifier {
       }
     } catch (e) {
       _errorMessage = 'Connection error: ${e.toString()}';
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> signInWithApple() async {
+    _errorMessage = null;
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final appleCredential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+      );
+
+      final identityToken = appleCredential.identityToken;
+      if (identityToken == null) {
+        _errorMessage = 'Apple Sign-In failed: no identity token received.';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+
+      final deviceInfo = await _deviceService.getDeviceInfo();
+      final result = await _authService.appleSignIn(
+        identityToken: identityToken,
+        deviceInfo: deviceInfo,
+        firstName: appleCredential.givenName,
+        lastName: appleCredential.familyName,
+        email: appleCredential.email,
+      );
+
+      if (result['success'] == true) {
+        _tokens = result['tokens'] as AuthTokens?;
+        _setUser(result['user'] as User?);
+        _isLoading = false;
+        notifyListeners();
+        return true;
+      } else {
+        _errorMessage = result['error'] as String?;
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+    } on SignInWithAppleAuthorizationException catch (e) {
+      if (e.code != AuthorizationErrorCode.canceled) {
+        _errorMessage = 'Apple Sign-In failed. Please try again.';
+      }
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    } catch (e, stackTrace) {
+      LogService.instance.error('AuthProvider', 'Apple Sign-In error: $e\n$stackTrace');
+      _errorMessage = 'Apple Sign-In failed. Please try again.';
       _isLoading = false;
       notifyListeners();
       return false;
@@ -260,7 +460,7 @@ class AuthProvider with ChangeNotifier {
         deviceInfo: deviceInfo,
       );
 
-      final launched = await launchUrl(Uri.parse(ssoUrl), mode: LaunchMode.externalApplication);
+      final launched = await launchUrl(Uri.parse(ssoUrl), mode: LaunchMode.inAppBrowserView);
       if (!launched) {
         _errorMessage = 'Unable to open browser for sign-in.';
       }
@@ -283,7 +483,12 @@ class AuthProvider with ChangeNotifier {
 
       if (result['success'] == true) {
         _tokens = result['tokens'] as AuthTokens?;
-        _user = result['user'] as User?;
+        final user = result['user'] as User?;
+        _setUser(user);
+        if (user != null) {
+          AnalyticsService.instance.identify(user);
+          AnalyticsService.instance.capture('sso_login_completed', {'method': 'sso'});
+        }
         _ssoOnboardingPending = false;
         _isLoading = false;
         notifyListeners();
@@ -338,7 +543,7 @@ class AuthProvider with ChangeNotifier {
 
       if (result['success'] == true) {
         _tokens = result['tokens'] as AuthTokens?;
-        _user = result['user'] as User?;
+        _setUser(result['user'] as User?);
         _clearSsoOnboardingState();
         _isLoading = false;
         notifyListeners();
@@ -361,6 +566,7 @@ class AuthProvider with ChangeNotifier {
   Future<bool> ssoCreateAccount({
     String? firstName,
     String? lastName,
+    String? password,
   }) async {
     if (_ssoLinkingCode == null) {
       _errorMessage = 'No pending SSO session. Please try signing in again.';
@@ -377,11 +583,17 @@ class AuthProvider with ChangeNotifier {
         linkingCode: _ssoLinkingCode!,
         firstName: firstName,
         lastName: lastName,
+        password: password,
       );
 
       if (result['success'] == true) {
         _tokens = result['tokens'] as AuthTokens?;
-        _user = result['user'] as User?;
+        final user = result['user'] as User?;
+        _setUser(user);
+        if (user != null) {
+          AnalyticsService.instance.identify(user);
+          AnalyticsService.instance.capture('sso_signup_completed', {'method': 'sso'});
+        }
         _clearSsoOnboardingState();
         _isLoading = false;
         notifyListeners();
@@ -418,12 +630,16 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> logout() async {
     await _authService.logout();
+    AnalyticsService.instance.capture('logout');
+    AnalyticsService.instance.reset();
     _tokens = null;
-    _user = null;
+    _setUser(null);
     _apiKey = null;
     _isApiKeyAuth = false;
     _errorMessage = null;
     _mfaRequired = false;
+    _emailVerificationLocked = false;
+    _verificationPromptDismissed = false;
     ApiConfig.clearApiKeyAuth();
     notifyListeners();
   }

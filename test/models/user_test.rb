@@ -614,9 +614,56 @@ class UserTest < ActiveSupport::TestCase
     assert @user.has_local_password?
   end
 
+  test "revoke_all_access! ends tokens on every device, web sessions and API keys" do
+    # Class-level memo may point at an OAuth app from another test's rolled-back transaction.
+    MobileDevice.instance_variable_set(:@shared_oauth_application, nil)
+    phone = MobileDevice.upsert_device!(@user, device_id: "phone-a", device_name: "Phone A", device_type: "ios", os_version: "17", app_version: "1.0")
+    tablet = MobileDevice.upsert_device!(@user, device_id: "tablet-b", device_name: "Tablet B", device_type: "android", os_version: "14", app_version: "1.0")
+    phone.issue_token!
+    tablet.issue_token!
+    @user.sessions.create!
+    @user.api_keys.active.destroy_all # one active key per source allowed
+    api_key = ApiKey.create!(user: @user, name: "Key", scopes: [ "read" ], source: "web", display_key: "revoke_#{SecureRandom.hex(8)}")
+
+    @user.revoke_all_access!
+
+    assert_empty phone.active_tokens
+    assert_empty tablet.active_tokens
+    assert_empty @user.sessions.reload
+    assert api_key.reload.revoked?
+  end
+
   test "has_local_password? returns false when password_digest is nil" do
     sso_user = users(:sso_only)
     assert_not sso_user.has_local_password?
+  end
+
+  # Interim email verification (issue #106): only SSO-only accounts count as verified
+  test "email_verified? is true for password-less Google/Apple accounts" do
+    assert users(:sso_only).email_verified?
+  end
+
+  test "email_verified? is false for password-less accounts from providers that don't prove email" do
+    %w[github saml].each do |provider|
+      user = User.create!(email: "#{provider}-only@example.com", skip_password_validation: true, family: families(:empty))
+      OidcIdentity.create!(user: user, provider: provider, uid: "#{provider}-uid", info: { email: user.email })
+      assert user.sso_only?
+      assert_not user.email_verified?, "#{provider}-only account must not count as verified"
+    end
+
+    generic = User.create!(email: "generic-oidc@example.com", skip_password_validation: true, family: families(:empty))
+    OidcIdentity.create!(user: generic, provider: "openid_connect", issuer: "https://idp.example.com", uid: "generic-uid", info: { email: generic.email })
+    assert_not generic.email_verified?
+  end
+
+  test "email_verified? is false for password users even with a linked Google identity" do
+    user = User.create!(email: "unverified-#{SecureRandom.hex(4)}@example.com", password: "Password1!", family: families(:empty))
+    OidcIdentity.create!(user: user, provider: "google_oauth2", uid: "linked-later-uid", info: { email: user.email })
+    assert_not user.email_verified?
+  end
+
+  test "email_verified? is false for password users without an SSO identity" do
+    assert_not User.create!(email: "unverified-#{SecureRandom.hex(4)}@example.com", password: "Password1!", family: families(:empty)).email_verified?
   end
 
   test "user can be created without password when skip_password_validation is true" do
@@ -699,5 +746,99 @@ class UserTest < ActiveSupport::TestCase
 
     assert_not Family.exists?(family.id)
     assert_not ActiveStorage::Attachment.exists?(export_attachment_id)
+  end
+
+  # Email verification (issue #106)
+  test "claim_by_trusted_provider! drops password and MFA, verifies and signs everyone out" do
+    user = users(:unverified)
+    user.setup_mfa!
+    user.enable_mfa!
+    user.sessions.create!
+
+    assert user.claim_by_trusted_provider!(email: user.email.upcase)
+
+    user.reload
+    assert user.email_verified?
+    assert_nil user.password_digest
+    assert_not user.otp_required?
+    assert_empty user.sessions
+  end
+
+  test "claim_by_trusted_provider! leaves verified accounts alone" do
+    password_digest = @user.password_digest
+
+    assert_not @user.claim_by_trusted_provider!(email: @user.email)
+    assert_equal password_digest, @user.reload.password_digest
+  end
+
+  test "claim_by_trusted_provider! ignores a provider email that isn't the account's" do
+    user = users(:unverified)
+    password_digest = user.password_digest
+
+    assert_not user.claim_by_trusted_provider!(email: "someone-else@gmail.com")
+    assert_not user.claim_by_trusted_provider!(email: nil)
+
+    user.reload
+    assert_not user.email_verified?
+    assert_equal password_digest, user.password_digest
+  end
+
+  test "verify_after_password_reset! clears MFA only for unverified accounts" do
+    unverified = users(:unverified)
+    unverified.setup_mfa!
+    unverified.enable_mfa!
+    @user.setup_mfa!
+    @user.enable_mfa!
+
+    unverified.verify_after_password_reset!
+    @user.verify_after_password_reset!
+
+    assert unverified.reload.email_verified?
+    assert_not unverified.otp_required?
+    assert @user.reload.otp_required?
+  end
+
+  test "email confirmation link stops working once the email is verified" do
+    user = users(:unverified)
+    token = user.generate_token_for(:email_confirmation)
+    assert_equal user, User.find_by_token_for(:email_confirmation, token)
+
+    user.mark_email_verified!
+
+    assert_nil User.find_by_token_for(:email_confirmation, token)
+  end
+
+  test "unconfirmed self-hosted email change clears verification" do
+    with_self_hosting do
+      Setting.require_email_confirmation = false
+      @user.initiate_email_change("changed-#{SecureRandom.hex(4)}@example.com")
+      assert_not @user.reload.email_verified?
+    ensure
+      Setting.require_email_confirmation = true
+    end
+  end
+
+  test "mobile_payload reports verification state" do
+    assert_equal true, @user.mobile_payload[:email_verified]
+    assert_equal false, users(:unverified).mobile_payload[:email_verified]
+  end
+  # Country (issue #106, Epic 1)
+  test "country must be one of the Chancen countries" do
+    @user.country_code = "ke"
+    assert @user.valid?
+    assert_equal "KE", @user.country_code
+
+    @user.country_code = "US"
+    assert_not @user.valid?
+  end
+
+  test "members without a country must confirm it, and nothing fills one in" do
+    @user.update!(country_code: nil)
+    assert @user.requires_country_confirmation?
+    assert_nil @user.mobile_payload[:country_code]
+
+    @user.record_country!("GH")
+    assert_not @user.reload.requires_country_confirmation?
+    assert_nil @user.consent_version, "no consent recorded unless a version is given"
   end
 end

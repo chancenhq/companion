@@ -1,4 +1,5 @@
 empty:
+  email_verified_at: <%= 1.day.ago %>
   family: empty
   first_name: User
   last_name: One
@@ -12,6 +13,7 @@ empty:
   ui_layout: dashboard
 
 sure_support_staff:
+  email_verified_at: <%= 1.day.ago %>
   family: empty
   first_name: Support
   last_name: Admin
@@ -25,6 +27,7 @@ sure_support_staff:
   ui_layout: dashboard
 
 family_admin:
+  email_verified_at: <%= 1.day.ago %>
   family: dylan_family
   first_name: Bob
   last_name: Dylan
@@ -38,6 +41,7 @@ family_admin:
   ui_layout: dashboard
 
 family_member:
+  email_verified_at: <%= 1.day.ago %>
   family: dylan_family
   first_name: Jakob
   last_name: Dylan
@@ -51,6 +55,7 @@ family_member:
   ui_layout: dashboard
 
 new_email:
+  email_verified_at: <%= 1.day.ago %>
   family: empty
   first_name: Test
   last_name: User
@@ -65,6 +70,7 @@ new_email:
   ui_layout: dashboard
 
 intro_user:
+  email_verified_at: <%= 1.day.ago %>
   family: empty
   first_name: Intro
   last_name: User
@@ -78,6 +84,7 @@ intro_user:
   ui_layout: intro
 
 inactive_trial_user:
+  email_verified_at: <%= 1.day.ago %>
   family: inactive_trial
   first_name: Inactive
   last_name: User
@@ -92,6 +99,7 @@ inactive_trial_user:
 
 # SSO-only user: created via JIT provisioning, no local password
 sso_only:
+  email_verified_at: <%= 1.day.ago %>
   family: empty
   first_name: SSO
   last_name: User
@@ -100,3 +108,17 @@ sso_only:
   role: admin
   onboarded_at: <%= 1.day.ago %>
   ai_enabled: true
+
+# Email/password account that has not verified its email (issue #106).
+# Locked out of financial and Chancen Account data until it does.
+unverified:
+  family: empty
+  first_name: Unverified
+  last_name: User
+  email: unverified@example.com
+  password_digest: $2a$12$XoNBo/cMCyzpYtvhrPAhsubG21mELX48RAcjSVCRctW8dG8wrDIla
+  email_verified_at: ~
+  role: member
+  onboarded_at: <%= 1.day.ago %>
+  ai_enabled: true
+  ui_layout: dashboard

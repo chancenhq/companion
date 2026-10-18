@@ -15,4 +15,13 @@ class InvitationMailerTest < ActionMailer::TestCase
     assert_equal [ "hello@example.com" ], mail.from
     assert_match "accept", mail.body.encoded
   end
+
+  test "delivering an invitation records that it was emailed" do
+    invitation = invitations(:one)
+    assert_not invitation.emailed?
+
+    InvitationMailer.invite_email(invitation).deliver_now
+
+    assert invitation.reload.emailed?
+  end
 end

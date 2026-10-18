@@ -16,8 +16,10 @@ class Invitation < ApplicationRecord
   validate :no_duplicate_pending_invitation_in_family
   validate :inviter_is_admin
   validate :no_other_pending_invitation, on: :create
+  validate :family_has_country, on: :create
 
   before_validation :normalize_email
+  before_validation :set_country_from_family, on: :create
   before_validation :generate_token, on: :create
   before_create :set_expiration
 
@@ -28,6 +30,21 @@ class Invitation < ApplicationRecord
     accepted_at.nil? && expires_at > Time.current
   end
 
+  # Whether the invitation (and its token) was emailed to the invitee.
+  def emailed?
+    email_sent_at.present?
+  end
+
+  # A seat reserved for this email that was never emailed (e.g. bulk
+  # invite), so an email sign-up can claim it without a token.
+  # An emailed invitation needs its token: its address may belong to an
+  # existing household's invitee, and the email alone proves nothing.
+  def self.seat_for(email)
+    return if email.blank?
+
+    pending.where(email_sent_at: nil).find_by(email: email.to_s.strip.downcase)
+  end
+
   def accept_for(user)
     return false if user.blank?
     return false unless pending?
@@ -35,10 +52,18 @@ class Invitation < ApplicationRecord
 
     transaction do
       user.update!(family_id: family_id, role: role.to_s)
+      user.record_country!(country_code) if country_code.present?
       update!(accepted_at: Time.current)
       auto_share_existing_accounts(user) if family.share_all_by_default?
     end
     true
+  end
+
+  # Marks the invitation used by a newly created account and gives that
+  # account the invitation's country.
+  def accept_signup!(user)
+    update!(accepted_at: Time.current)
+    user.record_country!(country_code) if country_code.present?
   end
 
   private
@@ -62,6 +87,15 @@ class Invitation < ApplicationRecord
 
     def normalize_email
       self.email = email.to_s.strip.downcase if email.present?
+    end
+
+    def set_country_from_family
+      self.country_code = family&.chancen_country_code
+    end
+
+    # Members get their country from the invitation, so it must carry one.
+    def family_has_country
+      errors.add(:base, :family_country_missing) if country_code.blank?
     end
 
     def no_other_pending_invitation
@@ -94,7 +128,7 @@ class Invitation < ApplicationRecord
     end
 
     def inviter_is_admin
-      inviter.admin?
+      errors.add(:inviter, "must be an admin") unless inviter&.admin? || inviter&.super_admin?
     end
 
     def auto_share_existing_accounts(user)

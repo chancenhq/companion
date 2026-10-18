@@ -9,6 +9,7 @@ en:
         create: Continue
   registrations:
     closed: Signups are currently closed.
+    invite_only: Sign-up is by invitation only. Use the email address you gave Chancen.
     create:
       failure: There was a problem signing up.
       invalid_invite_code: Invalid invite code, please try again.

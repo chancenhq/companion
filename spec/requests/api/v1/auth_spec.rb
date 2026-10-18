@@ -17,7 +17,8 @@ RSpec.describe 'API V1 Auth', type: :request do
               email: { type: :string, format: :email, description: 'User email address' },
               password: { type: :string, description: 'Password (min 8 chars, mixed case, number, special char)' },
               first_name: { type: :string },
-              last_name: { type: :string }
+              last_name: { type: :string },
+              invitation: { type: :string, nullable: true, description: 'Pending invitation token; joins the invited family when valid' }
             },
             required: %w[email password]
           },
@@ -32,7 +33,8 @@ RSpec.describe 'API V1 Auth', type: :request do
             },
             required: %w[device_id device_name device_type os_version app_version]
           },
-          invite_code: { type: :string, nullable: true, description: 'Invite code (required when invites are enforced)' }
+          invite_code: { type: :string, nullable: true, description: 'Invite code (required when invites are enforced)' },
+          invitation: { type: :string, nullable: true, description: 'Pending invitation token; joins the invited family when valid' }
         },
         required: %w[user device]
       }
@@ -275,7 +277,7 @@ RSpec.describe 'API V1 Auth', type: :request do
       tags 'Auth'
       consumes 'application/json'
       produces 'application/json'
-      description 'Creates a new user and family from a previously issued linking code. Links the SSO identity via OidcIdentity, logs the JIT account creation via SsoAuditLog, and issues mobile OAuth tokens. The linking code must have allow_account_creation enabled.'
+      description 'Creates a new user from a previously issued linking code. The user joins a pending invitation family, the configured invite-only default family, or otherwise a new family. Links the SSO identity via OidcIdentity, logs the JIT account creation via SsoAuditLog, and issues mobile OAuth tokens. The linking code must have allow_account_creation enabled unless a pending invitation exists.'
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
         properties: {
@@ -369,6 +371,51 @@ RSpec.describe 'API V1 Auth', type: :request do
 
       response '403', 'insufficient scope' do
         schema '$ref' => '#/components/schemas/ErrorResponse'
+        run_test!
+      end
+    end
+  end
+
+  path '/api/v1/auth/resend_email_verification' do
+    post 'Resend the email verification link' do
+      tags 'Auth'
+      description "Sends a new verification link to the signed-in user's email. Limited to 3 per hour. Verified users get a confirmation instead."
+      produces 'application/json'
+      security [ { apiKeyAuth: [] } ]
+
+      let(:family) { Family.create!(name: 'API Family', currency: 'USD', locale: 'en', date_format: '%m-%d-%Y') }
+      let(:user) do
+        family.users.create!(
+          email: 'unverified-api-user@example.com',
+          password: 'password123',
+          password_confirmation: 'password123'
+        )
+      end
+      let(:api_key) do
+        key = ApiKey.generate_secure_key
+        ApiKey.create!(user: user, name: 'API Docs Key', key: key, scopes: %w[read_write], source: 'web')
+      end
+      let(:'X-Api-Key') { api_key.plain_key }
+
+      response '200', 'verification email sent' do
+        schema type: :object,
+               properties: {
+                 message: { type: :string },
+                 user: {
+                   type: :object,
+                   properties: {
+                     id: { type: :string, format: :uuid },
+                     email: { type: :string },
+                     email_verified: { type: :boolean }
+                   }
+                 }
+               }
+        run_test!
+      end
+
+      response '401', 'unauthorized' do
+        let(:'X-Api-Key') { 'invalid-key' }
+
         run_test!
       end
     end

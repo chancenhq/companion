@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/category.dart';
 import 'api_config.dart';
+import 'auth_events.dart';
 
 class CategoriesService {
   Future<Map<String, dynamic>> getCategories({
@@ -39,6 +40,7 @@ class CategoriesService {
           'Content-Type': 'application/json',
         },
       ).timeout(const Duration(seconds: 30));
+      AuthEvents.instance.report(response);
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);

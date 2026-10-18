@@ -29,6 +29,12 @@ class PasswordResetsController < ApplicationController
     @user = User.new
   end
 
+  def mobile_redirect
+    @token = params[:token].to_s
+    @deep_link = "sureapp://password-reset?token=#{ERB::Util.url_encode(@token)}"
+    render layout: false
+  end
+
   def update
     # Security: Block password setting for SSO-only users.
     # Defense-in-depth: even if they somehow get a reset token, block the update.
@@ -38,6 +44,8 @@ class PasswordResetsController < ApplicationController
     end
 
     if @user.update(password_params)
+      @user.revoke_all_access!
+      @user.verify_after_password_reset!
       redirect_to new_session_path, notice: t(".success")
     else
       render :edit, status: :unprocessable_entity

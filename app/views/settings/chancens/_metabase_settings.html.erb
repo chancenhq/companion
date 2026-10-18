@@ -1,0 +1,100 @@
+<% env_configured = ENV["METABASE_URL"].present? &&
+                    ENV["METABASE_API_KEY"].present? &&
+                    ENV["METABASE_STUDENT_QUESTION_ID"].present? %>
+
+<div class="space-y-4">
+  <div>
+    <h2 class="font-medium mb-1"><%= t(".title") %></h2>
+    <% if env_configured %>
+      <p class="text-sm text-secondary"><%= t(".env_configured_message") %></p>
+    <% else %>
+      <p class="text-secondary text-sm mb-4"><%= t(".description") %></p>
+    <% end %>
+  </div>
+
+  <%= styled_form_with model: Setting.new,
+                       url: settings_chancen_path,
+                       method: :patch,
+                       data: {
+                         controller: "auto-submit-form",
+                         "auto-submit-form-trigger-event-value": "blur"
+                       } do |form| %>
+    <%= form.text_field :metabase_url,
+                        label: t(".url_label"),
+                        placeholder: t(".url_placeholder"),
+                        value: Setting.metabase_url,
+                        disabled: false,
+                        autocomplete: "off",
+                        autocapitalize: "none",
+                        spellcheck: "false",
+                        inputmode: "url",
+                        data: { "auto-submit-form-target": "auto" } %>
+  <% end %>
+
+  <%= styled_form_with model: Setting.new,
+                       url: settings_chancen_path,
+                       method: :patch,
+                       data: {
+                         controller: "auto-submit-form",
+                         "auto-submit-form-trigger-event-value": "blur"
+                       } do |form| %>
+    <%= form.password_field :metabase_api_key,
+                            label: t(".api_key_label"),
+                            placeholder: t(".api_key_placeholder"),
+                            value: Setting.metabase_api_key.present? ? "********" : nil,
+                            disabled: false,
+                            autocomplete: "off",
+                            autocapitalize: "none",
+                            spellcheck: "false",
+                            data: { "auto-submit-form-target": "auto" } %>
+  <% end %>
+
+  <%= styled_form_with model: Setting.new,
+                       url: settings_chancen_path,
+                       method: :patch,
+                       data: {
+                         controller: "auto-submit-form",
+                         "auto-submit-form-trigger-event-value": "blur"
+                       } do |form| %>
+    <%= form.text_field :metabase_student_question_id,
+                        label: t(".question_id_label"),
+                        placeholder: t(".question_id_placeholder"),
+                        value: Setting.metabase_student_question_id,
+                        disabled: false,
+                        autocomplete: "off",
+                        data: { "auto-submit-form-target": "auto" } %>
+  <% end %>
+
+  <%= styled_form_with model: Setting.new,
+                       url: settings_chancen_path,
+                       method: :patch,
+                       data: {
+                         controller: "auto-submit-form",
+                         "auto-submit-form-trigger-event-value": "blur"
+                       } do |form| %>
+    <%= form.text_field :metabase_transactions_question_id,
+                        label: t(".transactions_question_id_label"),
+                        placeholder: t(".transactions_question_id_placeholder"),
+                        value: Setting.metabase_transactions_question_id,
+                        disabled: false,
+                        autocomplete: "off",
+                        data: { "auto-submit-form-target": "auto" } %>
+  <% end %>
+
+  <%= styled_form_with model: Setting.new,
+                       url: settings_chancen_path,
+                       method: :patch,
+                       data: {
+                         controller: "auto-submit-form",
+                         "auto-submit-form-trigger-event-value": "blur"
+                       } do |form| %>
+    <%= form.text_field :metabase_email_param,
+                        label: t(".email_param_label"),
+                        placeholder: t(".email_param_placeholder"),
+                        value: Setting.metabase_email_param,
+                        disabled: false,
+                        autocomplete: "off",
+                        autocapitalize: "none",
+                        data: { "auto-submit-form-target": "auto" } %>
+  <% end %>
+</div>

@@ -77,6 +77,7 @@ class AuthService {
         return {
           'success': false,
           'error': responseData['error'] ?? responseData['errors']?.join(', ') ?? 'Login failed',
+          'message': responseData['message'],
         };
       }
     } on SocketException catch (e, stackTrace) {
@@ -124,7 +125,7 @@ class AuthService {
     required String firstName,
     required String lastName,
     required Map<String, String> deviceInfo,
-    String? inviteCode,
+    String? invitationToken,
   }) async {
     try {
       final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/signup');
@@ -139,8 +140,8 @@ class AuthService {
         'device': deviceInfo,
       };
 
-      if (inviteCode != null) {
-        body['invite_code'] = inviteCode;
+      if (invitationToken != null) {
+        body['invitation'] = invitationToken;
       }
 
       final response = await http.post(
@@ -501,6 +502,7 @@ class AuthService {
     required String linkingCode,
     String? firstName,
     String? lastName,
+    String? password,
   }) async {
     try {
       final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/sso_create_account');
@@ -509,6 +511,7 @@ class AuthService {
       };
       if (firstName != null) body['first_name'] = firstName;
       if (lastName != null) body['last_name'] = lastName;
+      if (password != null) body['password'] = password;
 
       final response = await http.post(
         url,
@@ -547,6 +550,202 @@ class AuthService {
     } catch (e, stackTrace) {
       LogService.instance.error('AuthService', 'SSO create account error: $e\n$stackTrace');
       return {'success': false, 'error': 'Failed to create account'};
+    }
+  }
+
+  Future<Map<String, dynamic>> appleSignIn({
+    required String identityToken,
+    required Map<String, String> deviceInfo,
+    String? firstName,
+    String? lastName,
+    String? email,
+  }) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/apple_sign_in');
+
+      final Map<String, dynamic> body = {
+        'identity_token': identityToken,
+        'device': deviceInfo,
+      };
+      if (firstName != null) body['first_name'] = firstName;
+      if (lastName != null) body['last_name'] = lastName;
+      if (email != null) body['email'] = email;
+
+      final response = await http.post(
+        url,
+        headers: ApiConfig.jsonHeaders(),
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 30));
+
+      LogService.instance.debug('AuthService', 'Apple Sign-In response status: ${response.statusCode}');
+
+      final responseData = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        final tokens = AuthTokens.fromJson(responseData);
+        await _saveTokens(tokens);
+
+        User? user;
+        if (responseData['user'] != null) {
+          _logRawUserPayload('apple_sign_in', responseData['user']);
+          user = User.fromJson(responseData['user']);
+          await _saveUser(user);
+        }
+
+        return {'success': true, 'tokens': tokens, 'user': user};
+      } else {
+        return {
+          'success': false,
+          'error': responseData['error'] ?? 'Apple Sign-In failed',
+        };
+      }
+    } on SocketException catch (e, stackTrace) {
+      LogService.instance.error('AuthService', 'Apple Sign-In SocketException: $e\n$stackTrace');
+      return {'success': false, 'error': 'Network unavailable'};
+    } on TimeoutException catch (e, stackTrace) {
+      LogService.instance.error('AuthService', 'Apple Sign-In TimeoutException: $e\n$stackTrace');
+      return {'success': false, 'error': 'Request timed out'};
+    } catch (e, stackTrace) {
+      LogService.instance.error('AuthService', 'Apple Sign-In unexpected error: $e\n$stackTrace');
+      return {'success': false, 'error': 'Apple Sign-In failed'};
+    }
+  }
+
+  Future<Map<String, dynamic>> enableAi({
+    required String accessToken,
+  }) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/enable_ai');
+      final response = await http.patch(
+        url,
+        headers: {
+          ...ApiConfig.getAuthHeaders(accessToken),
+          'Content-Type': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 30));
+
+      final responseData = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        _logRawUserPayload('enable_ai', responseData['user']);
+        final user = User.fromJson(responseData['user']);
+        await _saveUser(user);
+        return {
+          'success': true,
+          'user': user,
+        };
+      }
+
+      return {
+        'success': false,
+        'error': responseData['error'] ?? responseData['errors']?.join(', ') ?? 'Failed to enable AI',
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'error': 'Network error: ${e.toString()}',
+      };
+    }
+  }
+
+  /// Fetches the signed-in user (GET /api/v1/users/me) so the app picks up
+  /// email verification without a new sign-in. Returns null when the call
+  /// fails or the server predates the endpoint (404); callers keep what
+  /// they have.
+  Future<User?> fetchCurrentUser({required String accessToken}) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/users/me');
+      final response = await http.get(
+        url,
+        headers: ApiConfig.getAuthHeaders(accessToken),
+      ).timeout(const Duration(seconds: 20));
+
+      if (response.statusCode != 200) {
+        LogService.instance.debug('AuthService', 'users/me returned ${response.statusCode}');
+        return null;
+      }
+
+      final responseData = jsonDecode(response.body);
+      _logRawUserPayload('users_me', responseData['user']);
+      final user = User.fromJson(responseData['user']);
+      await _saveUser(user);
+      return user;
+    } catch (e) {
+      LogService.instance.debug('AuthService', 'users/me failed: $e');
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>> resendEmailVerification({
+    required String accessToken,
+  }) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/resend_email_verification');
+      final response = await http.post(
+        url,
+        headers: ApiConfig.getAuthHeaders(accessToken),
+      ).timeout(const Duration(seconds: 30));
+
+      final responseData = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        final userJson = responseData['user'];
+        final user = userJson is Map<String, dynamic> ? User.fromJson(userJson) : null;
+        if (user != null) await _saveUser(user);
+        return {
+          'success': true,
+          'message': responseData['message'] ?? 'Verification email sent.',
+          'user': user,
+        };
+      }
+
+      return {
+        'success': false,
+        'error': responseData['error'] ?? 'Could not send the verification email. Please try again.',
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'error': 'Network unavailable',
+      };
+    }
+  }
+
+  /// Saves the member's country and the privacy/terms version they accepted
+  /// for it (PATCH /api/v1/users/me/country).
+  Future<Map<String, dynamic>> updateCountry({
+    required String accessToken,
+    required String countryCode,
+    required String consentVersion,
+  }) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/users/me/country');
+      final response = await http.patch(
+        url,
+        headers: {
+          ...ApiConfig.getAuthHeaders(accessToken),
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'user': {'country_code': countryCode, 'consent_version': consentVersion},
+        }),
+      ).timeout(const Duration(seconds: 20));
+
+      final responseData = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        final user = User.fromJson(responseData['user']);
+        await _saveUser(user);
+        return {'success': true, 'user': user};
+      }
+
+      return {
+        'success': false,
+        'error': (responseData['errors'] as List?)?.join(', ') ??
+            responseData['error'] ??
+            'Could not save your country. Please try again.',
+      };
+    } catch (e) {
+      return {'success': false, 'error': 'Network unavailable. Please try again.'};
     }
   }
 
@@ -629,5 +828,45 @@ class AuthService {
 
   Future<String?> getStoredAuthMode() async {
     return await _storage.read(key: _authModeKey);
+  }
+
+  Future<void> requestPasswordReset({required String email}) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/password_reset');
+      await http.post(
+        url,
+        headers: ApiConfig.jsonHeaders(),
+        body: jsonEncode({'email': email}),
+      ).timeout(const Duration(seconds: 15));
+    } catch (_) {
+      // Silent fail — caller shows generic confirmation regardless
+    }
+  }
+
+  Future<Map<String, dynamic>> resetPassword({
+    required String token,
+    required String password,
+    required String passwordConfirmation,
+  }) async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/api/v1/auth/password_reset');
+      final response = await http.patch(
+        url,
+        headers: ApiConfig.jsonHeaders(),
+        body: jsonEncode({
+          'token': token,
+          'password': password,
+          'password_confirmation': passwordConfirmation,
+        }),
+      ).timeout(const Duration(seconds: 15));
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200) {
+        return {'success': true};
+      }
+      return {'success': false, 'error': data['error'] ?? data['errors']?.join(', ') ?? 'Something went wrong'};
+    } catch (e) {
+      return {'success': false, 'error': 'Network error. Please try again.'};
+    }
   }
 }

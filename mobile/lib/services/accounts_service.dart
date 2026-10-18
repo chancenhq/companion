@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/account.dart';
 import 'api_config.dart';
+import 'auth_events.dart';
 
 class AccountsService {
   Future<Map<String, dynamic>> getAccounts({
@@ -18,6 +19,7 @@ class AccountsService {
         url,
         headers: ApiConfig.getAuthHeaders(accessToken),
       ).timeout(const Duration(seconds: 30));
+      AuthEvents.instance.report(response);
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);

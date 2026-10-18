@@ -18,8 +18,10 @@ class OidcAccountsController < ApplicationController
     @pending_invitation = Invitation.pending.find_by(email: @email) if @email.present?
 
     # Determine whether we should offer JIT account creation for this
-    # pending auth, based on JIT mode and allowed domains.
-    @allow_account_creation = @pending_invitation.present? || (!AuthConfig.jit_link_only? && AuthConfig.allowed_oidc_domain?(@email))
+    # pending auth, based on the sign-up rule (invite_only/closed), JIT mode
+    # and allowed domains. create_user enforces the same rule.
+    @allow_account_creation = signup_permitted?(invitation: @pending_invitation) &&
+      (@pending_invitation.present? || (!AuthConfig.jit_link_only? && AuthConfig.allowed_oidc_domain?(@email)))
   end
 
   def create_link
@@ -39,6 +41,12 @@ class OidcAccountsController < ApplicationController
         build_auth_hash(@pending_auth),
         user
       )
+
+      # Password proves the account; the provider proves its own email. Only
+      # when that is the account's email does linking verify it.
+      if oidc_identity.email_trusted? && @pending_auth["email"].to_s.casecmp?(user.email)
+        user.mark_email_verified!
+      end
 
       # Log account linking
       SsoAuditLog.log_link!(
@@ -100,11 +108,21 @@ class OidcAccountsController < ApplicationController
     # Check for a pending invitation for this email
     invitation = Invitation.pending.find_by(email: email)
 
+    unless signup_permitted?(invitation: invitation)
+      redirect_to new_session_path, alert: signup_not_permitted_message
+      return
+    end
+
     # Respect global JIT configuration: in link_only mode or when the email
     # domain is not allowed, block JIT account creation—unless there's a
     # pending invitation for this user.
     unless invitation.present? || (!AuthConfig.jit_link_only? && AuthConfig.allowed_oidc_domain?(email))
       redirect_to new_session_path, alert: "SSO account creation is disabled. Please contact an administrator."
+      return
+    end
+
+    if invitation.blank? && invite_only_default_family_missing?
+      redirect_to new_session_path, alert: "Invite-only default family is unavailable. Please contact an administrator."
       return
     end
 
@@ -121,20 +139,11 @@ class OidcAccountsController < ApplicationController
       skip_password_validation: true
     )
 
-    if invitation.present?
-      # Accept the pending invitation: join the existing family
-      @user.family_id = invitation.family_id
-      @user.role = invitation.role
-    else
-      # Create new family for this user
-      @user.family = Family.new
-
-      # Use provider-configured default role, or fall back to admin for family creators
-      # First user of an instance always becomes super_admin regardless of provider config
-      provider_config = Rails.configuration.x.auth.sso_providers&.find { |p| p[:name] == @pending_auth["provider"] }
-      provider_default_role = provider_config&.dig(:settings, :default_role)
-      @user.role = User.role_for_new_family_creator(fallback_role: provider_default_role || :admin)
-    end
+    assign_signup_family_and_role(
+      @user,
+      invitation: invitation,
+      new_family_fallback_role: sso_provider_default_role(@pending_auth["provider"]) || :admin
+    )
 
     if @user.save
       # Create the OIDC (or other SSO) identity
@@ -153,7 +162,13 @@ class OidcAccountsController < ApplicationController
       end
 
       # Mark invitation as accepted if one was used
-      invitation&.update!(accepted_at: Time.current)
+      invitation&.accept_signup!(@user)
+
+      if identity.persisted? && identity.email_trusted?
+        @user.mark_email_verified!
+      else
+        @user.send_email_verification
+      end
 
       # Clear pending auth from session
       session.delete(:pending_oidc_auth)
@@ -179,7 +194,8 @@ class OidcAccountsController < ApplicationController
       OpenStruct.new(
         provider: pending_auth["provider"],
         uid: pending_auth["uid"],
-        info: OpenStruct.new(pending_auth.slice("email", "name", "first_name", "last_name"))
+        info: OpenStruct.new(pending_auth.slice("email", "name", "first_name", "last_name")),
+        extra: OpenStruct.new(raw_info: OpenStruct.new(iss: pending_auth["issuer"]))
       )
     end
 end

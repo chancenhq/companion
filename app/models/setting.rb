@@ -21,6 +21,24 @@ class Setting < RailsSettings::Base
   field :external_assistant_url, type: :string
   field :external_assistant_token, type: :string
   field :external_assistant_agent_id, type: :string
+
+  # Metabase student data (Chancen ISA warehouse)
+  field :metabase_url,                 type: :string, default: ENV["METABASE_URL"]
+  field :metabase_api_key,             type: :string, default: ENV["METABASE_API_KEY"]
+  field :metabase_student_question_id,       type: :string, default: ENV["METABASE_STUDENT_QUESTION_ID"]
+  field :metabase_transactions_question_id,  type: :string, default: ENV["METABASE_TRANSACTIONS_QUESTION_ID"]
+  field :metabase_email_param,               type: :string, default: ENV.fetch("METABASE_EMAIL_PARAM", "email")
+
+  # Chancen companion — per-country WhatsApp group links
+  field :whatsapp_group_url_ke, type: :string, default: ENV["WHATSAPP_GROUP_URL_KE"]
+  field :whatsapp_group_url_rw, type: :string, default: ENV["WHATSAPP_GROUP_URL_RW"]
+  field :whatsapp_group_url_za, type: :string, default: ENV["WHATSAPP_GROUP_URL_ZA"]
+  field :whatsapp_group_url_gh, type: :string, default: ENV["WHATSAPP_GROUP_URL_GH"]
+
+  # Chancen companion — PostHog mobile analytics (public write-only key, safe to deliver to client)
+  field :posthog_public_key, type: :string, default: ENV["POSTHOG_PUBLIC_KEY"]
+  field :posthog_host, type: :string, default: ENV.fetch("POSTHOG_HOST", "https://us.i.posthog.com")
+
   field :brand_fetch_client_id, type: :string, default: ENV["BRAND_FETCH_CLIENT_ID"]
   field :brand_fetch_high_res_logos, type: :boolean, default: ENV.fetch("BRAND_FETCH_HIGH_RES_LOGOS", "false") == "true"
 
@@ -71,6 +89,7 @@ class Setting < RailsSettings::Base
       alpha_vantage_api_key
       openai_access_token
       external_assistant_token
+      metabase_api_key
     ].freeze
 
     ENCRYPTED_FIELDS.each do |field_name|

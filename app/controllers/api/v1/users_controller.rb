@@ -1,9 +1,52 @@
 # frozen_string_literal: true
 
 class Api::V1::UsersController < Api::V1::BaseController
-  before_action :ensure_read_scope, only: :reset_status
-  before_action :ensure_write_scope, except: :reset_status
+  # Profile, country, password and account deletion stay available before email verification.
+  skip_before_action :ensure_verified_for_financial_data, only: %i[me update_country update_password destroy]
+  before_action :ensure_read_scope, only: %i[reset_status me]
+  before_action :ensure_write_scope, except: %i[reset_status me]
   before_action :ensure_admin, only: %i[reset reset_status]
+
+  # GET /api/v1/users/me — lets the app refresh verification state without a new sign-in.
+  def me
+    render json: { user: current_resource_owner.mobile_payload }
+  end
+
+  # PATCH /api/v1/users/me/country — the member's country
+  # With the privacy/terms version they accepted for it.
+  def update_country
+    user = current_resource_owner
+    requested_code = country_params[:country_code].to_s.strip.upcase
+
+    user.with_lock do
+      if user.country_locked? && requested_code != user.country_code
+        return render json: { errors: [ "Your country is already set and can't be changed" ] }, status: :unprocessable_entity
+      end
+
+      user.record_country!(requested_code, consent_version: country_params[:consent_version])
+    end
+
+    render json: { user: user.mobile_payload }
+  rescue ActiveRecord::RecordInvalid
+    render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
+  end
+
+  # PATCH /api/v1/users/me/password
+  def update_password
+    user = current_resource_owner
+
+    if user.password_digest.present?
+      unless user.authenticate(password_params[:current_password].to_s)
+        return render json: { error: "current_password_incorrect", message: "Current password is incorrect" }, status: :unprocessable_entity
+      end
+    end
+
+    unless user.update(password: password_params[:password], password_confirmation: password_params[:password])
+      return render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
+    end
+
+    render json: { user: user.mobile_payload }
+  end
 
   def reset
     family = current_resource_owner.family
@@ -53,6 +96,14 @@ class Api::V1::UsersController < Api::V1::BaseController
   end
 
   private
+
+    def country_params
+      params.require(:user).permit(:country_code, :consent_version)
+    end
+
+    def password_params
+      params.require(:user).permit(:current_password, :password)
+    end
 
     def ensure_write_scope
       authorize_scope!(:write)

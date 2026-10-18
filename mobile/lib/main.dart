@@ -2,17 +2,25 @@ import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'providers/app_config_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/accounts_provider.dart';
 import 'providers/categories_provider.dart';
 import 'providers/transactions_provider.dart';
 import 'providers/chat_provider.dart';
+import 'providers/my_account_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/backend_config_screen.dart';
+import 'screens/country_selection_screen.dart';
+import 'screens/email_verification_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/biometric_lock_screen.dart';
 import 'screens/main_navigation_screen.dart';
+import 'screens/onboarding_screen.dart';
+import 'screens/reset_password_screen.dart';
 import 'screens/sso_onboarding_screen.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
+import 'services/analytics_service.dart';
 import 'services/api_config.dart';
 import 'services/connectivity_service.dart';
 import 'services/log_service.dart';
@@ -62,8 +70,10 @@ class SureApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => LogService.instance),
         ChangeNotifierProvider(create: (_) => ConnectivityService()),
+        ChangeNotifierProvider(create: (_) => AppConfigProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => ChatProvider()),
+        ChangeNotifierProvider(create: (_) => MyAccountProvider()),
         ChangeNotifierProvider(create: (_) => CategoriesProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProxyProvider<ConnectivityService, AccountsProvider>(
@@ -168,6 +178,7 @@ class SureApp extends StatelessWidget {
           ),
         ),
         themeMode: themeProvider.themeMode,
+        navigatorObservers: [PosthogObserver()],
         routes: {
           '/config': (context) => const BackendConfigScreen(),
           '/login': (context) => const LoginScreen(),
@@ -190,6 +201,8 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
   bool _isCheckingConfig = true;
   bool _hasBackendUrl = false;
   bool _isLocked = false;
+  bool _onboardingComplete = true; // assume complete until checked
+  String? _lastScreenName;
   late final AppLinks _appLinks;
   StreamSubscription<Uri>? _linkSubscription;
 
@@ -198,7 +211,9 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _checkBackendConfig();
+    _checkOnboarding();
     _initDeepLinks();
+    Provider.of<AppConfigProvider>(context, listen: false).load();
   }
 
   @override
@@ -212,8 +227,16 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
       _markLockedIfEnabled();
-    } else if (state == AppLifecycleState.resumed && _isLocked) {
-      // Lock screen is already showing via build(); biometric auto-triggers there.
+    } else if (state == AppLifecycleState.resumed) {
+      // Lock screen (if any) is already showing via build(); biometric auto-triggers there.
+      // Refresh on every resume: email verification or a country change via accept_for
+      // while backgrounded can both leave stale user state that skips required screens.
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      if (authProvider.isAuthenticated) {
+        authProvider.refreshUser();
+      }
+      // Also refresh remote config so WhatsApp URLs stay current.
+      Provider.of<AppConfigProvider>(context, listen: false).load();
     }
   }
 
@@ -259,6 +282,19 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
     if (uri.scheme == 'sureapp' && uri.host == 'oauth') {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       authProvider.handleSsoCallback(uri);
+    } else if (uri.scheme == 'sureapp' && uri.host == 'password-reset') {
+      final token = uri.queryParameters['token'];
+      if (token != null && token.isNotEmpty) {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => ResetPasswordScreen(token: token)),
+        );
+      }
+    } else if (uri.scheme == 'sureapp' && uri.host == 'invite') {
+      final token = uri.queryParameters['token'];
+      if (token != null && token.isNotEmpty) {
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        authProvider.setPendingInvitationToken(token);
+      }
     }
   }
 
@@ -272,9 +308,30 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _checkOnboarding() async {
+    // The country now lives on the server; drop the old on-device guess.
+    await PreferencesService.instance.clearLegacyUserCountry();
+    final complete = await PreferencesService.instance.getOnboardingComplete();
+    if (mounted) {
+      setState(() => _onboardingComplete = complete);
+    }
+  }
+
+  void _onOnboardingComplete() {
+    setState(() => _onboardingComplete = true);
+  }
+
   void _onBackendConfigSaved() {
     setState(() {
       _hasBackendUrl = true;
+    });
+  }
+
+  void _trackScreenIfChanged(String name) {
+    if (_lastScreenName == name) return;
+    _lastScreenName = name;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      AnalyticsService.instance.screen(name);
     });
   }
 
@@ -305,7 +362,44 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
           );
         }
 
+        // SSO callbacks must win over everything — including first-launch
+        // onboarding — so the deep link is never dropped from the widget tree.
+        if (authProvider.ssoOnboardingPending) {
+          _trackScreenIfChanged('sso_onboarding');
+          return const SsoOnboardingScreen();
+        }
+
+        // Onboarding (country select + consent) must complete before the app
+        // is accessible, even when the user signed up on page 1 of the flow.
+        if (!_onboardingComplete) {
+          _trackScreenIfChanged('onboarding');
+          return OnboardingScreen(
+            onComplete: _onOnboardingComplete,
+            initialPage: authProvider.isAuthenticated ? 2 : 0,
+          );
+        }
+
         if (authProvider.isAuthenticated) {
+          // Members accept the privacy/terms for their country once
+          if (authProvider.countryConfirmationRequired) {
+            _trackScreenIfChanged('country_selection');
+            return const CountrySelectionScreen();
+          }
+
+          // Email sign-ups confirm their address once; the
+          // assistant stays available if they continue without verifying.
+          if (authProvider.showEmailVerificationPrompt) {
+            _trackScreenIfChanged('email_verification');
+            return const EmailVerificationScreen();
+          }
+
+          // SSO users must set a password before they can be locked out.
+          if (authProvider.user?.hasPassword == false) {
+            _trackScreenIfChanged('sso_set_password');
+            return const SsoOnboardingScreen(passwordOnlyMode: true);
+          }
+
+          // MainNavigationScreen tracks its own tab screens via initState/onTap.
           return Stack(
             children: [
               const MainNavigationScreen(),
@@ -325,10 +419,7 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
           });
         }
 
-        if (authProvider.ssoOnboardingPending) {
-          return const SsoOnboardingScreen();
-        }
-
+        _trackScreenIfChanged('login');
         return const LoginScreen();
       },
     );

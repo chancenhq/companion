@@ -159,6 +159,10 @@ class SessionsController < ApplicationController
       user = oidc_identity.user
       oidc_identity.record_authentication!
       oidc_identity.sync_user_attributes!(auth)
+      # A trusted provider proving the account's own email verifies an
+      # unverified account (dropping any password/MFA a first registrant may
+      # hold). An identity linked with a different email proves nothing here.
+      user.claim_by_trusted_provider!(email: auth.info&.email) if provider_email_trusted?(auth)
 
       # Log successful SSO login
       SsoAuditLog.log_login!(user: user, provider: auth.provider, request: request)
@@ -203,7 +207,8 @@ class SessionsController < ApplicationController
         email: auth.info&.email,
         name: auth.info&.name,
         first_name: auth.info&.first_name,
-        last_name: auth.info&.last_name
+        last_name: auth.info&.last_name,
+        issuer: auth_issuer(auth)
       }
       redirect_to link_oidc_account_path
     end
@@ -241,8 +246,8 @@ class SessionsController < ApplicationController
   end
 
   private
-    def handle_mobile_sso_callback(user)
-      device_info = session.delete(:mobile_sso)
+    def handle_mobile_sso_callback(user, device_info: nil)
+      device_info ||= session.delete(:mobile_sso)
 
       unless device_info.present?
         mobile_sso_redirect(error: "missing_session", message: "Mobile SSO session expired")
@@ -262,7 +267,10 @@ class SessionsController < ApplicationController
           user_first_name: user.first_name,
           user_last_name: user.last_name,
           user_ui_layout: user.ui_layout,
-          user_ai_enabled: user.ai_enabled?
+          user_ai_enabled: user.ai_enabled?,
+          user_email_verified: user.email_verified?,
+          user_country_code: user.country_code,
+          user_requires_country_confirmation: user.requires_country_confirmation?
         ),
         expires_in: 5.minutes
       )
@@ -277,8 +285,31 @@ class SessionsController < ApplicationController
       device_info = session.delete(:mobile_sso)
       email = auth.info&.email
 
-      has_pending_invitation = email.present? && Invitation.pending.exists?(email: email)
-      allow_creation = has_pending_invitation || (!AuthConfig.jit_link_only? && AuthConfig.allowed_oidc_domain?(email))
+      # Auto-link: if an account already exists with this email, link it silently.
+      # Only for providers that prove email ownership (Google/Apple); others go
+      # through the password-confirmed linking flow below.
+      existing_user = email.present? && provider_email_trusted?(auth) ? User.find_by(email: email) : nil
+      if existing_user
+        # MFA on an unverified account may belong to a first registrant; the
+        # claim below clears it. Verified accounts keep the MFA requirement.
+        if existing_user.otp_required? && existing_user.email_verified?
+          mobile_sso_redirect(error: "mfa_not_supported", message: "MFA users should sign in with email and password")
+          return
+        end
+        OidcIdentity.create_from_omniauth(auth, existing_user)
+        SsoAuditLog.log_link!(user: existing_user, provider: auth.provider, request: request)
+        # Google has proven control of this email; end any login held by
+        # whoever registered it first before issuing this device's token.
+        existing_user.claim_by_trusted_provider!(email: email)
+        existing_user.revoke_all_access!
+        handle_mobile_sso_callback(existing_user, device_info: device_info)
+        return
+      end
+
+      pending_invitation = email.present? ? Invitation.pending.find_by(email: email) : nil
+      has_pending_invitation = pending_invitation.present?
+      allow_creation = signup_permitted?(invitation: pending_invitation) &&
+        (has_pending_invitation || (!AuthConfig.jit_link_only? && AuthConfig.allowed_oidc_domain?(email)))
 
       linking_code = SecureRandom.urlsafe_base64(32)
       Rails.cache.write(
@@ -306,6 +337,19 @@ class SessionsController < ApplicationController
         allow_account_creation: allow_creation,
         has_pending_invitation: has_pending_invitation
       )
+    end
+
+    def auth_issuer(auth)
+      raw_info = auth.extra&.raw_info
+      raw_info&.iss || raw_info&.[]("iss")
+    end
+
+    # Whether this sign-in proves the user controls auth.info.email.
+    def provider_email_trusted?(auth)
+      raw_info = auth.extra&.raw_info
+      return false if raw_info.respond_to?(:[]) && raw_info["email_verified"].to_s == "false"
+
+      OidcIdentity.email_trusted?(provider: auth.provider, issuer: auth_issuer(auth))
     end
 
     def mobile_sso_redirect(params = {})

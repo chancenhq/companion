@@ -3,9 +3,9 @@ class RegistrationsController < ApplicationController
 
   layout "auth"
 
-  before_action :ensure_signup_open, if: :self_hosted?
-  before_action :set_user, only: :create
   before_action :set_invitation
+  before_action :ensure_signup_open
+  before_action :set_user, only: :create
   before_action :validate_password_requirements, only: :create
 
   def new
@@ -13,22 +13,14 @@ class RegistrationsController < ApplicationController
   end
 
   def create
-    if @invitation
-      @user.family = @invitation.family
-      @user.role = @invitation.role
-      @user.email = @invitation.email
-    elsif (default_family_id = Setting.invite_only_default_family_id).present? &&
-          Setting.onboarding_state == "invite_only" &&
-          (default_family = Family.find_by(id: default_family_id))
-      @user.family = default_family
-      @user.role = :member
-    else
-      family = Family.new
-      @user.family = family
-      @user.role = User.role_for_new_family_creator
-    end
+    assign_signup_family_and_role(@user, invitation: @invitation)
 
     if signup_with_invite_claim!
+      if invitation_token_proves_email?(@invitation, @invitation_token)
+        @user.mark_email_verified!
+      else
+        @user.send_email_verification
+      end
       redirect_to root_path, notice: t(".success")
     elsif @invite_code_invalid
       redirect_to new_registration_path, alert: t("registrations.create.invalid_invite_code")
@@ -39,10 +31,15 @@ class RegistrationsController < ApplicationController
 
   private
 
+    # The invitation for the token in the link, otherwise (on submit) the seat
+    # reserved for the entered email. See Api::V1::AuthController.
     def set_invitation
-      token = params[:invitation]
-      token ||= params[:user][:invitation] if params[:user].present?
-      @invitation = Invitation.pending.find_by(token: token)
+      @invitation_token = params[:invitation].presence || params.dig(:user, :invitation).presence
+      @invitation = if @invitation_token
+        Invitation.pending.find_by(token: @invitation_token)
+      else
+        Invitation.seat_for(params.dig(:user, :email))
+      end
     end
 
     def set_user
@@ -72,7 +69,7 @@ class RegistrationsController < ApplicationController
           raise ActiveRecord::Rollback
         end
 
-        @invitation&.update!(accepted_at: Time.current)
+        @invitation&.accept_signup!(@user)
         @session = create_session_for(@user)
         success = true
       end
@@ -106,8 +103,11 @@ class RegistrationsController < ApplicationController
     end
 
     def ensure_signup_open
-      return unless Setting.onboarding_state == "closed"
+      # Under invite_only the form stays reachable: the seat is matched by
+      # email when it's submitted.
+      return if action_name == "new" && Setting.onboarding_state == "invite_only"
+      return if signup_permitted?(invitation: @invitation)
 
-      redirect_to new_session_path, alert: t("registrations.closed")
+      redirect_to new_session_path, alert: signup_not_permitted_message
     end
 end

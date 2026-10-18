@@ -17,7 +17,7 @@ class InvitationsControllerTest < ActionDispatch::IntegrationTest
     Rails.application.config.stubs(:app_mode).returns("managed".inquiry)
 
     assert_difference("Invitation.count") do
-      assert_enqueued_with(job: ActionMailer::MailDeliveryJob) do
+      assert_no_enqueued_jobs only: ActionMailer::MailDeliveryJob do
         post invitations_url, params: {
           invitation: {
             email: "new@example.com",
@@ -146,6 +146,17 @@ class InvitationsControllerTest < ActionDispatch::IntegrationTest
 
     assert_redirected_to settings_profile_path
     assert_equal I18n.t("invitations.create.failure"), flash[:alert]
+  end
+
+  test "refuses to invite into a family that has no country" do
+    @admin.family.update!(chancen_country_code: nil)
+
+    assert_no_difference("Invitation.count") do
+      post invitations_url, params: { invitation: { email: "new@example.com", role: "member" } }
+    end
+
+    assert_redirected_to settings_profile_path
+    assert_equal I18n.t("activerecord.errors.models.invitation.attributes.base.family_country_missing"), flash[:alert]
   end
 
   test "should accept invitation and show choice between sign in and create account" do

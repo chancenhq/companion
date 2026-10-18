@@ -22,11 +22,10 @@ class InvitationsController < ApplicationController
       elsif existing_user
         flash[:alert] = t(".failure")
       else
-        InvitationMailer.invite_email(@invitation).deliver_later unless self_hosted?
         flash[:notice] = t(".success")
       end
     else
-      flash[:alert] = t(".failure")
+      flash[:alert] = @invitation.errors[:base].first || t(".failure")
     end
 
     redirect_to settings_profile_path
