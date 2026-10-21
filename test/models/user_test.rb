@@ -344,6 +344,13 @@ class UserTest < ActiveSupport::TestCase
     assert user.ui_layout_dashboard?
   end
 
+  test "guests and members get the companion view, whatever their layout" do
+    assert users(:family_member).companion?, "members on the dashboard layout are still companion users"
+    assert users(:intro_user).companion?
+    assert_not users(:family_admin).companion?
+    assert_not users(:sure_support_staff).companion?
+  end
+
   test "upgrading guest role restores dashboard layout defaults" do
     user = users(:intro_user)
     user.update!(role: :member)

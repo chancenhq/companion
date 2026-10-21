@@ -83,6 +83,14 @@ module ActiveSupport
       post sessions_path, params: { email: user.email, password: user_password_test }
     end
 
+    # Guests and members only reach the companion pages on the web
+    # (CompanionRestrictable). Tests of upstream Sure features that check what
+    # a guest or member may do there call this, so those permission rules
+    # stay covered. The restriction itself is tested in CompanionAccessTest.
+    def lift_companion_restrictions
+      User.any_instance.stubs(:companion?).returns(false)
+    end
+
     def ensure_tailwind_build
       tailwind_build = Rails.root.join("app/assets/builds/tailwind.css")
       FileUtils.mkdir_p(tailwind_build.dirname)

@@ -63,6 +63,8 @@ class User < ApplicationRecord
   before_validation :apply_ui_layout_defaults
   before_validation :apply_role_based_ui_defaults
 
+  COMPANION_ROLES = %w[guest member].freeze
+
   # Returns the appropriate role for a new user creating a family.
   # The very first user of an instance becomes super_admin; subsequent users
   # get the specified fallback role (typically :admin for family creators).
@@ -89,6 +91,12 @@ class User < ApplicationRecord
 
   def pending_email_change?
     unconfirmed_email.present?
+  end
+
+  # Chancen students (guests and members) get the limited, mobile-like view on
+  # the web. Decided by role alone, so admins always keep the full app.
+  def companion?
+    role.in?(COMPANION_ROLES)
   end
 
   # Proof that the account holder controls `email`. Gates all
