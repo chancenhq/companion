@@ -7,7 +7,8 @@ module Assistant::Configurable
       preferred_date_format = chat.user.family.date_format
       country = ChancenCountry.find(chat.user.country_code)
 
-      if chat.user.ui_layout_intro?
+      # Chancen students get the student assistant on web and mobile.
+      if chat.user.ui_layout_intro? || chat.user.companion?
         {
           instructions: intro_instructions(preferred_currency, preferred_date_format, country),
           functions: permitted_functions(chat.user, intro_functions)
