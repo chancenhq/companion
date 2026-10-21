@@ -144,4 +144,29 @@ class InvitationTest < ActiveSupport::TestCase
     assert_not user.show_ai_sidebar?
     assert user.ai_enabled?
   end
+
+  test "new invitations never expire (#148)" do
+    invitation = @family.invitations.create!(email: "never-expires@example.com", role: "guest", inviter: @inviter)
+
+    assert_nil invitation.expires_at
+    assert invitation.pending?
+    assert_includes Invitation.pending, invitation
+  end
+
+  test "pending scope still excludes invitations with a past expiry (backward compatible)" do
+    invitation = @family.invitations.create!(email: "legacy-expired@example.com", role: "guest", inviter: @inviter)
+    invitation.update_columns(expires_at: 1.day.ago)
+
+    assert_not invitation.pending?
+    assert_not_includes Invitation.pending, invitation
+  end
+
+  test "never-expiring invites remain revocable via the pending scope" do
+    invitation = @family.invitations.create!(email: "revoke-me@example.com", role: "guest", inviter: @inviter)
+    assert_nil invitation.expires_at
+
+    @family.invitations.pending.destroy_all
+
+    assert_not Invitation.exists?(invitation.id)
+  end
 end

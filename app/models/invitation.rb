@@ -19,13 +19,15 @@ class Invitation < ApplicationRecord
 
   before_validation :normalize_email
   before_validation :generate_token, on: :create
-  before_create :set_expiration
 
-  scope :pending, -> { where(accepted_at: nil).where("expires_at > ?", Time.current) }
+  # Companion invites do not expire (issue #148): they stay valid until used or
+  # explicitly revoked by an admin. A nil expires_at means "never expires";
+  # existing rows that still carry a date are honoured for backward compatibility.
+  scope :pending, -> { where(accepted_at: nil).where("expires_at IS NULL OR expires_at > ?", Time.current) }
   scope :accepted, -> { where.not(accepted_at: nil) }
 
   def pending?
-    accepted_at.nil? && expires_at > Time.current
+    accepted_at.nil? && (expires_at.nil? || expires_at > Time.current)
   end
 
   def accept_for(user)
@@ -54,10 +56,6 @@ class Invitation < ApplicationRecord
         self.token = SecureRandom.hex(32)
         break unless self.class.exists?(token: token)
       end
-    end
-
-    def set_expiration
-      self.expires_at = 3.days.from_now
     end
 
     def normalize_email

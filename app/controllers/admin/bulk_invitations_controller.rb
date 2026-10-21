@@ -10,6 +10,7 @@ module Admin
       @family = Family.find(params[:family_id])
       @emails = parse_emails(params[:emails])
       @move_existing = params[:move_existing] == "1"
+      @role = permitted_role(params[:role])
       @raw_emails = params[:emails]
 
       if @emails.empty?
@@ -33,7 +34,8 @@ module Admin
       family.update!(default_account_sharing: "private") unless family.default_account_sharing == "private"
 
       move_existing = params[:move_existing] == "1"
-      @results = emails.map { |email| invite(email, family, move_existing: move_existing) }
+      role = permitted_role(params[:role])
+      @results = emails.map { |email| invite(email, family, role: role, move_existing: move_existing) }
       @family = family
     end
 
@@ -43,17 +45,23 @@ module Admin
         raw.to_s.split(/[\s,;]+/).map(&:strip).map(&:downcase).uniq.reject(&:blank?)
       end
 
+      # Only member/guest can be assigned via bulk invite (never admin).
+      # Defaults to guest — the Companion student experience (intro layout + AI).
+      def permitted_role(raw)
+        %w[member guest].include?(raw) ? raw : "guest"
+      end
+
       # Reserves a seat for the email (issue #106): nothing is emailed. The
       # student installs the app and signs up with this email, or with
       # Google/Apple on it, and lands in this family. Existing accounts are
       # only moved when the admin explicitly asks for it.
-      def invite(email, family, move_existing:)
+      def invite(email, family, role:, move_existing:)
         existing_user = User.find_by(email: email)
         return { email: email, status: :existing } if existing_user && !move_existing
 
         invitation = Invitation.new(
           email:   email,
-          role:    "member",
+          role:    role,
           family:  family,
           inviter: Current.user
         )
