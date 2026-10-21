@@ -53,6 +53,13 @@ class ChancenCountry
     @live == true
   end
 
+  # The country's student WhatsApp group (Contact us), as served to the
+  # mobile app by Api::V1::AppConfigController.
+  def whatsapp_group_url
+    setting = "whatsapp_group_url_#{code.downcase}"
+    Setting.public_send(setting).presence if Setting.respond_to?(setting)
+  end
+
   def as_json(*)
     {
       code: code,

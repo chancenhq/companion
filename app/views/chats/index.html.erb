@@ -7,7 +7,13 @@
           message: t("chats.demo_banner_message") %>
       <% end %>
 
-      <% if @chats.any? %>
+      <% if Current.user.companion? && !Current.user.ai_enabled? %>
+        <%# The intro layout has no AI sidebar, so ask for consent here (as the mobile app does). %>
+        <div class="grow flex flex-col justify-center w-full max-w-md mx-auto py-8">
+          <h1 class="sr-only">Chats</h1>
+          <%= render "chats/ai_consent" %>
+        </div>
+      <% elsif @chats.any? %>
         <div class="grow flex flex-col">
           <div class="flex items-center justify-between my-6">
             <h1 class="text-xl font-medium">Chats</h1>

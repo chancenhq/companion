@@ -8,6 +8,8 @@ en:
         assistant: Assistant
         budgets: Budgets
         home: Home
+        my_account: My Account
+        payments: Payments
         reports: Reports
         transactions: Transactions
     auth:

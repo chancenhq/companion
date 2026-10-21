@@ -29,7 +29,7 @@
         </div>
       </div>
 
-      <% if self_hosted? %>
+      <% if self_hosted? && !intro_mode %>
         <div class="px-4 py-3 border-t border-tertiary">
           <p class="text-sm">
             <span class="font-medium text-primary">Version:</span>
@@ -49,12 +49,19 @@
       icon: "settings",
       href: intro_mode ? settings_profile_path : accounts_path(return_to: request.fullpath)
     ) %>
-    <% menu.with_item(variant: "link", text: "Changelog", icon: "box", href: changelog_path) %>
 
-    <% if self_hosted? && !intro_mode %>
-      <% menu.with_item(variant: "link", text: "Feedback", icon: "megaphone", href: feedback_path) %>
+    <% if intro_mode %>
+      <% if (whatsapp_url = user.chancen_country&.whatsapp_group_url) %>
+        <% menu.with_item(variant: "link", text: t("users.user_menu.contact_us"), icon: "message-square-more", href: whatsapp_url, target: "_blank", rel: "noopener noreferrer") %>
+      <% end %>
+    <% else %>
+      <% menu.with_item(variant: "link", text: "Changelog", icon: "box", href: changelog_path) %>
+
+      <% if self_hosted? %>
+        <% menu.with_item(variant: "link", text: "Feedback", icon: "megaphone", href: feedback_path) %>
+      <% end %>
+      <% menu.with_item(variant: "link", text: "Contact", icon: "message-square-more", href: "https://discord.gg/36ZGBsxYEK", target: "_blank", rel: "noopener noreferrer") %>
     <% end %>
-    <% menu.with_item(variant: "link", text: "Contact", icon: "message-square-more", href: "https://discord.gg/36ZGBsxYEK", target: "_blank", rel: "noopener noreferrer") %>
 
     <% menu.with_item(variant: "divider") %>
 

@@ -1,9 +1,10 @@
-<% intro_mode = Current.user&.ui_layout_intro? %>
+<% intro_mode = Current.user&.companion? %>
 <% home_path = intro_mode ? chats_path : root_path %>
 <% mobile_nav_items = if intro_mode
   [
-    { name: t(".nav.home"), path: chats_path, icon: "home", icon_custom: false, active: page_active?(chats_path) },
-    { name: "Intro", path: intro_path, icon: "sparkles", icon_custom: false, active: page_active?(intro_path) }
+    { name: t(".nav.assistant"), path: chats_path, icon: "icon-assistant", icon_custom: true, active: page_active?(chats_path) },
+    { name: t(".nav.my_account"), path: my_account_path, icon: "wallet", icon_custom: false, active: page_active?(my_account_path) },
+    { name: t(".nav.payments"), path: payments_my_account_path, icon: "receipt", icon_custom: false, active: page_active?(payments_my_account_path) }
   ]
 else
   [
@@ -58,16 +59,18 @@ end %>
       <% end %>
 
       <div class="flex items-center gap-1">
-        <button type="button"
-                class="inline-flex items-center justify-center w-8 h-8 rounded-lg text-secondary hover:text-primary transition-colors"
-                data-action="click->privacy-mode#toggle"
-                data-privacy-mode-target="toggle"
-                title="<%= t("layouts.application.privacy_mode") %>"
-                aria-label="<%= t("layouts.application.privacy_mode") %>"
-                aria-pressed="false">
-          <%= icon("eye-off", size: "sm", data: { privacy_mode_target: "iconOff" }) %>
-          <%= icon("eye", size: "sm", class: "hidden", data: { privacy_mode_target: "iconOn" }) %>
-        </button>
+        <% unless intro_mode %>
+          <button type="button"
+                  class="inline-flex items-center justify-center w-8 h-8 rounded-lg text-secondary hover:text-primary transition-colors"
+                  data-action="click->privacy-mode#toggle"
+                  data-privacy-mode-target="toggle"
+                  title="<%= t("layouts.application.privacy_mode") %>"
+                  aria-label="<%= t("layouts.application.privacy_mode") %>"
+                  aria-pressed="false">
+            <%= icon("eye-off", size: "sm", data: { privacy_mode_target: "iconOff" }) %>
+            <%= icon("eye", size: "sm", class: "hidden", data: { privacy_mode_target: "iconOn" }) %>
+          </button>
+        <% end %>
         <%= render "users/user_menu", user: Current.user, placement: "bottom-end", offset: 12, intro_mode: intro_mode %>
       </div>
     </nav>
@@ -90,12 +93,14 @@ end %>
         </ul>
 
         <div class="pl-2 mt-auto mx-auto flex flex-col gap-2">
-          <%= render DS::Link.new(
-            variant: "icon",
-            icon: "message-circle-question",
-            href: "https://discord.gg/36ZGBsxYEK",
-            target: "_blank"
-          ) %>
+          <% unless intro_mode %>
+            <%= render DS::Link.new(
+              variant: "icon",
+              icon: "message-circle-question",
+              href: "https://discord.gg/36ZGBsxYEK",
+              target: "_blank"
+            ) %>
+          <% end %>
 
           <%= render "users/user_menu", user: Current.user, intro_mode: intro_mode %>
         </div>
@@ -105,9 +110,9 @@ end %>
     <%# DESKTOP - Left sidebar %>
     <%= tag.div class: class_names(
         "hidden lg:block py-4 shrink-0 max-w-[320px] transition-all duration-300 border-divider",
-        Current.user.show_sidebar? ? [expanded_sidebar_class, "border-r"] : [collapsed_sidebar_class, "border-r-0"],
+        !intro_mode && Current.user.show_sidebar? ? [expanded_sidebar_class, "border-r"] : [collapsed_sidebar_class, "border-r-0"],
        ),
-       inert: !Current.user.show_sidebar?,
+       inert: intro_mode || !Current.user.show_sidebar?,
        data: { app_layout_target: "leftSidebar" } do %>
       <div class="px-4 h-full flex flex-col overflow-y-auto">
         <% if content_for?(:sidebar) %>
@@ -182,9 +187,9 @@ end %>
     <%# DESKTOP - Right sidebar %>
     <%= tag.div class: class_names(
           "hidden lg:block h-full shrink-0 max-w-[400px] transition-all duration-300 border-divider",
-          Current.user.show_ai_sidebar? ? [expanded_sidebar_class, "border-l"] : [collapsed_sidebar_class, "border-l-0"],
+          !intro_mode && Current.user.show_ai_sidebar? ? [expanded_sidebar_class, "border-l"] : [collapsed_sidebar_class, "border-l-0"],
         ),
-        inert: !Current.user.show_ai_sidebar?,
+        inert: intro_mode || !Current.user.show_ai_sidebar?,
         data: { app_layout_target: "rightSidebar" } do %>
       <%= tag.div id: "chat-container", class: "relative h-full px-4 overflow-y-auto", data: { controller: "chat hotkey", turbo_permanent: true } do %>
         <div class="flex flex-col h-full justify-between shrink-0">

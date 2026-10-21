@@ -5,7 +5,7 @@ class PagesController < ApplicationController
   before_action :ensure_intro_guest!, only: :intro
 
   def dashboard
-    if Current.user&.ui_layout_intro?
+    if Current.user&.companion?
       redirect_to chats_path and return
     end
 
