@@ -3,6 +3,7 @@ require "webauthn/fake_client"
 
 class MfaControllerTest < ActionDispatch::IntegrationTest
   setup do
+    lift_companion_restrictions
     @user = users(:family_member)
     sign_in @user
   end

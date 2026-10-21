@@ -21,12 +21,12 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
     assert_equal "Intro is only available to guest users.", flash[:alert]
   end
 
-  test "intro page is accessible for guest users" do
+  test "intro page sends guest users to the assistant" do
     sign_in @intro_user
 
     get intro_path
 
-    assert_response :ok
+    assert_redirected_to chats_path
   end
 
   test "dashboard renders sankey chart with subcategories" do

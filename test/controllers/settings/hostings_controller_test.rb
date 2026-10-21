@@ -5,6 +5,7 @@ class Settings::HostingsControllerTest < ActionDispatch::IntegrationTest
   include ProviderTestHelper
 
   setup do
+    lift_companion_restrictions
     ensure_tailwind_build
     sign_in users(:family_admin)
 

@@ -9,6 +9,8 @@ module Onboardable
     # First, we require onboarding, then once that's complete, we require an upgrade for non-subscribed users.
     def require_onboarding_and_upgrade
       return unless Current.user
+      # Chancen students confirm their country and consent in the mobile app.
+      return if Current.user.companion?
       return unless redirectable_path?(request.path)
 
       if Current.user.needs_onboarding?

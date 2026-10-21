@@ -4,6 +4,7 @@ class Transactions::CategorizesControllerTest < ActionDispatch::IntegrationTest
   include EntriesTestHelper
 
   setup do
+    lift_companion_restrictions
     sign_in @user = users(:family_admin)
     @family = @user.family
     @account = accounts(:depository)

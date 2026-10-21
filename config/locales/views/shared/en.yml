@@ -17,5 +17,6 @@ en:
     syncing_notice:
       syncing: Syncing accounts data...
     require_admin: "Only admins can perform this action"
+    companion_not_available: "That page isn't available in Companion on the web."
     trend_change:
       no_change: "no change"

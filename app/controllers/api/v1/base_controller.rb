@@ -20,6 +20,10 @@ class Api::V1::BaseController < ApplicationController
   # Skip onboarding requirements for API endpoints
   skip_before_action :require_onboarding_and_upgrade
 
+  # The web page allowlist doesn't apply: the mobile app is the companion
+  # experience, and API access is gated per endpoint.
+  skip_before_action :restrict_companion_access
+
   # Force JSON format for all API requests
   before_action :force_json_format
   # Use our custom authentication that supports both OAuth and API keys

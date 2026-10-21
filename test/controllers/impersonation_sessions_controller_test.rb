@@ -1,6 +1,10 @@
 require "test_helper"
 
 class ImpersonationSessionsControllerTest < ActionDispatch::IntegrationTest
+  setup do
+    lift_companion_restrictions
+  end
+
   test "impersonation session logs all activity for auditing" do
     sign_in impersonator = users(:sure_support_staff)
     impersonated = users(:family_member)

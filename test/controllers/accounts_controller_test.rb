@@ -4,6 +4,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
   include ActionView::RecordIdentifier
 
   setup do
+    lift_companion_restrictions
     sign_in @user = users(:family_admin)
     @account = accounts(:depository)
   end

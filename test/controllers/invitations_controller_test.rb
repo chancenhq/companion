@@ -2,6 +2,7 @@ require "test_helper"
 
 class InvitationsControllerTest < ActionDispatch::IntegrationTest
   setup do
+    lift_companion_restrictions
     sign_in @admin = users(:family_admin)
     @invitation = invitations(:one)
   end

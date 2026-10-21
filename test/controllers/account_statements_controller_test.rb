@@ -2,6 +2,7 @@ require "test_helper"
 
 class AccountStatementsControllerTest < ActionDispatch::IntegrationTest
   setup do
+    lift_companion_restrictions
     ensure_tailwind_build
     sign_in @user = users(:family_admin)
     @account = accounts(:depository)

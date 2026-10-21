@@ -4,6 +4,7 @@ class Settings::ProvidersControllerTest < ActionDispatch::IntegrationTest
   include ActiveJob::TestHelper
 
   setup do
+    lift_companion_restrictions
     sign_in users(:family_admin)
 
     # Ensure provider adapters are loaded for all tests

@@ -2,6 +2,7 @@ require "test_helper"
 
 class SophtronItemsControllerTest < ActionDispatch::IntegrationTest
   setup do
+    lift_companion_restrictions
     sign_in @user = users(:family_admin)
     @item = @user.family.sophtron_items.create!(
       name: "Sophtron",
