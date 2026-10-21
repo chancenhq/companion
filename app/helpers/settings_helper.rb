@@ -28,8 +28,16 @@ module SettingsHelper
     { name: -> { t("settings.settings_nav.feedback_label") }, path: :feedback_path }
   ]
 
+  # The only settings pages Chancen students (User#companion?) can reach.
+  COMPANION_SETTINGS_ORDER = [
+    { name: -> { t("settings.settings_nav.profile_label") }, path: :settings_profile_path },
+    { name: -> { t("settings.settings_nav.change_password_label") }, path: :edit_password_path },
+    { name: -> { t("settings.settings_nav.appearance_label") }, path: :settings_appearance_path }
+  ]
+
   def adjacent_setting(current_path, offset)
-    visible_settings = SETTINGS_ORDER.select { |setting| setting[:condition].nil? || send(setting[:condition]) }
+    settings_order = Current.user&.companion? ? COMPANION_SETTINGS_ORDER : SETTINGS_ORDER
+    visible_settings = settings_order.select { |setting| setting[:condition].nil? || send(setting[:condition]) }
     current_index = visible_settings.index { |setting| send(setting[:path]) == current_path }
     return nil unless current_index
 

@@ -13,17 +13,26 @@ class Settings::ProfilesControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
-  test "intro user sees profile without settings navigation" do
+  test "intro user sees profile with only the companion settings" do
     sign_in @intro_user
     get settings_profile_path
 
     assert_response :success
-    assert_select "#mobile-settings-nav", count: 0
     assert_select "h2", text: I18n.t("settings.profiles.show.household_title"), count: 0
-    assert_select "[data-action='app-layout#openMobileSidebar']", count: 0
-    assert_select "[data-action='app-layout#closeMobileSidebar']", count: 0
-    assert_select "[data-action='app-layout#toggleLeftSidebar']", count: 0
-    assert_select "[data-action='app-layout#toggleRightSidebar']", count: 0
+    assert_select "#mobile-settings-nav a[href='#{edit_password_path}']"
+    assert_select "#mobile-settings-nav a[href='#{settings_appearance_path}']"
+    assert_select "#mobile-settings-nav a[href='#{accounts_path}']", count: 0
+    assert_select "#mobile-settings-nav a[href='#{categories_path}']", count: 0
+    assert_select "#mobile-settings-nav a[href='#{settings_security_path}']", count: 0
+  end
+
+  test "members don't see the other people in their family" do
+    sign_in @member
+    get settings_profile_path
+
+    assert_response :success
+    assert_select "h2", text: I18n.t("settings.profiles.show.household_title"), count: 0
+    assert_no_match @admin.display_name, response.body
   end
 
   test "admin can remove a family member" do
@@ -49,6 +58,7 @@ class Settings::ProfilesControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "non-admin cannot remove members" do
+    lift_companion_restrictions
     sign_in @member
     assert_no_difference("User.count") do
       delete settings_profile_path(user_id: @admin)

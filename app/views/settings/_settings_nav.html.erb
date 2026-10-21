@@ -1,5 +1,16 @@
 <%
-nav_sections = [
+nav_sections = if Current.user&.companion?
+  [
+    {
+      header: t(".general_section_title"),
+      items: [
+        { label: t(".profile_label"), path: settings_profile_path, icon: "circle-user" },
+        { label: t(".change_password_label"), path: edit_password_path, icon: "key-round" },
+        { label: t(".appearance_label"), path: settings_appearance_path, icon: "palette" }
+      ]
+    }
+  ]
+else [
   {
     header: t(".general_section_title"),
     items: [
@@ -49,7 +60,7 @@ nav_sections = [
       { label: t(".feedback_label"), path: feedback_path, icon: "megaphone" }
     ]
   }
-]
+] end
 %>
 
 <div class="space-y-4">

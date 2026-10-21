@@ -4,6 +4,8 @@ en:
     edit:
       password: New Password
       password_challenge: Current Password
+      set_submit: Set Password
+      set_title: Set Password
       submit: Reset Password
       title: Update Password
     update:

@@ -1,10 +1,13 @@
-<h1><% t(".title") %></h1>
+<% has_password = Current.user.has_local_password? %>
+<%= content_for :page_title, has_password ? t(".title") : t(".set_title") %>
 
 <%= styled_form_with model: Current.user, url: password_path, class: "space-y-4" do |form| %>
-  <div>
-    <%= form.label :password_challenge, t(".password_challenge") %>
-    <%= form.password_field :password_challenge %>
-  </div>
+  <% if has_password %>
+    <div>
+      <%= form.label :password_challenge, t(".password_challenge") %>
+      <%= form.password_field :password_challenge %>
+    </div>
+  <% end %>
 
   <div>
     <%= form.label :password, t(".password") %>
@@ -17,6 +20,6 @@
   </div>
 
   <div>
-    <%= form.submit t(".submit") %>
+    <%= form.submit has_password ? t(".submit") : t(".set_submit") %>
   </div>
 <% end %>
