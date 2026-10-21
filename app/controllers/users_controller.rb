@@ -106,18 +106,20 @@ class UsersController < ApplicationController
     end
 
     def user_params
-      family_attrs = [ :name, :currency, :country, :date_format, :timezone, :locale, :month_start_day, :id ]
-      if Current.user.admin?
-        family_attrs.push(:moniker, :default_account_sharing)
-        family_attrs << { enabled_currencies: [] }
-      end
-
-      params.require(:user).permit(
+      permitted = [
         :first_name, :last_name, :email, :profile_image, :redirect_to, :delete_profile_image, :onboarded_at,
         :show_sidebar, :default_period, :default_account_order, :show_ai_sidebar, :ai_enabled, :theme, :set_onboarding_preferences_at, :set_onboarding_goals_at, :locale,
-        family_attributes: family_attrs,
         goals: []
-      )
+      ]
+
+      # Families are shared (a Chancen country family holds many students), so
+      # only admins may change family-wide settings.
+      if Current.user.admin?
+        family_attrs = [ :name, :currency, :country, :date_format, :timezone, :locale, :month_start_day, :id, :moniker, :default_account_sharing, { enabled_currencies: [] } ]
+        permitted.insert(-2, family_attributes: family_attrs)
+      end
+
+      params.require(:user).permit(*permitted)
     end
 
     def set_user

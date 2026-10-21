@@ -2,6 +2,7 @@ require "test_helper"
 
 class UsersControllerTest < ActionDispatch::IntegrationTest
   setup do
+    lift_companion_restrictions
     sign_in @user = users(:family_admin)
   end
 
@@ -64,6 +65,21 @@ class UsersControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to settings_profile_url
     assert_equal I18n.t("users.reset.unauthorized"), flash[:alert]
     assert_equal original_codes, @member.family.reload.enabled_currency_codes
+  end
+
+  test "non-admin cannot change shared family settings" do
+    sign_in @member = users(:family_member)
+    family = @member.family
+    original = family.slice(:name, :currency, :timezone)
+
+    patch user_url(@member), params: {
+      user: {
+        first_name: "Jakob",
+        family_attributes: { id: family.id, name: "Renamed by a member", currency: "EUR", timezone: "Africa/Nairobi" }
+      }
+    }
+
+    assert_equal original, family.reload.slice(:name, :currency, :timezone)
   end
 
   test "admin can reset family data" do
