@@ -199,6 +199,11 @@ Rails.application.routes.draw do
   get "feedback", to: "pages#feedback"
   patch "dashboard/preferences", to: "pages#update_preferences"
 
+  # Chancen Account (web placeholder pointing to the mobile app)
+  resource :my_account, only: :show do
+    get :payments
+  end
+
   resource :current_session, only: %i[update]
 
   resource :registration, only: %i[new create]

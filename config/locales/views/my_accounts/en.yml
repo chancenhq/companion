@@ -1,0 +1,13 @@
+---
+en:
+  my_accounts:
+    app_card:
+      app_store: App Store
+      get_the_app: Get the Chancen Companion app to see it.
+      google_play: Google Play
+    show:
+      body: Your ISA status, financing and repayment progress are in the Companion app.
+      title: My Account
+    payments:
+      body: Your ISA payment history is in the Companion app.
+      title: Payments

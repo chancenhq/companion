@@ -1,0 +1,32 @@
+<%# locals: (title:, body:) %>
+
+<div class="mx-auto max-w-2xl py-6">
+  <div class="bg-container shadow-border-xs rounded-2xl p-8 text-center space-y-4">
+    <div class="flex justify-center">
+      <%= image_tag "logomark-color.svg", class: "w-16 h-16" %>
+    </div>
+
+    <h1 class="text-xl font-semibold text-primary"><%= title %></h1>
+    <p class="text-secondary"><%= body %></p>
+    <p class="text-secondary text-sm"><%= t("my_accounts.app_card.get_the_app") %></p>
+
+    <div class="flex flex-col sm:flex-row justify-center gap-3">
+      <%= render DS::Link.new(
+        text: t("my_accounts.app_card.google_play"),
+        icon: "play",
+        href: companion_play_store_url,
+        variant: "primary",
+        target: "_blank",
+        rel: "noopener noreferrer"
+      ) %>
+      <%= render DS::Link.new(
+        text: t("my_accounts.app_card.app_store"),
+        icon: "smartphone",
+        href: companion_app_store_url,
+        variant: "outline",
+        target: "_blank",
+        rel: "noopener noreferrer"
+      ) %>
+    </div>
+  </div>
+</div>
