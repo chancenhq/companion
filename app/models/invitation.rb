@@ -19,6 +19,7 @@ class Invitation < ApplicationRecord
 
   before_validation :normalize_email
   before_validation :generate_token, on: :create
+  before_create :remove_expired_duplicates_in_family
 
   # Companion invites do not expire (issue #148): they stay valid until used or
   # explicitly revoked by an admin. A nil expires_at means "never expires";
@@ -60,6 +61,30 @@ class Invitation < ApplicationRecord
 
     def normalize_email
       self.email = email.to_s.strip.downcase if email.present?
+    end
+
+    # Legacy invites created before #148 carry a 3-day expiry. An expired,
+    # never-accepted row still occupies the partial unique index
+    # `index_invitations_on_email_and_family_id_pending` (predicate
+    # `accepted_at IS NULL`), but the `pending` scope treats it as gone because
+    # of the `expires_at > now` clause. The duplicate-guard validation therefore
+    # passes, yet the INSERT collides with the index and raises RecordNotUnique,
+    # blocking re-invites of the same email to the family. Removing the stale row
+    # inside the create transaction frees the slot. It runs only after validations
+    # pass, so a still-pending invite (nil or future expiry) is never removed here.
+    def remove_expired_duplicates_in_family
+      return if email.blank?
+
+      scope = self.class.where(family_id: family_id, accepted_at: nil)
+                        .where("expires_at <= ?", Time.current)
+
+      scope = if self.class.encryption_ready?
+        scope.where(email: email)
+      else
+        scope.where("LOWER(email) = ?", email.to_s.strip.downcase)
+      end
+
+      scope.delete_all
     end
 
     def no_other_pending_invitation
