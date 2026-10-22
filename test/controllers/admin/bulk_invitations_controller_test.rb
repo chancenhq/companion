@@ -88,6 +88,13 @@ class Admin::BulkInvitationsControllerTest < ActionDispatch::IntegrationTest
     assert_response :unprocessable_entity
   end
 
+  test "preserves the chosen role when re-rendering the form after an empty email list" do
+    post preview_admin_bulk_invitations_path, params: { family_id: @family.id, emails: " ", role: "member" }
+
+    assert_response :unprocessable_entity
+    assert_select "select[name=role] option[value=member][selected]"
+  end
+
   test "reserved rows include a revoke link to the created invitation" do
     post admin_bulk_invitations_path, params: { family_id: @family.id, emails: "a@example.com" }
 

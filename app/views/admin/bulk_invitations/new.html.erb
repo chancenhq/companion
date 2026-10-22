@@ -32,7 +32,7 @@
         <p class="text-xs text-secondary mb-2"><%= t(".form.role_hint") %></p>
         <%= f.select :role,
               [ [ t(".form.role_guest"), "guest" ], [ t(".form.role_member"), "member" ] ],
-              { selected: "guest" },
+              { selected: @role.presence || "guest" },
               class: "w-full rounded-lg border border-primary px-3 py-2 text-sm bg-container-inset text-primary" %>
       </div>
 
