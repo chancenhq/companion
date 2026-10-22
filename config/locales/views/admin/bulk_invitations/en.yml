@@ -12,6 +12,10 @@ en:
           emails_label: "Email addresses"
           emails_hint: "Separate multiple emails with commas, semicolons, or new lines."
           emails_placeholder: "student@example.com\nanother@example.com"
+          role_label: "Join as"
+          role_hint: "Students should join as Guest for the Companion experience (intro screen + assistant). Member gives the full finance dashboard."
+          role_guest: "Guest (Companion student)"
+          role_member: "Member (full dashboard)"
           move_existing_label: "Also move students who already have an account into this family"
           move_existing_hint: "Leave unticked to report existing accounts without changing them."
           submit: "Reserve places"
@@ -26,6 +30,11 @@ en:
         count_value:
           one: "1 email"
           other: "%{count} emails"
+        role_label: "Join as"
+        role:
+          guest: "Guest (Companion student)"
+          member: "Member (full dashboard)"
+        move_existing_role_note: "Existing accounts moved into this family will be set to %{role}."
         emails_label: "These students will be processed:"
         back: "Back"
         confirm: "Confirm and reserve places"
