@@ -1,7 +1,8 @@
 require "posthog"
 
 Rails.configuration.x.posthog = ActiveSupport::OrderedOptions.new
-Rails.configuration.x.posthog.api_key = ENV["POSTHOG_KEY"].presence
+# POSTHOG_KEY is canonical; POSTHOG_PUBLIC_KEY is a deprecated alias kept as a fallback.
+Rails.configuration.x.posthog.api_key = ENV["POSTHOG_KEY"].presence || ENV["POSTHOG_PUBLIC_KEY"].presence
 Rails.configuration.x.posthog.host = ENV.fetch("POSTHOG_HOST", "https://us.i.posthog.com")
 
 if (api_key = Rails.configuration.x.posthog.api_key).present?
