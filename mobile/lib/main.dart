@@ -12,7 +12,6 @@ import 'providers/my_account_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/backend_config_screen.dart';
 import 'screens/country_selection_screen.dart';
-import 'screens/email_verification_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/biometric_lock_screen.dart';
 import 'screens/main_navigation_screen.dart';
@@ -386,12 +385,9 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
             return const CountrySelectionScreen();
           }
 
-          // Email sign-ups confirm their address once; the
-          // assistant stays available if they continue without verifying.
-          if (authProvider.showEmailVerificationPrompt) {
-            _trackScreenIfChanged('email_verification');
-            return const EmailVerificationScreen();
-          }
+          // Email sign-ups are nudged to verify via a dismissible banner inside
+          // MainNavigationScreen (not a full-screen gate); the assistant and the
+          // rest of the app stay usable while the financial data stays locked.
 
           // SSO users must set a password before they can be locked out.
           if (authProvider.user?.hasPassword == false) {
