@@ -48,6 +48,7 @@ en:
         invitations:
           pending_label: "Invited (pending)"
           expires: "Expires %{date}"
+          no_expiry: "No expiry"
           delete: "Delete"
           delete_all: "Delete All"
       update:
