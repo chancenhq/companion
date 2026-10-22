@@ -19,7 +19,30 @@ class Admin::BulkInvitationsControllerTest < ActionDispatch::IntegrationTest
     invitation = Invitation.find_by!(email: "a@example.com")
     assert_equal @family, invitation.family
     assert invitation.pending?
+    assert_nil invitation.expires_at, "Companion invites should not expire (#148)"
+    assert_equal "guest", invitation.role, "bulk invite defaults to guest"
     assert_equal "private", @family.reload.default_account_sharing
+  end
+
+  test "honours the chosen role" do
+    post admin_bulk_invitations_path, params: { family_id: @family.id, emails: "a@example.com", role: "member" }
+
+    assert_equal "member", Invitation.find_by!(email: "a@example.com").role
+  end
+
+  test "coerces an unexpected role to guest and never creates admins" do
+    post admin_bulk_invitations_path, params: { family_id: @family.id, emails: "a@example.com", role: "admin" }
+
+    assert_equal "guest", Invitation.find_by!(email: "a@example.com").role
+  end
+
+  test "moving an existing account applies the chosen role to the user" do
+    student = users(:family_member)
+
+    post admin_bulk_invitations_path, params: { family_id: @family.id, emails: student.email, role: "guest", move_existing: "1" }
+
+    assert_equal @family, student.reload.family
+    assert_equal "guest", student.role
   end
 
   test "leaves students who already have an account where they are by default" do
@@ -63,6 +86,13 @@ class Admin::BulkInvitationsControllerTest < ActionDispatch::IntegrationTest
     post preview_admin_bulk_invitations_path, params: { family_id: @family.id, emails: " " }
 
     assert_response :unprocessable_entity
+  end
+
+  test "preserves the chosen role when re-rendering the form after an empty email list" do
+    post preview_admin_bulk_invitations_path, params: { family_id: @family.id, emails: " ", role: "member" }
+
+    assert_response :unprocessable_entity
+    assert_select "select[name=role] option[value=member][selected]"
   end
 
   test "reserved rows include a revoke link to the created invitation" do

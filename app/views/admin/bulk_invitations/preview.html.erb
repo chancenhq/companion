@@ -25,6 +25,13 @@
       <span class="text-sm text-secondary"><%= t(".count_label") %></span>
       <span class="text-sm font-medium text-primary"><%= t(".count_value", count: @emails.size) %></span>
     </div>
+    <div class="flex items-center justify-between px-4 py-3 rounded-lg border border-primary bg-container-inset">
+      <span class="text-sm text-secondary"><%= t(".role_label") %></span>
+      <span class="text-sm font-medium text-primary"><%= t(".role.#{@role}") %></span>
+    </div>
+    <% if @move_existing %>
+      <p class="text-xs text-secondary px-1"><%= t(".move_existing_role_note", role: t(".role.#{@role}")) %></p>
+    <% end %>
 
     <div class="px-4 py-3 rounded-lg border border-primary bg-container-inset">
       <p class="text-sm text-secondary mb-2"><%= t(".emails_label") %></p>
@@ -43,6 +50,7 @@
       <%= f.hidden_field :family_id, value: @family.id %>
       <%= f.hidden_field :emails, value: @raw_emails %>
       <%= f.hidden_field :move_existing, value: @move_existing ? "1" : "0" %>
+      <%= f.hidden_field :role, value: @role %>
       <%= render DS::Button.new(variant: :primary, size: :md, type: "submit", text: t(".confirm")) %>
     <% end %>
   </div>

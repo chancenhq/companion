@@ -27,6 +27,15 @@
               class: "w-full rounded-lg border border-primary px-3 py-2 text-sm bg-container-inset text-primary font-mono resize-y" %>
       </div>
 
+      <div>
+        <%= f.label :role, t(".form.role_label"), class: "block text-sm font-medium text-primary mb-1" %>
+        <p class="text-xs text-secondary mb-2"><%= t(".form.role_hint") %></p>
+        <%= f.select :role,
+              [ [ t(".form.role_guest"), "guest" ], [ t(".form.role_member"), "member" ] ],
+              { selected: @role.presence || "guest" },
+              class: "w-full rounded-lg border border-primary px-3 py-2 text-sm bg-container-inset text-primary" %>
+      </div>
+
       <label class="flex items-start gap-2 text-sm text-primary">
         <%= f.check_box :move_existing, class: "mt-1" %>
         <span>
