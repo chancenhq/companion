@@ -68,14 +68,23 @@ void main() {
     );
   });
 
-  testWidgets('app wires Sure light and dark themes', (tester) async {
+  testWidgets('app wires Chancen-branded light and dark themes', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
 
     await tester.pumpWidget(const SureApp());
 
     final materialApp = tester.widget<MaterialApp>(find.byType(MaterialApp));
+
+    // The app layers Chancen branding over SureTheme (see _chancenBranded in
+    // main.dart): a green brand accent in both modes, and "darker than black"
+    // surfaces in dark mode. Light surfaces stay the SureTheme value.
+    const chancenGreen = Color(0xFF62A446);
+    expect(materialApp.theme?.colorScheme.primary, chancenGreen);
+    expect(materialApp.darkTheme?.colorScheme.primary, chancenGreen);
     expect(materialApp.theme?.colorScheme.surface, SureTokens.light.surface);
-    expect(materialApp.darkTheme?.colorScheme.surface, SureTokens.dark.surface);
+    expect(materialApp.darkTheme?.colorScheme.surface, const Color(0xFF030303));
     expect(materialApp.themeMode, ThemeMode.system);
   });
 }
