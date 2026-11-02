@@ -25,6 +25,44 @@ import 'theme/sure_theme.dart';
 import 'l10n/app_localizations.dart';
 import 'package:upgrader/upgrader.dart';
 
+/// Chancen brand green. Layered over companion-new's SureTheme so the design
+/// system stays intact but the brand/accent reads as Chancen on mobile.
+const Color _chancenGreen = Color(0xFF62A446);
+
+/// Re-skins a SureTheme [ThemeData] with the Chancen green brand: primary
+/// accent (send button, switches, progress), the FAB, and primary buttons.
+/// Disabled states fall back to Material defaults by resolving to null.
+ThemeData _chancenBranded(ThemeData base) {
+  WidgetStateProperty<Color?> brandUnlessDisabled(Color color) {
+    return WidgetStateProperty.resolveWith(
+      (states) => states.contains(WidgetState.disabled) ? null : color,
+    );
+  }
+
+  return base.copyWith(
+    colorScheme: base.colorScheme.copyWith(
+      primary: _chancenGreen,
+      onPrimary: Colors.white,
+    ),
+    floatingActionButtonTheme: base.floatingActionButtonTheme.copyWith(
+      backgroundColor: _chancenGreen,
+      foregroundColor: Colors.white,
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: (base.elevatedButtonTheme.style ?? const ButtonStyle()).copyWith(
+        backgroundColor: brandUnlessDisabled(_chancenGreen),
+        foregroundColor: brandUnlessDisabled(Colors.white),
+      ),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: (base.filledButtonTheme.style ?? const ButtonStyle()).copyWith(
+        backgroundColor: brandUnlessDisabled(_chancenGreen),
+        foregroundColor: brandUnlessDisabled(Colors.white),
+      ),
+    ),
+  );
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await ApiConfig.initialize();
@@ -106,8 +144,8 @@ class SureApp extends StatelessWidget {
           supportedLocales: AppLocalizations.supportedLocales,
           debugShowCheckedModeBanner: false,
           navigatorObservers: TelemetryService.instance.navigatorObservers,
-          theme: SureTheme.light,
-          darkTheme: SureTheme.dark,
+          theme: _chancenBranded(SureTheme.light),
+          darkTheme: _chancenBranded(SureTheme.dark),
           themeMode: themeProvider.themeMode,
           routes: {
             '/config': (context) => const BackendConfigScreen(),
