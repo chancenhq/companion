@@ -31,7 +31,9 @@ const Color _chancenGreen = Color(0xFF62A446);
 
 /// Re-skins a SureTheme [ThemeData] with the Chancen green brand: primary
 /// accent (send button, switches, progress), the FAB, and primary buttons.
-/// Disabled states fall back to Material defaults by resolving to null.
+/// In dark mode it also applies Chancen's "darker than black" surfaces so the
+/// theme reads as near-pure black (companion's original dark look) with no
+/// green surface tint. Disabled states fall back to Material defaults.
 ThemeData _chancenBranded(ThemeData base) {
   WidgetStateProperty<Color?> brandUnlessDisabled(Color color) {
     return WidgetStateProperty.resolveWith(
@@ -39,11 +41,32 @@ ThemeData _chancenBranded(ThemeData base) {
     );
   }
 
-  return base.copyWith(
-    colorScheme: base.colorScheme.copyWith(
-      primary: _chancenGreen,
-      onPrimary: Colors.white,
-    ),
+  final isDark = base.brightness == Brightness.dark;
+
+  var scheme = base.colorScheme.copyWith(
+    primary: _chancenGreen,
+    onPrimary: Colors.white,
+    // Material 3 tints elevated surfaces with `primary`; a green primary
+    // otherwise leaves a green cast on dark surfaces. Keep surfaces flat.
+    surfaceTint: Colors.transparent,
+  );
+
+  if (isDark) {
+    // Chancen "darker than black" dark surfaces (commit #13 / #25).
+    scheme = scheme.copyWith(
+      surface: const Color(0xFF030303),
+      surfaceContainerLowest: const Color(0xFF000000),
+      surfaceContainerLow: const Color(0xFF030303),
+      surfaceContainer: const Color(0xFF070707),
+      surfaceContainerHigh: const Color(0xFF0A0A0A),
+      surfaceContainerHighest: const Color(0xFF0E0E0E),
+      onSurface: const Color(0xFFF0F0F0),
+      onSurfaceVariant: const Color(0xFFC0C0C0),
+    );
+  }
+
+  var themed = base.copyWith(
+    colorScheme: scheme,
     floatingActionButtonTheme: base.floatingActionButtonTheme.copyWith(
       backgroundColor: _chancenGreen,
       foregroundColor: Colors.white,
@@ -61,6 +84,22 @@ ThemeData _chancenBranded(ThemeData base) {
       ),
     ),
   );
+
+  if (isDark) {
+    // SureTheme pins these to its dark grey; black them out to match companion.
+    themed = themed.copyWith(
+      scaffoldBackgroundColor: const Color(0xFF030303),
+      appBarTheme: themed.appBarTheme.copyWith(
+        backgroundColor: const Color(0xFF030303),
+      ),
+      cardTheme: themed.cardTheme.copyWith(color: const Color(0xFF070707)),
+      inputDecorationTheme: themed.inputDecorationTheme.copyWith(
+        fillColor: const Color(0xFF0A0A0A),
+      ),
+    );
+  }
+
+  return themed;
 }
 
 void main() async {
