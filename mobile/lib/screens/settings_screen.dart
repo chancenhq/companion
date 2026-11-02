@@ -200,7 +200,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadCustomHeaders() async {
     try {
-      final headers = await CustomProxyHeadersService.instance.loadHeaders();
+      final headers = await CustomProxyHeadersService.instance.loadHeaders(backendUrl: ApiConfig.baseUrl);
       if (mounted) {
         setState(() => _customHeaders = headers);
       }
@@ -455,7 +455,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final l = AppLocalizations.of(context);
     final formKey = GlobalKey<FormState>();
     final latestHeaders =
-        await CustomProxyHeadersService.instance.loadHeaders();
+        await CustomProxyHeadersService.instance.loadHeaders(backendUrl: ApiConfig.baseUrl);
     if (!mounted) return;
 
     setState(() => _customHeaders = latestHeaders);
@@ -509,7 +509,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (saved != true) return;
 
     try {
-      await CustomProxyHeadersService.instance.saveHeaders(draftHeaders);
+      await CustomProxyHeadersService.instance.saveHeaders(draftHeaders, backendUrl: ApiConfig.baseUrl);
       ApiConfig.setCustomProxyHeaders(draftHeaders);
       if (!mounted) return;
       setState(() => _customHeaders = draftHeaders);

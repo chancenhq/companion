@@ -1,9 +1,9 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
 import '../providers/privacy_provider.dart';
-import '../widgets/sure_logo.dart';
 import 'chat_list_screen.dart';
 import 'dashboard_screen.dart';
 import 'intro_screen.dart';
@@ -49,15 +49,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     AuthProvider authProvider,
     bool introLayout,
   ) async {
-    const chatIndex = 1;
-
-    if (index == chatIndex && !authProvider.aiEnabled) {
-      final enabled = await _showEnableAiPrompt();
-      if (!enabled) {
-        return;
-      }
-    }
-
     if (mounted) {
       setState(() {
         _currentIndex = index;
@@ -119,10 +110,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 
   PreferredSizeWidget _buildTopBar(AuthProvider authProvider, bool introLayout) {
+    final bg = Theme.of(context).brightness == Brightness.light ? Colors.white : Colors.black;
     return AppBar(
       automaticallyImplyLeading: false,
       toolbarHeight: 60,
       elevation: 0,
+      scrolledUnderElevation: 0,
+      backgroundColor: bg,
       titleSpacing: 0,
       centerTitle: false,
       actionsPadding: EdgeInsets.zero,
@@ -130,9 +124,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         width: 60,
         height: 60,
         alignment: Alignment.topLeft,
-        child: const Padding(
-          padding: EdgeInsets.only(top: 12, left: 12),
-          child: SureLogo(),
+        child: Padding(
+          padding: const EdgeInsets.only(top: 12, left: 12),
+          child: SvgPicture.asset(
+            'assets/images/companion-logo.svg',
+            width: 36,
+            height: 36,
+          ),
         ),
       ),
       actions: [
@@ -176,62 +174,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  Future<bool> _showEnableAiPrompt() async {
-    final l = AppLocalizations.of(context);
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-
-    final shouldEnable = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        final dl = AppLocalizations.of(context);
-        return AlertDialog(
-          title: Text(dl.navEnableAiChatTitle),
-          content: Text(dl.navEnableAiChatContent),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: Text(dl.navEnableAiChatNotNow),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: Text(dl.navEnableAiChatConfirm),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (shouldEnable != true) {
-      return false;
-    }
-
-    final enabled = await authProvider.enableAi();
-
-    if (!enabled && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(authProvider.errorMessage ?? l.navEnableAiChatFailed),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-
-    return enabled;
-  }
-
   int _resolveBottomSelectedIndex(List<NavigationDestination> destinations) {
-    if (destinations.isEmpty) {
-      return 0;
-    }
-
-    if (_currentIndex < 0) {
-      return 0;
-    }
-
-    if (_currentIndex >= destinations.length) {
-      return destinations.length - 1;
-    }
-
+    if (destinations.isEmpty) return 0;
+    if (_currentIndex < 0) return 0;
+    if (_currentIndex >= destinations.length) return destinations.length - 1;
     return _currentIndex;
   }
 
@@ -248,18 +194,21 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         );
         final destinations = _buildDestinations(introLayout, l);
         final bottomNavIndex = _resolveBottomSelectedIndex(destinations);
+        final bg = Theme.of(context).brightness == Brightness.light ? Colors.white : Colors.black;
 
         if (_currentIndex >= screens.length) {
           _currentIndex = 0;
         }
 
         return Scaffold(
+          backgroundColor: bg,
           appBar: _buildTopBar(authProvider, introLayout),
           body: IndexedStack(
             index: _currentIndex,
             children: screens,
           ),
           bottomNavigationBar: NavigationBar(
+            backgroundColor: bg,
             selectedIndex: bottomNavIndex,
             onDestinationSelected: (index) {
               _handleDestinationSelected(index, authProvider, introLayout);

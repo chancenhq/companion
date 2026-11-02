@@ -23,6 +23,8 @@ class ChatProvider with ChangeNotifier {
   bool _isSendingMessage = false;
   bool _isWaitingForResponse = false;
   String? _errorMessage;
+  bool _aiConsentRequired = false;
+  bool _aiUnavailable = false;
   Timer? _pollingTimer;
   DateTime? _pollingStartTime;
   bool _isPollingRequestInFlight = false;
@@ -45,6 +47,8 @@ class ChatProvider with ChangeNotifier {
   bool get isWaitingForResponse => _isWaitingForResponse;
   bool get isPolling => _pollingTimer != null;
   String? get errorMessage => _errorMessage;
+  bool get aiConsentRequired => _aiConsentRequired;
+  bool get aiUnavailable => _aiUnavailable;
 
   /// True when the current chat could not load all of its message pages, so the
   /// rendered history is a partial, older slice. The UI can surface a
@@ -60,6 +64,8 @@ class ChatProvider with ChangeNotifier {
   }) async {
     _isLoading = true;
     _errorMessage = null;
+    _aiConsentRequired = false;
+    _aiUnavailable = false;
     notifyListeners();
 
     try {
@@ -72,12 +78,56 @@ class ChatProvider with ChangeNotifier {
       if (result['success'] == true) {
         _chats = result['chats'] as List<Chat>;
         _errorMessage = null;
+      } else if (result['error'] == 'feature_disabled') {
+        // Treat missing ai_available as true — old server versions don't send it,
+        // and the common case is opt-in consent, not admin-level unavailability.
+        final aiAvailable = result['ai_available'] != false;
+        _aiConsentRequired = aiAvailable;
+        _aiUnavailable = !aiAvailable;
       } else {
         _errorMessage = result['error'] ?? 'Failed to fetch chats';
       }
     } catch (e) {
       _log.warning('ChatProvider', 'fetchChats failed: ${e.runtimeType}');
       _errorMessage = 'Something went wrong. Please try again.';
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Enable AI for the current user, then reload chats on success
+  Future<bool> enableAi({required String accessToken}) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final result = await _chatService.enableAi(accessToken: accessToken);
+
+      if (result['success'] == true) {
+        _aiConsentRequired = false;
+        _aiUnavailable = false;
+        _isLoading = false;
+        notifyListeners();
+        await fetchChats(accessToken: accessToken);
+        return true;
+      }
+
+      final error = result['error'] as String? ?? '';
+      if (error == 'ai_unavailable') {
+        _aiConsentRequired = false;
+        _aiUnavailable = true;
+      } else if (error == 'unauthorized') {
+        _errorMessage = 'Session expired. Please sign in again.';
+      } else {
+        _errorMessage = 'Could not enable AI. Please try again.';
+      }
+      return false;
+    } catch (e) {
+      debugPrint('ChatProvider enableAi failed: ${e.runtimeType}');
+      _errorMessage = 'Could not enable AI. Please try again.';
+      return false;
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -112,6 +162,14 @@ class ChatProvider with ChangeNotifier {
         _currentChat = loaded.chat;
         _hasIncompleteHistory = !loaded.complete;
         _errorMessage = null;
+
+        // If the last message is from the user, the AI response is still pending
+        // (e.g. user exited mid-generation and re-entered). Resume polling so the
+        // response arrives without requiring the user to send another message.
+        final lastMsg = _currentChat!.messages.lastOrNull;
+        if (lastMsg != null && lastMsg.isUser) {
+          _startPolling(accessToken, chatId);
+        }
       } else {
         _errorMessage = result['error'] ?? 'Failed to fetch chat';
       }
@@ -580,6 +638,14 @@ class ChatProvider with ChangeNotifier {
           'The assistant took too long to respond. Please try again.';
       notifyListeners();
     }
+  }
+
+  /// Clear the loaded chat list and any list-level error.
+  void clearChats() {
+    _chats = [];
+    _errorMessage = null;
+    _isLoading = false;
+    notifyListeners();
   }
 
   /// Clear current chat

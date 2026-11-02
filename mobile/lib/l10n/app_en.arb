@@ -1,7 +1,7 @@
 {
   "@@locale": "en",
 
-  "appTitle": "Sure Finances",
+  "appTitle": "Chancen Companion",
   "@appTitle": { "description": "Application title shown in the OS task switcher." },
 
   "commonCancel": "Cancel",

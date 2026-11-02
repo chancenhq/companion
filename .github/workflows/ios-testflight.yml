@@ -209,7 +209,7 @@ jobs:
         if: ${{ steps.check_prereqs.outputs.enabled == 'true' }}
         env:
           IOS_VERSION: ${{ steps.version.outputs.ios_version }}
-          APP_BUNDLE_ID: ${{ vars.IOS_APP_BUNDLE_ID || 'am.sure.mobile' }}
+          APP_BUNDLE_ID: ${{ vars.IOS_APP_BUNDLE_ID || 'international.chancen.companion' }}
           IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
           PROFILE_NAME: ${{ secrets.IOS_PROVISIONING_PROFILE_NAME }}
           IOS_DISTRIBUTION_CERT_NAME: ${{ secrets.IOS_DISTRIBUTION_CERT_NAME }}
@@ -286,6 +286,16 @@ jobs:
             exit 1
           fi
 
+          REPO_NAME="${GITHUB_REPOSITORY##*/}"
+          echo "Resolved APP_BUNDLE_ID: $APP_BUNDLE_ID"
+          echo "Resolved APP_BUNDLE_IDENTIFIER: $APP_BUNDLE_IDENTIFIER"
+          echo "Repo name: $REPO_NAME"
+
+          if [[ "$APP_BUNDLE_ID" != *"$REPO_NAME"* ]]; then
+            echo "::error::APP_BUNDLE_ID must include repository name '$REPO_NAME'. Current value: '$APP_BUNDLE_ID'."
+            exit 1
+          fi
+
           echo "Using iOS version: $IOS_VERSION"
           echo "Using iOS build number: $IOS_BUILD_NUMBER"
 
@@ -303,6 +313,7 @@ jobs:
             -destination 'generic/platform=iOS' \
             MARKETING_VERSION="$IOS_VERSION" \
             CURRENT_PROJECT_VERSION="$IOS_BUILD_NUMBER" \
+            APP_BUNDLE_IDENTIFIER="$APP_BUNDLE_ID" \
             archive
 
           mkdir -p "$EXPORT_PATH"

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -7,7 +7,6 @@ import '../models/sso_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_config.dart';
 import '../widgets/sure_button.dart';
-import '../widgets/sure_logo.dart';
 import 'backend_config_screen.dart';
 import '../l10n/app_localizations.dart';
 
@@ -181,7 +180,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   children: [
                     const SizedBox(height: 48),
                     // Logo/Title
-                    const SureLogo(size: 80),
+                    SvgPicture.asset(
+                      'assets/images/companion-logo.svg',
+                      width: 80,
+                      height: 80,
+                    ),
                     const SizedBox(height: 24),
                     Text.rich(
                       TextSpan(
@@ -492,7 +495,7 @@ class _LoginScreenState extends State<LoginScreen> {
 }
 
 /// API-key login dialog. Owns its [TextEditingController] so it is disposed
-/// with the dialog's State — never leaked (barrier/back dismissal) and never
+/// with the dialog's State â€” never leaked (barrier/back dismissal) and never
 /// disposed while the field is still mounted. Pops `true` on a successful
 /// sign-in, `false` on a failed attempt, and `null` when dismissed.
 @visibleForTesting

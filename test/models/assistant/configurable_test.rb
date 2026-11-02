@@ -108,4 +108,3 @@ class AssistantConfigurableTest < ActiveSupport::TestCase
       "Never mention internal tool or function names in your responses"
   end
 end
-

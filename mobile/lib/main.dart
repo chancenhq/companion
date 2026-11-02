@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -30,7 +30,7 @@ void main() async {
   await ApiConfig.initialize();
 
   // Add initial log entry
-  LogService.instance.info('App', 'Sure app starting...');
+  LogService.instance.info('App', 'Chancen Companion starting...');
 
   // Read the privacy preference before the first frame so money values are
   // never briefly rendered unmasked for a user who enabled "Hide amounts".
@@ -335,7 +335,7 @@ class _SureUpgraderMessages extends UpgraderMessages {
 
   @override
   String get body =>
-      '{{appName}} {{currentAppStoreVersion}} is now available — '
+      '{{appName}} {{currentAppStoreVersion}} is now available â€” '
       'you have {{currentInstalledVersion}}.\n\n'
       "What's new? Check the store for release notes.";
 
