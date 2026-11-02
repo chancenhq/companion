@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -514,14 +515,10 @@ class _MessageBubble extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!isUser)
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: colorScheme.primaryContainer,
-              child: Icon(
-                Icons.smart_toy,
-                size: 18,
-                color: colorScheme.onPrimaryContainer,
-              ),
+            SvgPicture.asset(
+              'assets/images/companion-logo.svg',
+              width: 32,
+              height: 32,
             ),
           const SizedBox(width: 8),
           Flexible(
@@ -564,7 +561,10 @@ class _MessageBubble extends StatelessWidget {
                               return Image.asset(config.uri.toString());
                             },
                           ),
-                        if (message.toolCalls != null &&
+                        // Chancen: raw tool-call chips are debug-only; students
+                        // never see them.
+                        if (kDebugMode &&
+                            message.toolCalls != null &&
                             message.toolCalls!.isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 8),
