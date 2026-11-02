@@ -45,11 +45,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isTogglingBiometric = false;
   List<CustomProxyHeader> _customHeaders = [];
   bool _isCheckingForUpdate = false;
+  // Chancen: developer/connection tools (proxy headers, clear local data, debug
+  // logs) are hidden from students; a 7-tap on the avatar toggles them.
+  bool _devMode = false;
+  int _devTapCount = 0;
   late final Upgrader _manualUpgrader;
 
   String _displayInitial(String? displayName) {
     final trimmed = displayName?.trim() ?? '';
     return trimmed.isEmpty ? 'U' : trimmed[0].toUpperCase();
+  }
+
+  void _onAvatarTap() {
+    _devTapCount++;
+    if (_devTapCount >= 7) {
+      _devTapCount = 0;
+      setState(() => _devMode = !_devMode);
+      if (_devMode && mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Developer mode enabled')));
+      }
+    }
   }
 
   @override
@@ -78,7 +95,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
 
       final available = _manualUpgrader.isUpdateAvailable();
-      final storeVersion = _manualUpgrader.versionInfo?.appStoreVersion?.toString();
+      final storeVersion = _manualUpgrader.versionInfo?.appStoreVersion
+          ?.toString();
       final storeUrl = _manualUpgrader.versionInfo?.appStoreListingURL;
 
       if (available) {
@@ -89,13 +107,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppLocalizations.of(context).settingsNoUpdateAvailable)),
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(context).settingsNoUpdateAvailable,
+            ),
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppLocalizations.of(context).settingsUpdateError)),
+          SnackBar(
+            content: Text(AppLocalizations.of(context).settingsUpdateError),
+          ),
         );
       }
     } finally {
@@ -108,7 +132,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(AppLocalizations.of(ctx).settingsUpdateAvailableTitle),
-        content: Text(AppLocalizations.of(ctx).settingsUpdateAvailableContent(version)),
+        content: Text(
+          AppLocalizations.of(ctx).settingsUpdateAvailableContent(version),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -129,7 +155,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           : false;
       if (!opened && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppLocalizations.of(context).settingsUpdateOpenStoreError)),
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(context).settingsUpdateOpenStoreError,
+            ),
+          ),
         );
       }
     }
@@ -166,7 +196,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         if (!mounted) return;
         if (!success) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(AppLocalizations.of(context).settingsBiometricFailed)),
+            SnackBar(
+              content: Text(
+                AppLocalizations.of(context).settingsBiometricFailed,
+              ),
+            ),
           );
           return;
         }
@@ -200,7 +234,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadCustomHeaders() async {
     try {
-      final headers = await CustomProxyHeadersService.instance.loadHeaders(backendUrl: ApiConfig.baseUrl);
+      final headers = await CustomProxyHeadersService.instance.loadHeaders(
+        backendUrl: ApiConfig.baseUrl,
+      );
       if (mounted) {
         setState(() => _customHeaders = headers);
       }
@@ -220,22 +256,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (context) {
         final l = AppLocalizations.of(context);
         return AlertDialog(
-        title: Text(l.settingsClearDataTitle),
-        content: Text(l.settingsClearDataContent),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(l.commonCancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(
-              foregroundColor: Theme.of(context).colorScheme.error,
+          title: Text(l.settingsClearDataTitle),
+          content: Text(l.settingsClearDataContent),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(l.commonCancel),
             ),
-            child: Text(l.settingsClearData),
-          ),
-        ],
-      );},
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error,
+              ),
+              child: Text(l.settingsClearData),
+            ),
+          ],
+        );
+      },
     );
 
     if (confirmed == true && context.mounted) {
@@ -286,12 +323,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _launchContactUrl(BuildContext context) async {
     final l = AppLocalizations.of(context);
-    final uri = Uri.parse('https://discord.com/invite/36ZGBsxYEK');
+    final uri = Uri.parse('https://chat.whatsapp.com/IVBXS2QtJpqIFlZYoSPD1t');
     final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!launched && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l.settingsContactOpenLinkError)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l.settingsContactOpenLinkError)));
     }
   }
 
@@ -404,8 +441,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return;
       }
 
-      final result =
-          await UserService().deleteAccount(accessToken: accessToken);
+      final result = await UserService().deleteAccount(
+        accessToken: accessToken,
+      );
 
       if (!context.mounted) return;
 
@@ -430,19 +468,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (context) {
         final l = AppLocalizations.of(context);
         return AlertDialog(
-        title: Text(l.settingsSignOutTitle),
-        content: Text(l.settingsSignOutContent),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(l.commonCancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(l.settingsSignOut),
-          ),
-        ],
-      );},
+          title: Text(l.settingsSignOutTitle),
+          content: Text(l.settingsSignOutContent),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(l.commonCancel),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(l.settingsSignOut),
+            ),
+          ],
+        );
+      },
     );
 
     if (confirmed == true && context.mounted) {
@@ -454,8 +493,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _showCustomHeadersDialog() async {
     final l = AppLocalizations.of(context);
     final formKey = GlobalKey<FormState>();
-    final latestHeaders =
-        await CustomProxyHeadersService.instance.loadHeaders(backendUrl: ApiConfig.baseUrl);
+    final latestHeaders = await CustomProxyHeadersService.instance.loadHeaders(
+      backendUrl: ApiConfig.baseUrl,
+    );
     if (!mounted) return;
 
     setState(() => _customHeaders = latestHeaders);
@@ -482,8 +522,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Text(
                     l.settingsProxyHeadersNote,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -509,13 +549,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (saved != true) return;
 
     try {
-      await CustomProxyHeadersService.instance.saveHeaders(draftHeaders, backendUrl: ApiConfig.baseUrl);
+      await CustomProxyHeadersService.instance.saveHeaders(
+        draftHeaders,
+        backendUrl: ApiConfig.baseUrl,
+      );
       ApiConfig.setCustomProxyHeaders(draftHeaders);
       if (!mounted) return;
       setState(() => _customHeaders = draftHeaders);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l.settingsProxyHeadersSaved)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l.settingsProxyHeadersSaved)));
     } catch (e) {
       if (!mounted) return;
       LogService.instance.warning(
@@ -551,15 +594,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     Row(
                       children: [
-                        CircleAvatar(
-                          radius: 30,
-                          backgroundColor: colorScheme.primary,
-                          child: Text(
-                            _displayInitial(authProvider.user?.displayName),
-                            style: TextStyle(
-                              fontSize: 24,
-                              color: colorScheme.onPrimary,
-                              fontWeight: FontWeight.bold,
+                        GestureDetector(
+                          onTap: _onAvatarTap,
+                          child: CircleAvatar(
+                            radius: 30,
+                            backgroundColor: colorScheme.primary,
+                            child: Text(
+                              _displayInitial(authProvider.user?.displayName),
+                              style: TextStyle(
+                                fontSize: 24,
+                                color: colorScheme.onPrimary,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                         ),
@@ -569,13 +615,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                authProvider.user?.displayName ?? l.settingsUserFallback,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleLarge
-                                    ?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                authProvider.user?.displayName ??
+                                    l.settingsUserFallback,
+                                style: Theme.of(context).textTheme.titleLarge
+                                    ?.copyWith(fontWeight: FontWeight.bold),
                               ),
                               const SizedBox(height: 4),
                               Text(
@@ -627,7 +670,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             leading: const Icon(Icons.chat_bubble_outline),
             title: Text(l.settingsContactUs),
             subtitle: Text(
-              'https://discord.com/invite/36ZGBsxYEK',
+              'WhatsApp',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.primary,
                 decoration: TextDecoration.underline,
@@ -636,22 +679,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: () => _launchContactUrl(context),
           ),
 
-          Semantics(
-            label: l.settingsDebugLogsSemantics,
-            button: true,
-            child: ListTile(
-              leading: const Icon(Icons.bug_report),
-              title: Text(l.settingsDebugLogs),
-              subtitle: Text(l.settingsDebugLogsSubtitle),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => const LogViewerScreen()),
-                );
-              },
+          if (_devMode)
+            Semantics(
+              label: l.settingsDebugLogsSemantics,
+              button: true,
+              child: ListTile(
+                leading: const Icon(Icons.bug_report),
+                title: Text(l.settingsDebugLogs),
+                subtitle: Text(l.settingsDebugLogsSubtitle),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const LogViewerScreen(),
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
 
           const Divider(),
 
@@ -713,62 +758,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
           ),
 
-          const Divider(),
+          if (_devMode) ...[
+            const Divider(),
 
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text(
-              l.settingsSectionConnection,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                l.settingsSectionConnection,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
               ),
             ),
-          ),
 
-          ListTile(
-            leading: const Icon(Icons.http_outlined),
-            title: Text(l.settingsProxyHeadersTileTitle),
-            subtitle: Text(
-              _customHeaders.isEmpty
-                  ? l.settingsProxyHeadersTileSubtitleEmpty
-                  : l.settingsProxyHeadersTileSubtitleCount(_customHeaders.length),
+            ListTile(
+              leading: const Icon(Icons.http_outlined),
+              title: Text(l.settingsProxyHeadersTileTitle),
+              subtitle: Text(
+                _customHeaders.isEmpty
+                    ? l.settingsProxyHeadersTileSubtitleEmpty
+                    : l.settingsProxyHeadersTileSubtitleCount(
+                        _customHeaders.length,
+                      ),
+              ),
+              onTap: _showCustomHeadersDialog,
             ),
-            onTap: _showCustomHeadersDialog,
-          ),
 
-          const Divider(),
+            const Divider(),
 
-          // Data Management Section
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text(
-              l.settingsSectionDataManagement,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey,
+            // Data Management Section
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                l.settingsSectionDataManagement,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
               ),
             ),
-          ),
 
-          // Clear local data button
-          ListTile(
-            leading: const Icon(Icons.delete_outline),
-            title: Text(l.settingsClearDataTitle),
-            subtitle: Text(l.settingsClearDataTileSubtitle),
-            trailing: _activeDestructiveAction == _clearAction
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : null,
-            enabled: _activeDestructiveAction == null,
-            onTap: _activeDestructiveAction != null
-                ? null
-                : () => _handleClearLocalData(context),
-          ),
+            // Clear local data button
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: Text(l.settingsClearDataTitle),
+              subtitle: Text(l.settingsClearDataTileSubtitle),
+              trailing: _activeDestructiveAction == _clearAction
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : null,
+              enabled: _activeDestructiveAction == null,
+              onTap: _activeDestructiveAction != null
+                  ? null
+                  : () => _handleClearLocalData(context),
+            ),
+          ],
 
           const Divider(),
           Padding(
@@ -822,7 +872,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : null,
             enabled: _activeDestructiveAction == null,
             onTap: _activeDestructiveAction != null
@@ -838,7 +889,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : null,
             enabled: _activeDestructiveAction == null,
             onTap: _activeDestructiveAction != null

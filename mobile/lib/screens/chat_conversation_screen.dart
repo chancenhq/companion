@@ -18,10 +18,7 @@ class ChatConversationScreen extends StatefulWidget {
   /// Null means this is a brand-new chat — it will be created on first send.
   final String? chatId;
 
-  const ChatConversationScreen({
-    super.key,
-    required this.chatId,
-  });
+  const ChatConversationScreen({super.key, required this.chatId});
 
   @override
   State<ChatConversationScreen> createState() => _ChatConversationScreenState();
@@ -71,7 +68,9 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   void _onChatChanged() {
     if (!mounted) return;
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
-    if (chatProvider.isWaitingForResponse || chatProvider.isSendingMessage || chatProvider.isPolling) {
+    if (chatProvider.isWaitingForResponse ||
+        chatProvider.isSendingMessage ||
+        chatProvider.isPolling) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _scrollToBottom();
       });
@@ -91,7 +90,9 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   Future<void> _sendSuggestedQuestion(String question) async {
     if (!mounted) return;
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
-    if (chatProvider.isSendingMessage || chatProvider.isWaitingForResponse) return;
+    if (chatProvider.isSendingMessage || chatProvider.isWaitingForResponse) {
+      return;
+    }
     _messageController.text = question;
     await _sendMessage();
   }
@@ -118,10 +119,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
       return;
     }
 
-    await chatProvider.fetchChat(
-      accessToken: accessToken,
-      chatId: _chatId!,
-    );
+    await chatProvider.fetchChat(accessToken: accessToken, chatId: _chatId!);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && _scrollController.hasClients) {
@@ -139,65 +137,67 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
     final l = AppLocalizations.of(context);
 
     try {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final chatProvider = Provider.of<ChatProvider>(context, listen: false);
 
-    final accessToken = await authProvider.getValidAccessToken();
-    if (accessToken == null) {
-      await authProvider.logout();
-      return;
-    }
-
-    _messageController.clear();
-
-    if (_chatId == null) {
-      // First message in a new chat — create the chat with it.
-      final chat = await chatProvider.createChat(
-        accessToken: accessToken,
-        title: Chat.generateTitle(content),
-        initialMessage: content,
-      );
-      if (!mounted) return;
-      if (chat == null) {
-        // Restore the message so the user doesn't lose it.
-        _messageController.text = content;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(chatProvider.errorMessage ?? l.chatConversationStartFailed),
-            backgroundColor: Colors.red,
-          ),
-        );
+      final accessToken = await authProvider.getValidAccessToken();
+      if (accessToken == null) {
+        await authProvider.logout();
         return;
       }
-      setState(() => _chatId = chat.id);
-    } else {
-      final shouldUpdateTitle =
-          chatProvider.currentChat?.hasDefaultTitle == true;
 
-      final delivered = await chatProvider.sendMessage(
-        accessToken: accessToken,
-        chatId: _chatId!,
-        content: content,
-      );
+      _messageController.clear();
 
-      if (delivered && shouldUpdateTitle) {
-        await chatProvider.updateChatTitle(
+      if (_chatId == null) {
+        // First message in a new chat — create the chat with it.
+        final chat = await chatProvider.createChat(
+          accessToken: accessToken,
+          title: Chat.generateTitle(content),
+          initialMessage: content,
+        );
+        if (!mounted) return;
+        if (chat == null) {
+          // Restore the message so the user doesn't lose it.
+          _messageController.text = content;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                chatProvider.errorMessage ?? l.chatConversationStartFailed,
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+        setState(() => _chatId = chat.id);
+      } else {
+        final shouldUpdateTitle =
+            chatProvider.currentChat?.hasDefaultTitle == true;
+
+        final delivered = await chatProvider.sendMessage(
           accessToken: accessToken,
           chatId: _chatId!,
-          title: Chat.generateTitle(content),
+          content: content,
         );
-      }
-    }
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+        if (delivered && shouldUpdateTitle) {
+          await chatProvider.updateChatTitle(
+            accessToken: accessToken,
+            chatId: _chatId!,
+            title: Chat.generateTitle(content),
+          );
+        }
       }
-    });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
     } finally {
       if (mounted) setState(() => _isSendInFlight = false);
     }
@@ -269,18 +269,14 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
       appBar: AppBar(
         title: Consumer<ChatProvider>(
           builder: (context, chatProvider, _) {
-            final title = chatProvider.currentChat?.title ?? AppLocalizations.of(context).chatConversationNewTitle;
+            final title = chatProvider.currentChat?.title ??
+                AppLocalizations.of(context).chatConversationNewTitle;
             return GestureDetector(
               onTap: _chatId != null ? _editTitle : null,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Flexible(
-                    child: Text(
-                      title,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
+                  Flexible(child: Text(title, overflow: TextOverflow.ellipsis)),
                   if (_chatId != null) ...[
                     const SizedBox(width: 4),
                     const Icon(Icons.edit, size: 18),
@@ -314,11 +310,16 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.error_outline,
-                        size: 64, color: colorScheme.error),
+                    Icon(
+                      Icons.error_outline,
+                      size: 64,
+                      color: colorScheme.error,
+                    ),
                     const SizedBox(height: 16),
-                    Text(l.chatConversationLoadError,
-                        style: Theme.of(context).textTheme.titleLarge),
+                    Text(
+                      l.chatConversationLoadError,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
                     const SizedBox(height: 8),
                     Text(
                       chatProvider.errorMessage!,
@@ -346,8 +347,10 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                   return !(m.isAssistant && m == allMessages.lastOrNull);
                 }).toList()
               : allMessages;
-          final firstName =
-              Provider.of<AuthProvider>(context, listen: true).user?.firstName;
+          final firstName = Provider.of<AuthProvider>(
+            context,
+            listen: true,
+          ).user?.firstName;
 
           return Column(
             children: [
@@ -396,52 +399,75 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                     ),
                   ],
                 ),
-                child: Shortcuts(
-                  shortcuts: const {
-                    SingleActivator(LogicalKeyboardKey.enter):
-                        _SendMessageIntent(),
-                  },
-                  child: Actions(
-                    actions: <Type, Action<Intent>>{
-                      _SendMessageIntent: CallbackAction<_SendMessageIntent>(
-                        onInvoke: (_) {
-                          if (!_isSendInFlight && !chatProvider.isSendingMessage && !chatProvider.isWaitingForResponse && !chatProvider.isPolling) _sendMessage();
-                          return null;
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Shortcuts(
+                      shortcuts: const {
+                        SingleActivator(LogicalKeyboardKey.enter):
+                            _SendMessageIntent(),
+                      },
+                      child: Actions(
+                        actions: <Type, Action<Intent>>{
+                          _SendMessageIntent:
+                              CallbackAction<_SendMessageIntent>(
+                            onInvoke: (_) {
+                              if (!_isSendInFlight &&
+                                  !chatProvider.isSendingMessage &&
+                                  !chatProvider.isWaitingForResponse &&
+                                  !chatProvider.isPolling) {
+                                _sendMessage();
+                              }
+                              return null;
+                            },
+                          ),
                         },
-                      ),
-                    },
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _messageController,
-                            decoration: InputDecoration(
-                              hintText: l.chatConversationMessageHint,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(24),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 12,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _messageController,
+                                decoration: InputDecoration(
+                                  hintText: l.chatConversationMessageHint,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(24),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
+                                ),
+                                maxLines: null,
+                                textCapitalization:
+                                    TextCapitalization.sentences,
+                                autofocus: _chatId == null,
                               ),
                             ),
-                            maxLines: null,
-                            textCapitalization: TextCapitalization.sentences,
-                            autofocus: _chatId == null,
-                          ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              icon: const Icon(Icons.send),
+                              onPressed: (_isSendInFlight ||
+                                      chatProvider.isSendingMessage ||
+                                      chatProvider.isWaitingForResponse ||
+                                      chatProvider.isPolling)
+                                  ? null
+                                  : _sendMessage,
+                              color: colorScheme.primary,
+                              iconSize: 28,
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          icon: const Icon(Icons.send),
-                          onPressed: (_isSendInFlight || chatProvider.isSendingMessage || chatProvider.isWaitingForResponse || chatProvider.isPolling)
-                              ? null
-                              : _sendMessage,
-                          color: colorScheme.primary,
-                          iconSize: 28,
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'AI can make mistakes. I am here to educate and help you learn. Always double-check important information.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -456,10 +482,7 @@ class _MessageBubble extends StatelessWidget {
   final Message message;
   final String Function(DateTime) formatTime;
 
-  const _MessageBubble({
-    required this.message,
-    required this.formatTime,
-  });
+  const _MessageBubble({required this.message, required this.formatTime});
 
   /// Builds the markdown stylesheet once per render context instead of inline,
   /// avoiding redundant TextStyle allocations per message bubble.
@@ -507,60 +530,61 @@ class _MessageBubble extends StatelessWidget {
               children: [
                 SelectionArea(
                   child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: isUser
-                        ? colorScheme.primary
-                        : colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (isUser)
-                        Text(
-                          message.content,
-                          style: TextStyle(
-                            color: colorScheme.onPrimary,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isUser
+                          ? colorScheme.primary
+                          : colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (isUser)
+                          Text(
+                            message.content,
+                            style: TextStyle(color: colorScheme.onPrimary),
+                          )
+                        else
+                          MarkdownBody(
+                            data: message.content,
+                            selectable: false,
+                            softLineBreak: true,
+                            styleSheet: _markdownStyle(context),
+                            sizedImageBuilder: (config) {
+                              // Block remote images to prevent unsolicited network requests.
+                              if (config.uri.scheme == 'http' ||
+                                  config.uri.scheme == 'https') {
+                                return const SizedBox.shrink();
+                              }
+                              return Image.asset(config.uri.toString());
+                            },
                           ),
-                        )
-                      else
-                        MarkdownBody(
-                          data: message.content,
-                          selectable: false,
-                          softLineBreak: true,
-                          styleSheet: _markdownStyle(context),
-                          sizedImageBuilder: (config) {
-                            // Block remote images to prevent unsolicited network requests.
-                            if (config.uri.scheme == 'http' || config.uri.scheme == 'https') {
-                              return const SizedBox.shrink();
-                            }
-                            return Image.asset(config.uri.toString());
-                          },
-                        ),
-                      if (message.toolCalls != null &&
-                          message.toolCalls!.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Wrap(
-                            spacing: 4,
-                            runSpacing: 4,
-                            children: message.toolCalls!.map((toolCall) {
-                              return Chip(
-                                label: Text(
-                                  toolCall.functionName,
-                                  style: const TextStyle(fontSize: 11),
-                                ),
-                                padding: EdgeInsets.zero,
-                                visualDensity: VisualDensity.compact,
-                              );
-                            }).toList(),
+                        if (message.toolCalls != null &&
+                            message.toolCalls!.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Wrap(
+                              spacing: 4,
+                              runSpacing: 4,
+                              children: message.toolCalls!.map((toolCall) {
+                                return Chip(
+                                  label: Text(
+                                    toolCall.functionName,
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                  padding: EdgeInsets.zero,
+                                  visualDensity: VisualDensity.compact,
+                                );
+                              }).toList(),
+                            ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -578,11 +602,7 @@ class _MessageBubble extends StatelessWidget {
             CircleAvatar(
               radius: 16,
               backgroundColor: colorScheme.primary,
-              child: Icon(
-                Icons.person,
-                size: 18,
-                color: colorScheme.onPrimary,
-              ),
+              child: Icon(Icons.person, size: 18, color: colorScheme.onPrimary),
             ),
         ],
       ),
@@ -606,7 +626,9 @@ class _EmptyState extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final l = AppLocalizations.of(context);
     final name = (firstName ?? '').trim();
-    final greeting = name.isNotEmpty ? l.chatConversationGreetingWithName(name) : l.chatConversationGreetingNoName;
+    final greeting = name.isNotEmpty
+        ? l.chatConversationGreetingWithName(name)
+        : l.chatConversationGreetingNoName;
 
     return ListView(
       padding: const EdgeInsets.all(24),
@@ -614,9 +636,9 @@ class _EmptyState extends StatelessWidget {
         const SizedBox(height: 32),
         Text(
           greeting,
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 32),
@@ -629,7 +651,10 @@ class _EmptyState extends StatelessWidget {
               label: Text(q.text, textAlign: TextAlign.left),
               style: OutlinedButton.styleFrom(
                 alignment: Alignment.centerLeft,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
