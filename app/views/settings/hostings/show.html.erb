@@ -89,8 +89,10 @@
     <%= render "settings/hostings/demo_refresh_settings" %>
   <% end %>
 <% end %>
-<%= settings_section title: t(".metabase") do %>
-  <%= render "settings/hostings/metabase_settings" %>
+<% if manages_instance_settings %>
+  <%= settings_section title: t(".metabase") do %>
+    <%= render "settings/hostings/metabase_settings" %>
+  <% end %>
 <% end %>
 <%= settings_section title: t(".danger_zone") do %>
   <%= render "settings/hostings/danger_zone_settings" %>
