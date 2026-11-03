@@ -9,7 +9,6 @@ on:
 env:
   ECR_REGISTRY: 568619624687.dkr.ecr.af-south-1.amazonaws.com
   ECR_REPOSITORY: companion
-  DOCKER_IMAGE_TAG: ${{ github.ref_name }}
   AWS_REGION: "af-south-1"
 
 permissions:
@@ -23,6 +22,12 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Resolve Docker image tag
+      shell: bash
+      run: |
+        # Git release tags have a v prefix; container and Helm tags do not.
+        echo "DOCKER_IMAGE_TAG=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
     - name: configure aws credentials
       uses: aws-actions/configure-aws-credentials@v4
