@@ -30,6 +30,10 @@ class Api::V1::BaseController < ApplicationController
   around_action :switch_timezone
   before_action :check_api_key_rate_limit
   before_action :log_api_access
+  # Default-deny: every endpoint needs a verified email unless the
+  # controller explicitly skips this. test/controllers/api/v1/verification_gate_test.rb
+  # fails if a new controller is neither gated nor on its allowlist.
+  before_action :ensure_verified_for_financial_data
 
 
 
@@ -227,6 +231,17 @@ class Api::V1::BaseController < ApplicationController
       return true unless current_resource_owner&.guest?
 
       render_json({ error: "forbidden", message: "Guests cannot modify family configuration" }, status: :forbidden)
+      false
+    end
+
+    def ensure_verified_for_financial_data
+      return true if current_resource_owner&.email_verified?
+
+      render_json({
+        error: "email_verification_required",
+        message: "Verify your email to see your Chancen Account",
+        action: "resend_email"
+      }, status: :forbidden)
       false
     end
 
