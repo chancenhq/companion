@@ -1,11 +1,11 @@
 class AddEmailVerifiedAtToUsers < ActiveRecord::Migration[7.2]
   def up
-    add_column :users, :email_verified_at, :datetime
+    add_column :users, :email_verified_at, :datetime, if_not_exists: true
     execute backfill_sql
   end
 
   def down
-    remove_column :users, :email_verified_at
+    remove_column :users, :email_verified_at, if_exists: true
   end
 
   # Existing accounts count as verified only when a trusted provider

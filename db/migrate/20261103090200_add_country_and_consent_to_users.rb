@@ -5,10 +5,10 @@ class AddCountryAndConsentToUsers < ActiveRecord::Migration[7.2]
   # Consent records which privacy/terms version was accepted, for which
   # country, and when.
   def change
-    add_column :users, :country_code, :string
-    add_column :users, :consent_version, :string
-    add_column :users, :consent_country_code, :string
-    add_column :users, :consent_accepted_at, :datetime
-    add_index :users, :country_code
+    add_column :users, :country_code, :string, if_not_exists: true
+    add_column :users, :consent_version, :string, if_not_exists: true
+    add_column :users, :consent_country_code, :string, if_not_exists: true
+    add_column :users, :consent_accepted_at, :datetime, if_not_exists: true
+    add_index :users, :country_code, if_not_exists: true
   end
 end
