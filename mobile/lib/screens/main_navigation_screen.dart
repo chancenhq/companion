@@ -1,15 +1,44 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
-import '../providers/privacy_provider.dart';
 import 'chat_list_screen.dart';
-import 'dashboard_screen.dart';
-import 'intro_screen.dart';
-import 'more_screen.dart';
+import 'insights_screen.dart';
 import 'settings_screen.dart';
-import '../l10n/app_localizations.dart';
+
+/// Pairs a visible tab screen with its bottom-nav destination.
+/// To add or reorder tabs for a user type, edit [_tabsFor] only —
+/// MainNavigationScreen never needs to change.
+class _Tab {
+  const _Tab({required this.screen, required this.destination});
+  final Widget screen;
+  final NavigationDestination destination;
+}
+
+/// Returns the tab list for the given user layout.
+List<_Tab> _tabsFor(String uiLayout) {
+  // Shared layout: Assistant → My Account.
+  // Settings is appended separately and reached via the AppBar gear icon.
+  return const [
+    _Tab(
+      screen: ChatListScreen(),
+      destination: NavigationDestination(
+        icon: Icon(Icons.chat_bubble_outline),
+        selectedIcon: Icon(Icons.chat_bubble),
+        label: 'Assistant',
+      ),
+    ),
+    _Tab(
+      screen: InsightsScreen(),
+      destination: NavigationDestination(
+        icon: Icon(Icons.insights_outlined),
+        selectedIcon: Icon(Icons.insights),
+        label: 'My Account',
+      ),
+    ),
+  ];
+}
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
@@ -20,97 +49,34 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
-  final _dashboardKey = GlobalKey<DashboardScreenState>();
-
-  List<Widget> _buildScreens(bool introLayout, VoidCallback? onStartChat) {
-    final screens = <Widget>[];
-
-    if (!introLayout) {
-      screens.add(DashboardScreen(key: _dashboardKey));
-    }
-
-    if (introLayout) {
-      screens.add(IntroScreen(onStartChat: onStartChat));
-    }
-
-    screens.add(const ChatListScreen());
-
-    if (!introLayout) {
-      screens.add(const MoreScreen());
-    }
-
-    screens.add(const SettingsScreen());
-
-    return screens;
-  }
 
   Future<void> _handleDestinationSelected(
     int index,
     AuthProvider authProvider,
-    bool introLayout,
+    List<_Tab> tabs,
   ) async {
-    if (mounted) {
-      setState(() {
-        _currentIndex = index;
-      });
+    const chatIndex = 0;
 
-      if (!introLayout && index == 0) {
-        _dashboardKey.currentState?.reloadPreferences();
-      }
+    if (index == chatIndex && !authProvider.aiEnabled) {
+      final enabled = await _showEnableAiPrompt();
+      if (!enabled) return;
     }
+
+    if (mounted) setState(() => _currentIndex = index);
   }
 
-  Future<void> _handleSelectSettings(AuthProvider authProvider, bool introLayout) async {
-    final settingsIndex = introLayout ? 2 : 3;
-    await _handleDestinationSelected(settingsIndex, authProvider, introLayout);
+  Future<void> _handleSelectSettings(
+    AuthProvider authProvider,
+    List<_Tab> tabs,
+  ) async {
+    // Settings is always the screen after the visible tabs.
+    await _handleDestinationSelected(tabs.length, authProvider, tabs);
   }
 
-  List<NavigationDestination> _buildDestinations(bool introLayout, AppLocalizations l) {
-    final destinations = <NavigationDestination>[];
-
-    if (!introLayout) {
-      destinations.add(
-        NavigationDestination(
-          icon: const Icon(Icons.home_outlined),
-          selectedIcon: const Icon(Icons.home),
-          label: l.navHome,
-        ),
-      );
-    }
-
-    if (introLayout) {
-      destinations.add(
-        NavigationDestination(
-          icon: const Icon(Icons.auto_awesome_outlined),
-          selectedIcon: const Icon(Icons.auto_awesome),
-          label: l.navIntro,
-        ),
-      );
-    }
-
-    destinations.add(
-      NavigationDestination(
-        icon: const Icon(Icons.chat_bubble_outline),
-        selectedIcon: const Icon(Icons.chat_bubble),
-        label: l.navAssistant,
-      ),
-    );
-
-    if (!introLayout) {
-      destinations.add(
-        NavigationDestination(
-          icon: const Icon(Icons.more_horiz),
-          selectedIcon: const Icon(Icons.more_horiz),
-          label: l.navMore,
-        ),
-      );
-    }
-
-    return destinations;
-  }
-
-  PreferredSizeWidget _buildTopBar(AuthProvider authProvider, bool introLayout) {
-    final bg = Theme.of(context).brightness == Brightness.light ? Colors.white : Colors.black;
+  PreferredSizeWidget _buildTopBar(AuthProvider authProvider, List<_Tab> tabs) {
+    final bg = Theme.of(context).brightness == Brightness.light
+        ? Colors.white
+        : Colors.black;
     return AppBar(
       automaticallyImplyLeading: false,
       toolbarHeight: 60,
@@ -137,31 +103,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         Padding(
           padding: const EdgeInsets.only(right: 12),
           child: Center(
-            child: Tooltip(
-              message: 'Toggle privacy',
-              child: InkWell(
-                onTap: () => context.read<PrivacyProvider>().toggle(),
-                child: SizedBox(
-                  width: 36,
-                  height: 36,
-                  child: Icon(
-                    context.watch<PrivacyProvider>().hidden
-                        ? Icons.visibility_off_outlined
-                        : Icons.visibility_outlined,
-                    semanticLabel: 'Toggle privacy',
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(right: 12),
-          child: Center(
             child: InkWell(
-              onTap: () {
-                _handleSelectSettings(authProvider, introLayout);
-              },
+              onTap: () => _handleSelectSettings(authProvider, tabs),
               child: const SizedBox(
                 width: 36,
                 height: 36,
@@ -174,45 +117,76 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  int _resolveBottomSelectedIndex(List<NavigationDestination> destinations) {
-    if (destinations.isEmpty) return 0;
-    if (_currentIndex < 0) return 0;
-    if (_currentIndex >= destinations.length) return destinations.length - 1;
+  Future<bool> _showEnableAiPrompt() async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+    final shouldEnable = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Turn on AI Chat?'),
+        content: const Text(
+          'AI Chat is currently disabled in your account settings. '
+          'Would you like to turn it on now?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Not now'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Turn on AI'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldEnable != true) return false;
+
+    final enabled = await authProvider.enableAi();
+
+    if (!enabled && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(authProvider.errorMessage ?? 'Unable to enable AI right now.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+
+    return enabled;
+  }
+
+  int _resolveBottomIndex(int tabCount) {
+    if (_currentIndex < 0 || _currentIndex >= tabCount) return 0;
     return _currentIndex;
   }
 
   @override
   Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context);
     return Consumer<AuthProvider>(
       builder: (context, authProvider, _) {
-        final introLayout = authProvider.isIntroLayout;
-        const chatIndex = 1;
-        final screens = _buildScreens(
-          introLayout,
-          () => _handleDestinationSelected(chatIndex, authProvider, introLayout),
-        );
-        final destinations = _buildDestinations(introLayout, l);
-        final bottomNavIndex = _resolveBottomSelectedIndex(destinations);
-        final bg = Theme.of(context).brightness == Brightness.light ? Colors.white : Colors.black;
+        final tabs = _tabsFor(authProvider.user?.uiLayout ?? 'intro');
+        final screens = [...tabs.map((t) => t.screen), const SettingsScreen()];
+        final destinations = tabs.map((t) => t.destination).toList();
+        final bg = Theme.of(context).brightness == Brightness.light
+            ? Colors.white
+            : Colors.black;
 
-        if (_currentIndex >= screens.length) {
-          _currentIndex = 0;
-        }
+        if (_currentIndex >= screens.length) _currentIndex = 0;
 
         return Scaffold(
           backgroundColor: bg,
-          appBar: _buildTopBar(authProvider, introLayout),
+          appBar: _buildTopBar(authProvider, tabs),
           body: IndexedStack(
             index: _currentIndex,
             children: screens,
           ),
           bottomNavigationBar: NavigationBar(
             backgroundColor: bg,
-            selectedIndex: bottomNavIndex,
-            onDestinationSelected: (index) {
-              _handleDestinationSelected(index, authProvider, introLayout);
-            },
+            selectedIndex: _resolveBottomIndex(tabs.length),
+            onDestinationSelected: (index) =>
+                _handleDestinationSelected(index, authProvider, tabs),
             destinations: destinations,
           ),
         );
