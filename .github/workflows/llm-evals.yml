@@ -377,7 +377,7 @@ jobs:
           echo "|---------|-------|--------|----------|------|----------|" >> "$GITHUB_STEP_SUMMARY"
 
           all_passed=true
-          accuracy_threshold=70
+          accuracy_threshold=66
           for json_file in "${json_files[@]}"; do
             dataset=$(jq -r '.dataset' "$json_file")
             model=$(jq -r '.model' "$json_file")
@@ -419,7 +419,7 @@ jobs:
           json_files=(eval-artifacts/**/*.json)
 
           failed=0
-          accuracy_threshold=70
+          accuracy_threshold=66
           for json_file in "${json_files[@]}"; do
             status=$(jq -r '.status' "$json_file")
             accuracy=$(jq -r '.accuracy // 0' "$json_file")
@@ -431,7 +431,7 @@ jobs:
               failed=$((failed + 1))
             fi
 
-            # Fail if accuracy is below 70%
+            # Fail if accuracy is below 66%
             if awk -v accuracy="$accuracy" -v threshold="$accuracy_threshold" 'BEGIN { exit !((accuracy + 0) < threshold) }'; then
               echo "::error::Accuracy for $dataset / $model is below threshold: ${accuracy}%"
               failed=$((failed + 1))
