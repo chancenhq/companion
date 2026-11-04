@@ -1,7 +1,6 @@
 ﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models/auth_tokens.dart';
@@ -675,7 +674,6 @@ class AuthService {
 
         User? user;
         if (responseData['user'] != null) {
-          _logRawUserPayload('apple_sign_in', responseData['user']);
           user = User.fromJson(responseData['user']);
           await _saveUser(user);
         }
@@ -755,7 +753,6 @@ class AuthService {
       }
 
       final responseData = jsonDecode(response.body);
-      _logRawUserPayload('users_me', responseData['user']);
       final user = User.fromJson(responseData['user']);
       await _saveUser(user);
       return user;

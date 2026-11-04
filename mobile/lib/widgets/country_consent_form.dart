@@ -110,121 +110,121 @@ class _CountryConsentFormState extends State<CountryConsentForm> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            locked ? 'Your country' : 'Select your country',
-            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 8),
+          // Country picker — only when the server has no country for this
+          // member yet. Invited members already have one, so they skip straight
+          // to accepting the Privacy Policy and Terms for it.
+          if (!locked) ...[
+            Text(
+              'Select your country',
+              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+          ],
           if (countries == null)
             const Padding(
               padding: EdgeInsets.all(16),
               child: Center(child: CircularProgressIndicator()),
             )
-          else
-            ...countries.map((country) {
-              final isSelected = country.code == _selectedCode;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: InkWell(
-                  key: ValueKey('country-${country.code}'),
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: _saving || locked ? null : () => setState(() {
-                    _selectedCode = country.code;
-                    _consentChecked = false;
-                  }),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? colorScheme.primaryContainer.withValues(alpha: 0.3)
-                          : colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
+          else ...[
+            if (!locked) ...[
+              ...countries.map((country) {
+                final isSelected = country.code == _selectedCode;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: InkWell(
+                    key: ValueKey('country-${country.code}'),
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: _saving ? null : () => setState(() {
+                      _selectedCode = country.code;
+                      _consentChecked = false;
+                    }),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
                         color: isSelected
-                            ? colorScheme.primary.withValues(alpha: 0.4)
-                            : colorScheme.outline.withValues(alpha: 0.2),
+                            ? colorScheme.primaryContainer.withValues(alpha: 0.3)
+                            : colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSelected
+                              ? colorScheme.primary.withValues(alpha: 0.4)
+                              : colorScheme.outline.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              country.name,
+                              style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
+                            ),
+                          ),
+                          if (isSelected)
+                            Icon(Icons.check_circle, size: 18, color: colorScheme.primary),
+                        ],
                       ),
                     ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            country.name,
-                            style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
-                          ),
-                        ),
-                        if (isSelected)
-                          Icon(
-                            locked ? Icons.lock_outline : Icons.check_circle,
-                            size: 18,
-                            color: colorScheme.primary,
-                          ),
-                      ],
-                    ),
                   ),
-                ),
-              );
-            }),
-          if (locked)
-            Text(
-              'Your country is set by Chancen. Contact support if it is wrong.',
-              style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
-            ),
-          const SizedBox(height: 24),
-          Text(
-            selected == null
-                ? 'Choose your country to see its Privacy Policy and Terms of Use.'
-                : 'To continue, please review and accept our terms for ${selected.name}.',
-            style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              TextButton(
-                onPressed: selected == null
-                    ? null
-                    : () => _openLegal(selected.privacyUri(ApiConfig.baseUrl), 'Privacy Policy'),
-                child: const Text('Privacy Policy'),
-              ),
-              const SizedBox(width: 16),
-              TextButton(
-                onPressed: selected == null
-                    ? null
-                    : () => _openLegal(selected.termsUri(ApiConfig.baseUrl), 'Terms of Use'),
-                child: const Text('Terms of Use'),
-              ),
+                );
+              }),
+              const SizedBox(height: 24),
             ],
-          ),
-          InkWell(
-            onTap: _saving ? null : () => setState(() => _consentChecked = !_consentChecked),
-            borderRadius: BorderRadius.circular(8),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            Text(
+              locked
+                  ? 'Please review and accept our Privacy Policy and Terms of Use to continue.'
+                  : (selected == null
+                      ? 'Choose your country to see its Privacy Policy and Terms of Use.'
+                      : 'To continue, please review and accept our terms.'),
+              style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Checkbox(
-                  value: _consentChecked,
-                  onChanged: _saving ? null : (v) => setState(() => _consentChecked = v ?? false),
+                TextButton(
+                  onPressed: selected == null
+                      ? null
+                      : () => _openLegal(selected.privacyUri(ApiConfig.baseUrl), 'Privacy Policy'),
+                  child: const Text('Privacy Policy'),
                 ),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Text(
-                      'I have read and agree to the Privacy Policy and Terms of Use',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ),
+                const SizedBox(width: 16),
+                TextButton(
+                  onPressed: selected == null
+                      ? null
+                      : () => _openLegal(selected.termsUri(ApiConfig.baseUrl), 'Terms of Use'),
+                  child: const Text('Terms of Use'),
                 ),
               ],
             ),
-          ),
-          if (_error != null) ...[
-            const SizedBox(height: 8),
-            Text(_error!, style: TextStyle(color: colorScheme.error), textAlign: TextAlign.center),
-          ],
-          const SizedBox(height: 24),
-          FilledButton(
+            InkWell(
+              onTap: _saving ? null : () => setState(() => _consentChecked = !_consentChecked),
+              borderRadius: BorderRadius.circular(8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Checkbox(
+                    value: _consentChecked,
+                    onChanged: _saving ? null : (v) => setState(() => _consentChecked = v ?? false),
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Text(
+                        'I have read and agree to the Privacy Policy and Terms of Use',
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!, style: TextStyle(color: colorScheme.error), textAlign: TextAlign.center),
+            ],
+            const SizedBox(height: 24),
+            FilledButton(
             onPressed: _canContinue ? _submit : null,
             style: FilledButton.styleFrom(
               minimumSize: const Size(double.infinity, 52),
@@ -233,7 +233,8 @@ class _CountryConsentFormState extends State<CountryConsentForm> {
             child: _saving
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Text('Continue'),
-          ),
+            ),
+          ],
         ],
       ),
     );

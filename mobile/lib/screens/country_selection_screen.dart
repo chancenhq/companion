@@ -32,7 +32,7 @@ class CountrySelectionScreen extends StatelessWidget {
             SvgPicture.asset('assets/images/companion-logo.svg', width: 64, height: 64),
             const SizedBox(height: 16),
             Text(
-              'Confirm your country',
+              'Privacy & Terms',
               style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
             ),
@@ -40,7 +40,7 @@ class CountrySelectionScreen extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 32),
               child: Text(
-                'So the assistant can give you the right information and support team.',
+                'Please review and accept to continue.',
                 style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 textAlign: TextAlign.center,
               ),
