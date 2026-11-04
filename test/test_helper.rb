@@ -147,6 +147,7 @@ module ActiveSupport
         password: user_password_test,
         role: "guest",
         onboarded_at: Time.current,
+        email_verified_at: Time.current,
         ui_layout: "dashboard"
       )
     end

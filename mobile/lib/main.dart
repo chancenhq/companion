@@ -13,9 +13,11 @@ import 'providers/my_account_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/privacy_provider.dart';
 import 'screens/backend_config_screen.dart';
+import 'screens/country_selection_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/biometric_lock_screen.dart';
 import 'screens/main_navigation_screen.dart';
+import 'screens/onboarding_screen.dart';
 import 'screens/sso_onboarding_screen.dart';
 import 'services/api_config.dart';
 import 'services/connectivity_service.dart';
@@ -211,6 +213,7 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
   bool _isCheckingConfig = true;
   bool _hasBackendUrl = false;
   bool _isLocked = false;
+  bool _onboardingComplete = true; // assume complete until checked (no flash)
   late final AppLinks _appLinks;
   StreamSubscription<Uri>? _linkSubscription;
 
@@ -225,6 +228,7 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _checkBackendConfig();
+    _checkOnboarding();
     _initDeepLinks();
   }
 
@@ -341,6 +345,19 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _checkOnboarding() async {
+    // The country now lives on the server; drop the old on-device guess.
+    await PreferencesService.instance.clearLegacyUserCountry();
+    final complete = await PreferencesService.instance.getOnboardingComplete();
+    if (mounted) {
+      setState(() => _onboardingComplete = complete);
+    }
+  }
+
+  void _onOnboardingComplete() {
+    setState(() => _onboardingComplete = true);
+  }
+
   void _onBackendConfigSaved() {
     setState(() {
       _hasBackendUrl = true;
@@ -374,7 +391,32 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
           );
         }
 
+        // SSO callbacks must win over everything — including first-launch
+        // onboarding — so the deep link is never dropped from the widget tree.
+        if (authProvider.ssoOnboardingPending) {
+          return const SsoOnboardingScreen();
+        }
+
+        // Onboarding (country select + consent) must complete before the app
+        // is accessible, even when the user signed up on page 1 of the flow.
+        if (!_onboardingComplete) {
+          return OnboardingScreen(
+            onComplete: _onOnboardingComplete,
+            initialPage: authProvider.isAuthenticated ? 2 : 0,
+          );
+        }
+
         if (authProvider.isAuthenticated) {
+          // Members accept the privacy/terms for their country once.
+          if (authProvider.countryConfirmationRequired) {
+            return const CountrySelectionScreen();
+          }
+
+          // SSO users must set a password before they can be locked out.
+          if (authProvider.user?.hasPassword == false) {
+            return const SsoOnboardingScreen(passwordOnlyMode: true);
+          }
+
           return Stack(
             children: [
               UpgradeAlert(
@@ -396,10 +438,6 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) setState(() => _isLocked = false);
           });
-        }
-
-        if (authProvider.ssoOnboardingPending) {
-          return const SsoOnboardingScreen();
         }
 
         return const LoginScreen();

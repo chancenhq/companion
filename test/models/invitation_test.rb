@@ -283,7 +283,7 @@ class InvitationTest < ActiveSupport::TestCase
       family: old_family, plaid_id: "item_invite_#{SecureRandom.hex(4)}",
       access_token: "token", name: "Left Behind Bank", owner: user
     )
-    new_family = Family.create!(name: "Invited Family")
+    new_family = Family.create!(name: "Invited Family", chancen_country_code: "KE")
     invitation = Invitation.create!(
       family: new_family, email: user.email, role: "member",
       inviter: users(:family_admin)
@@ -294,5 +294,34 @@ class InvitationTest < ActiveSupport::TestCase
     assert_nil item.reload.owner_id
     assert_equal old_family, item.family
     assert item.valid?, "the left-behind item must still be savable"
+  end
+
+  # Country (issue #106): members get theirs from the invitation.
+  test "takes its country from the family" do
+    @family.update!(chancen_country_code: "RW")
+
+    invitation = @family.invitations.create!(email: "student@example.com", role: "member", inviter: @inviter)
+
+    assert_equal "RW", invitation.country_code
+  end
+
+  test "cannot be created for a family without a country" do
+    @family.update!(chancen_country_code: nil)
+
+    invitation = @family.invitations.build(email: "student@example.com", role: "member", inviter: @inviter)
+
+    assert_not invitation.valid?
+    assert_includes invitation.errors[:base], I18n.t("activerecord.errors.models.invitation.attributes.base.family_country_missing")
+  end
+
+  test "accept_signup! marks the invitation accepted and gives the new user its country" do
+    @invitation.update_column(:country_code, "GH")
+    user = users(:empty)
+    user.update!(country_code: nil)
+
+    @invitation.accept_signup!(user)
+
+    assert_not_nil @invitation.reload.accepted_at
+    assert_equal "GH", user.reload.country_code
   end
 end

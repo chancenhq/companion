@@ -6,6 +6,7 @@ import '../providers/auth_provider.dart';
 import 'chat_list_screen.dart';
 import 'insights_screen.dart';
 import 'settings_screen.dart';
+import '../widgets/email_verification_banner.dart';
 
 /// Pairs a visible tab screen with its bottom-nav destination.
 /// To add or reorder tabs for a user type, edit [_tabsFor] only —
@@ -178,9 +179,17 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         return Scaffold(
           backgroundColor: bg,
           appBar: _buildTopBar(authProvider, tabs),
-          body: IndexedStack(
-            index: _currentIndex,
-            children: screens,
+          body: Column(
+            children: [
+              if (authProvider.showEmailVerificationPrompt)
+                const EmailVerificationBanner(),
+              Expanded(
+                child: IndexedStack(
+                  index: _currentIndex,
+                  children: screens,
+                ),
+              ),
+            ],
           ),
           bottomNavigationBar: NavigationBar(
             backgroundColor: bg,

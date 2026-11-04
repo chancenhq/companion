@@ -1,0 +1,270 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
+import '../services/preferences_service.dart';
+import 'backend_config_screen.dart';
+import 'login_screen.dart';
+import '../widgets/country_consent_form.dart';
+
+class OnboardingScreen extends StatefulWidget {
+  final VoidCallback onComplete;
+
+  /// Starting page index. Pass 2 when the user is already authenticated (e.g.
+  /// after SSO account creation) so they skip the Welcome and Sign-in pages
+  /// and land directly on the Country/Consent screen.
+  final int initialPage;
+
+  const OnboardingScreen({
+    super.key,
+    required this.onComplete,
+    this.initialPage = 0,
+  });
+
+  @override
+  State<OnboardingScreen> createState() => _OnboardingScreenState();
+}
+
+class _OnboardingScreenState extends State<OnboardingScreen> {
+  late final PageController _pageController;
+  late int _currentPage;
+
+  int _logoTapCount = 0;
+  DateTime? _firstLogoTapAt;
+  bool _devUnlocked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentPage = widget.initialPage;
+    _pageController = PageController(initialPage: widget.initialPage);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+
+  void _goToPage(int page) {
+    _pageController.jumpToPage(page);
+    setState(() => _currentPage = page);
+  }
+
+  /// Saves the chosen country and accepted consent on the server (issue
+  /// Accepted before finishing onboarding. Nothing is
+  /// pre-selected and no location service is used.
+  Future<String?> _saveCountryAndFinish(String countryCode) async {
+    final error = await context.read<AuthProvider>().updateCountry(countryCode);
+    if (error != null) return error;
+
+    final prefs = PreferencesService.instance;
+    await prefs.setConsent(version: AuthProvider.consentVersion);
+    await prefs.setOnboardingComplete(true);
+    widget.onComplete();
+    return null;
+  }
+
+  // ── Screen 1: Welcome ──
+
+  Widget _buildWelcomePage() {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: Column(
+        children: [
+          const Spacer(flex: 2),
+          SvgPicture.asset(
+            'assets/images/companion-logo.svg',
+            width: 80,
+            height: 80,
+          ),
+          const SizedBox(height: 32),
+          Text(
+            'Meet Your Chancen Companion',
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'I am here to help you navigate your finances, understand your '
+            'Chancen ISA, and build smart money habits.\n\n'
+            'Think of me as your personal finance buddy. I will answer your '
+            'questions, help you budget like a pro, and support you on your '
+            'journey to financial confidence.\n\n'
+            'Everything here is for learning purposes; I am not a financial '
+            'advisor, just a helpful guide.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  height: 1.5,
+                ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 32),
+          _buildKeyPoint(Icons.question_answer_outlined, 'Get instant answers about your Chancen ISA'),
+          const SizedBox(height: 12),
+          _buildKeyPoint(Icons.account_balance_wallet_outlined, 'Learn budgeting that actually works'),
+          const SizedBox(height: 12),
+          _buildKeyPoint(Icons.trending_up, 'Build financial skills for life'),
+          const Spacer(flex: 3),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: () => _goToPage(1),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(double.infinity, 52),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text("Let's Get Started"),
+            ),
+          ),
+          const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildKeyPoint(IconData icon, String text) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: colorScheme.primaryContainer.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, size: 20, color: colorScheme.primary),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            text,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Screen 2: Sign In / Sign Up ──
+
+  Widget _buildSignInPage() {
+    return Consumer<AuthProvider>(
+      builder: (context, authProvider, _) {
+        if (authProvider.isAuthenticated && _currentPage == 1) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => _goToPage(2));
+        }
+        return Stack(
+          children: [
+            SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: LoginFormBody(
+                branded: true,
+                allowSignUp: true,
+                onLogoTap: _handleLogoTap,
+              ),
+            ),
+            if (_devUnlocked)
+              Positioned(
+                right: 8,
+                top: 8,
+                child: IconButton(
+                  icon: const Icon(Icons.settings_outlined),
+                  tooltip: 'Backend Settings',
+                  onPressed: _openBackendSettings,
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Same 7-tap gesture as LoginScreen: a first launch never reaches that
+  // screen, so the backend could not be switched from here without it.
+  void _handleLogoTap() {
+    final now = DateTime.now();
+    if (_firstLogoTapAt == null ||
+        now.difference(_firstLogoTapAt!) > const Duration(seconds: 5)) {
+      _firstLogoTapAt = now;
+      _logoTapCount = 1;
+    } else {
+      _logoTapCount++;
+      if (_logoTapCount >= 7 && !_devUnlocked) {
+        setState(() => _devUnlocked = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Developer options enabled'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  void _openBackendSettings() {
+    final authProvider = context.read<AuthProvider>();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (routeContext) => BackendConfigScreen(
+          onConfigSaved: () {
+            // Errors from the previous backend no longer apply.
+            authProvider.clearError();
+            Navigator.of(routeContext).pop();
+          },
+        ),
+      ),
+    );
+  }
+
+  // ── Screen 3: Country & Legal Consent ──
+
+  Widget _buildConsentPage() {
+    final authProvider = context.read<AuthProvider>();
+    return Column(
+      children: [
+        const SizedBox(height: 32),
+        SvgPicture.asset('assets/images/companion-logo.svg', width: 64, height: 64),
+        const SizedBox(height: 16),
+        Text(
+          'Almost there!',
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+          textAlign: TextAlign.center,
+        ),
+        Expanded(
+          child: CountryConsentForm(
+            onSubmit: _saveCountryAndFinish,
+            lockedCountryCode: authProvider.user?.countryCode,
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: PageView(
+          controller: _pageController,
+          physics: const NeverScrollableScrollPhysics(),
+          onPageChanged: (i) => setState(() => _currentPage = i),
+          children: [
+            _buildWelcomePage(),
+            _buildSignInPage(),
+            _buildConsentPage(),
+          ],
+        ),
+      ),
+    );
+  }
+}

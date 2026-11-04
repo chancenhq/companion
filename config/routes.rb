@@ -237,6 +237,20 @@ Rails.application.routes.draw do
     end
   end
 
+  resources :ibkr_items, only: [ :create, :update, :destroy ] do
+    collection do
+      get :select_accounts
+      get :select_existing_account
+      post :link_existing_account
+    end
+
+    member do
+      post :sync
+      get :setup_accounts
+      post :complete_account_setup
+    end
+  end
+
   # CoinStats routes
   resources :coinstats_items, only: [ :index, :new, :create, :update, :destroy ] do
     collection do
@@ -381,7 +395,9 @@ Rails.application.routes.draw do
     get :new_user, on: :collection
     post :create_user, on: :collection
   end
-  resource :password_reset, only: %i[new create edit update]
+  resource :password_reset, only: %i[new create edit update] do
+    get :mobile_redirect, on: :collection
+  end
   resource :password, only: %i[edit update]
   resource :email_confirmation, only: :new
 
@@ -413,6 +429,7 @@ Rails.application.routes.draw do
       delete :clear_cache, on: :collection
       delete :disconnect_external_assistant, on: :collection
     end
+    resource :chancen, only: %i[show update]
     resource :payment, only: :show
     resource :security, only: :show
     resources :webauthn_credentials, only: %i[create destroy] do
@@ -789,12 +806,17 @@ Rails.application.routes.draw do
       post "auth/login", to: "auth#login"
       post "auth/refresh", to: "auth#refresh"
       get "auth/sso_providers", to: "auth#sso_providers"
+      post "auth/apple_sign_in", to: "auth#apple_sign_in"
       post "auth/sso_exchange", to: "auth#sso_exchange"
       post "auth/sso_link", to: "auth#sso_link"
       post "auth/sso_create_account", to: "auth#sso_create_account"
       patch "auth/enable_ai", to: "auth#enable_ai"
+      post  "auth/resend_email_verification", to: "auth#resend_email_verification"
+      post  "auth/password_reset", to: "auth#request_password_reset"
+      patch "auth/password_reset", to: "auth#reset_password"
 
       # Production API endpoints
+      resources :countries, only: [ :index ]
       resources :accounts, only: [ :index, :show ]
       resources :balances, only: [ :index, :show ]
       resources :budgets, only: [ :index, :show ]
@@ -841,6 +863,9 @@ Rails.application.routes.draw do
       resources :provider_connections, only: [ :index ]
 
       resource :my_account, only: [ :show ], controller: :my_account
+      resources :my_account_transactions, only: [ :index ], controller: :my_account_transactions
+
+      resource :app_config, only: [ :show ], controller: :app_config
 
       resources :chats, only: [ :index, :show, :create, :update, :destroy ] do
         resources :messages, only: [ :create ] do
@@ -850,6 +875,9 @@ Rails.application.routes.draw do
 
       get "users/reset/status", to: "users#reset_status"
       delete "users/reset", to: "users#reset"
+      get "users/me", to: "users#me"
+      patch "users/me/country", to: "users#update_country"
+      patch "users/me/password", to: "users#update_password"
       delete "users/me", to: "users#destroy"
 
       # Test routes for API controller testing (only available in test environment)
@@ -1043,10 +1071,15 @@ Rails.application.routes.draw do
   terms_url = ENV["LEGAL_TERMS_URL"].presence
   get "privacy", to: privacy_url ? redirect(privacy_url) : "pages#privacy"
   get "terms", to: terms_url ? redirect(terms_url) : "pages#terms"
+  get "privacy/ke", to: "pages#privacy", defaults: { country: "ke" }
+  get "terms/ke", to: "pages#terms", defaults: { country: "ke" }
+  get "privacy/:country", to: "pages#privacy"
+  get "terms/:country", to: "pages#terms"
   get "intro", to: "pages#intro"
 
   # Admin namespace for super admin functionality
   namespace :admin do
+    resource :chancen, only: %i[show update]
     resources :sso_providers do
       member do
         patch :toggle
@@ -1054,7 +1087,10 @@ Rails.application.routes.draw do
       end
     end
     resources :users, only: [ :index, :update, :destroy ] do
-      get :deletion, on: :member
+      member do
+        get :deletion
+        patch :update_country
+      end
     end
     resources :sso_identity_blocks, only: [ :destroy ]
     resources :invitations, only: [ :destroy ]
