@@ -8,11 +8,11 @@ class ReleaseWorkflowTest < ActiveSupport::TestCase
     skip "Release shell steps target Linux runners with GNU date" unless RUBY_PLATFORM.include?("linux")
   end
 
-  test "canonical tag publishes while its compatibility alias is a no-op" do
+  test "canonical tag publishes while legacy aliases remain no-ops" do
     with_repo do |dir|
       success, output = resolve(dir, "2026.10.30-alpha")
       assert success
-      %w[release=true compatibility_version=0.7.7-alpha.3 type=raw,value=2026.10.30-alpha type=raw,value=0.7.7-alpha.3].each { |line| assert_includes output, line }
+      %w[release=true release_name=v2026.10.30-alpha type=raw,value=2026.10.30-alpha].each { |line| assert_includes output, line }
       success, output = resolve(dir, "2026.10.28", ref: "refs/tags/v0.7.7-alpha.3")
       assert success
       assert_includes output, "publish=false"
@@ -41,31 +41,32 @@ class ReleaseWorkflowTest < ActiveSupport::TestCase
     assert_equal "${{ needs.prepare.outputs.image_tags }}", metadata.fetch("tags")
   end
 
-  test "compatibility channel follows release dates without matching other channels" do
+  test "publishers remove Git Docker and Helm compatibility plumbing" do
+    %w[publish.yml helm-publish.yml].each do |name|
+      source = Rails.root.join(".github/workflows", name).read
+      assert_no_match(/compatibility_version|COMPATIBILITY_|alias_note/, source)
+    end
+    assert_equal "read", workflow.fetch("jobs").fetch("merge").fetch("permissions").fetch("contents")
+  end
+
+  test "releases omit compatibility aliases immediately and retain identity on retries" do
     with_repo do |dir|
-      %w[alpha stable].each do |phase|
-        suffix = phase == "stable" ? "" : "-#{phase}"
-        version = "2026.11.2#{suffix}"
-        legacy = phase == "stable" ? "0.7.7" : "0.7.7-alpha.4"
-        success, output = resolve(dir, version, extra_env: { "COMPATIBILITY_CHANNEL" => phase, "COMPATIBILITY_VERSION" => legacy })
-        assert success
-        assert_includes output, "compatibility_version=#{legacy}"
+      %w[2026.11.4-alpha 2026.11.4 2027.1.1-alpha 2027.1.1].each do |version|
+        outputs = %w[2027.1.1 2027.1.2].map do |build_date|
+          success, output = resolve(dir, version, extra_env: { "BUILD_DATE" => build_date })
+          assert success, output
+          assert_includes output, "version=#{version}\n"
+          assert_includes output, "release_name=v#{version}\n"
+          assert_includes output, "release=true\n"
+          assert_includes output, "alpha=#{version.end_with?('-alpha')}\n"
+          assert_includes output, "stable=#{!version.end_with?('-alpha')}\n"
+          channel = version.end_with?("-alpha") ? "latest" : "stable"
+          assert_equal [ "type=raw,value=#{version}", "type=raw,value=#{channel}" ], output.lines.grep(/^type=/).map(&:strip)
+          assert_not_includes output, "compatibility"
+          output
+        end
+        assert_equal outputs.first, outputs.last
       end
-      %w[2026.10.31-alpha 2026.11.2-alpha 2026.12.31-alpha].each do |version|
-        success, output = resolve(dir, version, extra_env: { "BUILD_DATE" => "2027.1.2" })
-        assert success
-        assert_includes output, "version=#{version}"
-        assert_includes output, "compatibility_version=0.7.7-alpha.3"
-      end
-      %w[2026.10.30 2026.10.31].each do |version|
-        success, output = resolve(dir, version)
-        assert success
-        assert_not_includes output, "type=raw,value=0.7.7"
-      end
-      success, output = resolve(dir, "2026.10.30-alpha", ref: "refs/heads/main",
-        extra_env: { "BUILD_DATE" => "2026.10.30", "GITHUB_RUN_NUMBER" => "2" })
-      assert success
-      assert_not_includes output, "compatibility_version=0.7.7"
     end
   end
 
@@ -77,7 +78,7 @@ class ReleaseWorkflowTest < ActiveSupport::TestCase
     end
   end
 
-  test "non-release builds and January do not emit compatibility tags" do
+  test "non-release builds retain SHA and nightly tags without floating release channels" do
     with_repo do |dir|
       [ "push", "schedule", "workflow_dispatch" ].each do |event|
         success, output = resolve(dir, "2026.10.28", event: event, ref: "refs/heads/main")
@@ -87,7 +88,7 @@ class ReleaseWorkflowTest < ActiveSupport::TestCase
         assert_includes output, "version=#{expected_version}\n"
         assert_not_includes output, "type=raw,value=latest"
         assert_not_includes output, "type=raw,value=stable"
-        assert_not_includes output, "compatibility_version=0.7.7"
+        assert_not_includes output, "compatibility"
         if event == "schedule"
           assert_includes output, "type=schedule,pattern=nightly"
           assert_includes output, "type=raw,value=2026.10.28-nightly"
@@ -96,12 +97,6 @@ class ReleaseWorkflowTest < ActiveSupport::TestCase
           assert_includes output, "type=raw,value=sha-#{git!(dir, 'rev-parse', 'HEAD').strip}"
         end
       end
-      success, output = resolve(dir, "2027.1.1", extra_env: { "COMPATIBILITY_CHANNEL" => "stable" })
-      assert success
-      assert_not_includes output, "type=raw,value=0.7.7"
-      assert_includes output, "type=raw,value=2027.1.1"
-      assert_includes output, "type=raw,value=stable"
-      assert_not_includes output, "type=raw,value=latest"
     end
   end
 
@@ -118,7 +113,7 @@ class ReleaseWorkflowTest < ActiveSupport::TestCase
           assert success, output
           assert_includes output, "version=#{version}\n"
           assert_includes output, "release=false"
-          assert_includes output, "compatibility_version=\n"
+          assert_not_includes output, "compatibility"
           assert_includes output, "type=raw,value=sha-#{selected_sha}"
           assert_not_includes output, "type=raw,value=sha-#{workflow_sha}"
           assert_not_includes output, "type=raw,value=#{version}"
@@ -149,7 +144,7 @@ class ReleaseWorkflowTest < ActiveSupport::TestCase
       version = output.lines.find { |line| line.start_with?("version=") }.strip.delete_prefix("version=")
       assert_equal "2026.11.3-nightly", version
       assert_includes output, "type=raw,value=#{version}\n"
-      assert_includes output, "compatibility_version=\n"
+      assert_not_includes output, "compatibility"
       assert run_step(dir, "build", "version_file", "VERSION" => version).first
       assert_equal "#{version}\n", File.read(File.join(dir, ".sure-version"))
 
@@ -162,24 +157,6 @@ class ReleaseWorkflowTest < ActiveSupport::TestCase
       merge_step = workflow.fetch("jobs").fetch("merge").fetch("steps").find { |step| step["name"] == "Merge and push Docker image" }
       assert_equal "${{ needs.prepare.outputs.version }}", merge_step.fetch("env").fetch("VERSION")
       assert_includes merge_step.fetch("run"), "--annotation=index:org.opencontainers.image.version=$VERSION"
-    end
-  end
-
-  test "non-force alias step accepts retries and annotated tags but not other commits" do
-    with_repo do |dir|
-      remote = File.join(dir, "remote.git")
-      git!(dir, "init", "--bare", remote)
-      git!(dir, "remote", "add", "origin", remote)
-      2.times { assert run_step(dir, "merge", "compatibility", "COMPATIBILITY_VERSION" => "0.7.7-alpha.3").first }
-      git!(dir, "tag", "-a", "v0.7.7", "-m", "annotated")
-      git!(dir, "push", "origin", "v0.7.7")
-      assert run_step(dir, "merge", "compatibility", "COMPATIBILITY_VERSION" => "0.7.7").first
-      original = git!(remote, "rev-parse", "v0.7.7-alpha.3")
-      git!(dir, "commit", "--allow-empty", "-m", "different")
-      success, output = run_step(dir, "merge", "compatibility", "COMPATIBILITY_VERSION" => "0.7.7-alpha.3")
-      assert_not success
-      assert_includes output, "refusing to move"
-      assert_equal original, git!(remote, "rev-parse", "v0.7.7-alpha.3")
     end
   end
 
@@ -209,7 +186,7 @@ class ReleaseWorkflowTest < ActiveSupport::TestCase
         success, output = resolve(dir, date, ref: "refs/heads/main", extra_env: { "BUILD_DATE" => date })
         assert success
         assert_includes output, "version=#{date}-alpha"
-        assert_not_includes output, "compatibility_version=0.7.7"
+        assert_not_includes output, "compatibility"
         2.times do
           success, output = resolve(dir, date, event: "schedule", ref: "refs/heads/main", extra_env: { "BUILD_DATE" => date })
           assert success
@@ -260,8 +237,7 @@ class ReleaseWorkflowTest < ActiveSupport::TestCase
     def resolve(dir, version, event: "push", ref: "refs/tags/v#{version}", extra_env: {})
       path = File.join(dir, "output")
       File.write(path, "")
-      env = { "COMPATIBILITY_CHANNEL" => "alpha", "COMPATIBILITY_VERSION" => "0.7.7-alpha.3",
-        "BUILD_DATE" => "2026.10.28", "GITHUB_RUN_NUMBER" => "42",
+      env = { "BUILD_DATE" => "2026.10.28", "GITHUB_RUN_NUMBER" => "42",
         "GITHUB_EVENT_NAME" => event,
         "SELECTED_REF" => ref, "GITHUB_REF" => ref, "GITHUB_OUTPUT" => path }.merge(extra_env)
       success, error = run_step(dir, "prepare", "release", env)
