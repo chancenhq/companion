@@ -21,3 +21,8 @@ bats --timing test/e2e/companion.bats
 The suite cleans up its Compose services and volumes after the run. The
 invitation seed is deliberately created inside the application container so
 the test exercises the same Rails models and validations as production.
+
+The suite also covers email confirmation, single-use password reset tokens,
+expired and invalid invitations, and persistence across an app-container
+restart. It does not choose a country in the client: the invitation family's
+country remains the source of truth.

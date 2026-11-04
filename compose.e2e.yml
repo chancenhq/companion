@@ -21,6 +21,8 @@ services:
       ACTIVE_JOB_QUEUE_ADAPTER: async
     ports:
       - "13000:3000"
+    volumes:
+      - e2e-storage:/rails/storage
     depends_on:
       db:
         condition: service_healthy
@@ -51,3 +53,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 12
+
+volumes:
+  e2e-storage:
