@@ -14,7 +14,7 @@ class Invitation < ApplicationRecord
   validates :role, presence: true, inclusion: { in: %w[admin member guest] }
   validates :token, presence: true, uniqueness: true
   validate :no_duplicate_pending_invitation_in_family
-  validate :inviter_is_admin
+  validate :inviter_is_admin, on: :create
   validate :no_other_pending_invitation, on: :create
   validate :family_has_country, on: :create
 
