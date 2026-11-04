@@ -92,6 +92,11 @@ class Invitation < ApplicationRecord
   def accept_signup!(user)
     update!(accepted_at: Time.current)
     user.record_country!(country_code) if country_code.present?
+    # A new account joining via invitation must honor the family's default
+    # sharing policy, exactly as accept_for does for existing users. The method
+    # is guarded by a same-family membership check, so it no-ops safely when the
+    # user is not (yet) a member of this invitation's family.
+    family.auto_share_existing_accounts_with(user)
   end
 
   private

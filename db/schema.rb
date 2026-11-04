@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_31_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_03_090400) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -856,6 +856,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_31_120000) do
     t.decimal "categorization_confidence_threshold", precision: 3, scale: 2, default: "0.7", null: false
     t.string "categorization_provider", default: "llm", null: false
     t.decimal "categorization_shadow_rate", precision: 3, scale: 2, default: "0.0", null: false
+    t.string "chancen_country_code"
     t.string "country", default: "US"
     t.datetime "created_at", null: false
     t.string "currency", default: "USD"
@@ -1504,8 +1505,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_31_120000) do
 
   create_table "invitations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "accepted_at"
+    t.string "country_code"
     t.datetime "created_at", null: false
     t.string "email"
+    t.datetime "email_sent_at"
     t.datetime "expires_at"
     t.uuid "family_id", null: false
     t.uuid "inviter_id", null: false
@@ -2903,11 +2906,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_31_120000) do
   create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.boolean "active", default: true, null: false
     t.boolean "ai_enabled", default: false, null: false
+    t.datetime "consent_accepted_at"
+    t.string "consent_country_code"
+    t.string "consent_version"
+    t.string "country_code"
     t.datetime "created_at", null: false
     t.uuid "default_account_id"
     t.string "default_account_order", default: "name_asc"
     t.string "default_period", default: "last_30_days", null: false
     t.string "email"
+    t.datetime "email_verified_at"
     t.uuid "family_id", null: false
     t.string "first_name"
     t.text "goals", default: [], array: true
@@ -2935,6 +2943,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_31_120000) do
     t.string "unconfirmed_email"
     t.datetime "updated_at", null: false
     t.string "webauthn_id"
+    t.index ["country_code"], name: "index_users_on_country_code"
     t.index ["default_account_id"], name: "index_users_on_default_account_id"
     t.index ["email"], name: "index_users_on_email", unique: true
     t.index ["family_id"], name: "index_users_on_family_id"

@@ -631,22 +631,33 @@ module Api
           user.password = password if password.present?
           assign_signup_family_and_role(user, invitation: invitation, new_family_fallback_role: new_family_fallback_role)
 
-          ActiveRecord::Base.transaction do
-            unless user.save
-              render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
-              raise ActiveRecord::Rollback
+          begin
+            ActiveRecord::Base.transaction do
+              unless user.save
+                render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
+                raise ActiveRecord::Rollback
+              end
+              # Route through create_from_omniauth so the SsoIdentityBlock lock
+              # and duplicate-identity handling apply uniformly with the web flow.
+              OidcIdentity.create_from_omniauth(
+                build_omniauth_hash(
+                  provider: provider, uid: uid, issuer: issuer,
+                  email: email, first_name: user.first_name, last_name: user.last_name
+                ),
+                user
+              )
+              invitation&.accept_signup!(user)
+              user.mark_email_verified! if OidcIdentity.email_trusted?(provider: provider, issuer: issuer)
+              SsoAuditLog.log_jit_account_created!(user: user, provider: provider, request: request)
             end
-            OidcIdentity.create!(
-              user:                  user,
-              provider:              provider,
-              uid:                   uid,
-              issuer:                issuer,
-              info:                  { email: email, first_name: user.first_name, last_name: user.last_name },
-              last_authenticated_at: Time.current
-            )
-            invitation&.accept_signup!(user)
-            user.mark_email_verified! if OidcIdentity.email_trusted?(provider: provider, issuer: issuer)
-            SsoAuditLog.log_jit_account_created!(user: user, provider: provider, request: request)
+          rescue ActiveRecord::RecordNotUnique
+            # PostgreSQL's message names the index and echoes the conflicting
+            # values; never leak it. The transaction has already rolled back.
+            render json: { errors: [ "An account or sign-in identity with these details already exists" ] }, status: :unprocessable_entity
+            return nil
+          rescue ActiveRecord::RecordInvalid => e
+            render json: { errors: [ e.message ] }, status: :unprocessable_entity
+            return nil
           end
 
           return nil if performed?

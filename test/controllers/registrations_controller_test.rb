@@ -149,26 +149,27 @@ class RegistrationsControllerTest < ActionDispatch::IntegrationTest
       AccountShare.where(user: created_user).pluck(:account_id).sort
   end
 
-  test "creating account in invite-only default family shares existing family accounts" do
+  # Chancen invite-only (issue #106) is strict: a configured default family does
+  # not create a self-service seat. Only a pending invitation (emailed token or a
+  # provider-verified email match) admits a new account. Mirrors the mobile-path
+  # assertion in Api::V1::AuthControllerTest "signup does not join the invite-only
+  # default family without an invitation".
+  test "invite_only rejects self-service sign-up even when a default family is configured" do
     family = families(:dylan_family)
     family.update!(default_account_sharing: "shared")
     Setting.onboarding_state = "invite_only"
     Setting.invite_only_default_family_id = family.id
 
-    assert_difference "User.count", +1 do
+    assert_no_difference "User.count" do
       post registration_url, params: { user: {
         email: "default-family-signup@example.com",
         password: "Password1!"
       } }
     end
 
-    created_user = User.find_by(email: "default-family-signup@example.com")
-    assert_not_nil created_user
-    assert_equal family.id, created_user.family_id
-    assert_equal "member", created_user.role
-    assert_equal family.accounts.pluck(:id).sort,
-      AccountShare.where(user: created_user).pluck(:account_id).sort
-    assert AccountShare.where(user: created_user).all?(&:read_write?)
+    assert_redirected_to new_session_url
+    assert_equal "Sign-up is by invitation only. Use the email address you gave Chancen.", flash[:alert]
+    assert_nil User.find_by(email: "default-family-signup@example.com")
   end
 
   test "creating account from invitation shares nothing when family sharing is private" do

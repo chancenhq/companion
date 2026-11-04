@@ -283,7 +283,7 @@ class InvitationTest < ActiveSupport::TestCase
       family: old_family, plaid_id: "item_invite_#{SecureRandom.hex(4)}",
       access_token: "token", name: "Left Behind Bank", owner: user
     )
-    new_family = Family.create!(name: "Invited Family")
+    new_family = Family.create!(name: "Invited Family", chancen_country_code: "KE")
     invitation = Invitation.create!(
       family: new_family, email: user.email, role: "member",
       inviter: users(:family_admin)
