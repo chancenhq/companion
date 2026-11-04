@@ -1,0 +1,53 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ./bin/rails server -b 0.0.0.0 -p 3000
+    environment:
+      RAILS_ENV: production
+      SECRET_KEY_BASE: e2e-only-secret-key-base
+      SELF_HOSTED: "true"
+      RAILS_FORCE_SSL: "false"
+      RAILS_ASSUME_SSL: "false"
+      RAILS_LOG_TO_STDOUT: "true"
+      ONBOARDING_STATE: invite_only
+      DB_HOST: db
+      DB_PORT: 5432
+      POSTGRES_USER: e2e_user
+      POSTGRES_PASSWORD: e2e_password
+      POSTGRES_DB: sure_e2e
+      REDIS_URL: redis://redis:6379/1
+      ACTIVE_JOB_QUEUE_ADAPTER: async
+    ports:
+      - "13000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/up >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: e2e_user
+      POSTGRES_PASSWORD: e2e_password
+      POSTGRES_DB: sure_e2e
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U e2e_user -d sure_e2e"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12

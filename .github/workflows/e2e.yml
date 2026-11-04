@@ -1,0 +1,51 @@
+name: Docker E2E
+
+on:
+  pull_request:
+    paths:
+      - "Dockerfile"
+      - "compose.e2e.yml"
+      - "app/**"
+      - "config/**"
+      - "db/**"
+      - "test/e2e/**"
+      - ".github/workflows/e2e.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Dockerfile"
+      - "compose.e2e.yml"
+      - "app/**"
+      - "config/**"
+      - "db/**"
+      - "test/e2e/**"
+      - ".github/workflows/e2e.yml"
+
+concurrency:
+  group: docker-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker-e2e:
+    name: Companion Docker E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install E2E tools
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y bats curl jq
+
+      - name: Run Docker E2E tests
+        run: bats --timing test/e2e/companion.bats
+
+      - name: Upload Docker logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: companion-docker-e2e-logs
+          path: tmp/companion-e2e
+          if-no-files-found: ignore
