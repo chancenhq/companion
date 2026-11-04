@@ -71,7 +71,7 @@ teardown_file() {
   confirmation_token=$(jq -r '.email_confirmation_token' "${STATE_FILE}")
   response=$(curl -sS -w $'\n%{http_code}' -G \
     --data-urlencode "token=${confirmation_token}" \
-    "${BASE_URL}/email_confirmation")
+    "${BASE_URL}/email_confirmation/new")
 
   status_code=$(printf '%s\n' "${response}" | tail -n 1)
   [ "${status_code}" -eq 200 ]
