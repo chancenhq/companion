@@ -1,4 +1,4 @@
-require "test_helper"
+﻿require "test_helper"
 
 class RegistrationsControllerTest < ActionDispatch::IntegrationTest
   test "new" do
@@ -149,26 +149,27 @@ class RegistrationsControllerTest < ActionDispatch::IntegrationTest
       AccountShare.where(user: created_user).pluck(:account_id).sort
   end
 
-  test "creating account in invite-only default family shares existing family accounts" do
+  # Chancen invite-only (issue #106) is strict: a configured default family does
+  # not create a self-service seat. Only a pending invitation (emailed token or a
+  # provider-verified email match) admits a new account. Mirrors the mobile-path
+  # assertion in Api::V1::AuthControllerTest "signup does not join the invite-only
+  # default family without an invitation".
+  test "invite_only rejects self-service sign-up even when a default family is configured" do
     family = families(:dylan_family)
     family.update!(default_account_sharing: "shared")
     Setting.onboarding_state = "invite_only"
     Setting.invite_only_default_family_id = family.id
 
-    assert_difference "User.count", +1 do
+    assert_no_difference "User.count" do
       post registration_url, params: { user: {
         email: "default-family-signup@example.com",
         password: "Password1!"
       } }
     end
 
-    created_user = User.find_by(email: "default-family-signup@example.com")
-    assert_not_nil created_user
-    assert_equal family.id, created_user.family_id
-    assert_equal "member", created_user.role
-    assert_equal family.accounts.pluck(:id).sort,
-      AccountShare.where(user: created_user).pluck(:account_id).sort
-    assert AccountShare.where(user: created_user).all?(&:read_write?)
+    assert_redirected_to new_session_url
+    assert_equal "Sign-up is by invitation only. Use the email address you gave Chancen.", flash[:alert]
+    assert_nil User.find_by(email: "default-family-signup@example.com")
   end
 
   test "creating account from invitation shares nothing when family sharing is private" do
@@ -185,4 +186,125 @@ class RegistrationsControllerTest < ActionDispatch::IntegrationTest
     assert_not_nil created_user
     assert_equal 0, AccountShare.where(user: created_user).count
   end
+  test "invite_only blocks sign-up without an invitation in managed mode" do
+    with_onboarding_state("invite_only") do
+      # The form stays reachable: the seat is matched by email on submit.
+      get new_registration_url
+      assert_response :success
+
+      assert_no_difference "User.count" do
+        post registration_url, params: { user: { email: "uninvited@example.com", password: "Password1!" } }
+      end
+      assert_redirected_to new_session_url
+      assert_equal "Sign-up is by invitation only. Use the email address you gave Chancen.", flash[:alert]
+    end
+  end
+
+  test "invite_only web sign-up takes the seat reserved for that email and starts unverified" do
+    invitation = invitations(:one)
+
+    with_onboarding_state("invite_only") do
+      assert_enqueued_emails 1 do
+        post registration_url, params: { user: { email: invitation.email, password: "Password1!" } }
+      end
+    end
+
+    user = User.find_by!(email: invitation.email)
+    assert_equal invitation.family, user.family
+    assert_not user.email_verified?
+  end
+
+  test "invite_only allows sign-up with an invitation token" do
+    invitation = invitations(:one)
+
+    with_onboarding_state("invite_only") do
+      get new_registration_url(invitation: invitation.token)
+      assert_response :success
+
+      assert_difference "User.count", +1 do
+        post registration_url, params: { user: {
+          email: invitation.email,
+          password: "Password1!",
+          invitation: invitation.token } }
+      end
+      assert_not_nil invitation.reload.accepted_at
+    end
+  end
+
+  test "web sign-up with an invitation gives the new user the invitation's country" do
+    invitation = invitations(:one)
+    invitation.update_column(:country_code, "RW")
+
+    with_onboarding_state("invite_only") do
+      post registration_url, params: { user: {
+        email: invitation.email,
+        password: "Password1!",
+        invitation: invitation.token } }
+    end
+
+    assert_equal "RW", User.find_by!(email: invitation.email).country_code
+  end
+
+  test "closed blocks sign-up even with an invitation token" do
+    invitation = invitations(:one)
+
+    with_onboarding_state("closed") do
+      assert_no_difference "User.count" do
+        post registration_url, params: { user: {
+          email: invitation.email,
+          password: "Password1!",
+          invitation: invitation.token } }
+      end
+      assert_redirected_to new_session_url
+      assert_equal "Signups are currently closed.", flash[:alert]
+    end
+  end
+
+  test "web sign-up without an invitation sends a verification email" do
+    assert_enqueued_emails 1 do
+      post registration_url, params: { user: { email: "web-verify@example.com", password: "Password1!" } }
+    end
+
+    assert_not User.find_by!(email: "web-verify@example.com").email_verified?
+  end
+
+  test "web sign-up with the token from an emailed invitation is verified at once" do
+    invitation = invitations(:one)
+    invitation.update!(email_sent_at: 1.day.ago)
+
+    post registration_url, params: { user: { email: invitation.email, password: "Password1!", invitation: invitation.token } }
+
+    assert User.find_by!(email: invitation.email).email_verified?
+  end
+
+  test "web sign-up without a token does not claim an invitation that was emailed" do
+    invitation = invitations(:one)
+    invitation.update!(email_sent_at: 1.day.ago)
+
+    post registration_url, params: { user: { email: invitation.email, password: "Password1!" } }
+
+    user = User.find_by!(email: invitation.email)
+    assert_not_equal invitation.family, user.family
+    assert_nil invitation.reload.accepted_at
+  end
+
+  test "web sign-up without a token takes a seat that was never emailed" do
+    invitation = invitations(:one)
+
+    post registration_url, params: { user: { email: invitation.email, password: "Password1!" } }
+
+    user = User.find_by!(email: invitation.email)
+    assert_equal invitation.family, user.family
+    assert_not user.email_verified?
+  end
+
+  private
+
+    def with_onboarding_state(state)
+      original = Setting.onboarding_state
+      Setting.onboarding_state = state
+      yield
+    ensure
+      Setting.onboarding_state = original
+    end
 end

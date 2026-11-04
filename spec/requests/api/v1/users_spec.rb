@@ -124,6 +124,25 @@ RSpec.describe 'API V1 Users', type: :request do
   end
 
   path '/api/v1/users/me' do
+    get 'Get current user' do
+      tags 'Users'
+      description 'Returns the current user profile used by the mobile app ' \
+                  '(verification state, country, consent, and whether a password is set). ' \
+                  'Available before email verification.'
+      security [ { apiKeyAuth: [] } ]
+      produces 'application/json'
+
+      response '200', 'user returned' do
+        run_test!
+      end
+
+      response '401', 'unauthorized' do
+        let(:'X-Api-Key') { 'invalid-key' }
+
+        run_test!
+      end
+    end
+
     delete 'Delete account' do
       tags 'Users'
       description 'Permanently deactivates the current user account and all associated data. ' \
@@ -168,6 +187,99 @@ RSpec.describe 'API V1 Users', type: :request do
             double(full_messages: [ 'Cannot deactivate admin with other users' ])
           )
         end
+
+        run_test!
+      end
+    end
+  end
+
+  path '/api/v1/users/me/country' do
+    patch 'Update country and consent' do
+      tags 'Users'
+      description 'Records the member\'s country and the privacy/terms version they accepted. ' \
+                  'The country is locked once set — only a matching code is accepted afterwards. ' \
+                  'Available before email verification.'
+      security [ { apiKeyAuth: [] } ]
+      consumes 'application/json'
+      produces 'application/json'
+      parameter name: :payload, in: :body, schema: {
+        type: :object,
+        properties: {
+          user: {
+            type: :object,
+            properties: {
+              country_code: { type: :string, example: 'KE' },
+              consent_version: { type: :string, example: '1.0' }
+            }
+          }
+        }
+      }
+
+      let(:payload) { { user: { country_code: 'KE', consent_version: '1.0' } } }
+
+      response '200', 'country and consent saved' do
+        run_test!
+      end
+
+      response '401', 'unauthorized' do
+        let(:'X-Api-Key') { 'invalid-key' }
+
+        run_test!
+      end
+
+      response '403', 'insufficient scope' do
+        let(:api_key) do
+          key = ApiKey.generate_secure_key
+          ApiKey.create!(
+            user: user,
+            name: 'Read Only Key',
+            key: key,
+            scopes: %w[read],
+            source: 'web'
+          )
+        end
+
+        run_test!
+      end
+    end
+  end
+
+  path '/api/v1/users/me/password' do
+    patch 'Update password' do
+      tags 'Users'
+      description 'Sets or changes the current user\'s password. SSO-only accounts (no password yet) ' \
+                  'may set one without providing a current password. Available before email verification.'
+      security [ { apiKeyAuth: [] } ]
+      consumes 'application/json'
+      produces 'application/json'
+      parameter name: :payload, in: :body, schema: {
+        type: :object,
+        properties: {
+          user: {
+            type: :object,
+            properties: {
+              current_password: { type: :string },
+              password: { type: :string }
+            }
+          }
+        }
+      }
+
+      let(:payload) { { user: { current_password: 'password123', password: 'NewPassword123' } } }
+
+      response '200', 'password updated' do
+        run_test!
+      end
+
+      response '401', 'unauthorized' do
+        let(:'X-Api-Key') { 'invalid-key' }
+
+        run_test!
+      end
+
+      response '422', 'current password incorrect' do
+        schema '$ref' => '#/components/schemas/ErrorResponse'
+        let(:payload) { { user: { current_password: 'wrong-password', password: 'NewPassword123' } } }
 
         run_test!
       end

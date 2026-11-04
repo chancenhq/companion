@@ -447,4 +447,144 @@ RSpec.describe 'API V1 Auth', type: :request do
       end
     end
   end
+
+  path '/api/v1/auth/apple_sign_in' do
+    post 'Sign in with Apple' do
+      tags 'Auth'
+      consumes 'application/json'
+      produces 'application/json'
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          identity_token: { type: :string, description: 'Signed identity token returned by Apple' },
+          device: {
+            type: :object,
+            properties: {
+              device_id: { type: :string },
+              device_name: { type: :string },
+              device_type: { type: :string },
+              os_version: { type: :string },
+              app_version: { type: :string }
+            },
+            required: %w[device_id device_name device_type os_version app_version]
+          }
+        },
+        required: %w[identity_token device]
+      }
+
+      response '200', 'tokens issued' do
+        schema type: :object,
+               properties: {
+                 access_token: { type: :string },
+                 refresh_token: { type: :string },
+                 token_type: { type: :string },
+                 expires_in: { type: :integer },
+                 created_at: { type: :integer },
+                 user: { type: :object }
+               }
+        run_test!
+      end
+
+      response '400', 'missing identity token or device information' do
+        schema '$ref' => '#/components/schemas/ErrorResponse'
+        run_test!
+      end
+
+      response '401', 'invalid Apple identity token' do
+        schema '$ref' => '#/components/schemas/ErrorResponse'
+        run_test!
+      end
+
+      response '422', 'Apple account cannot be created or linked' do
+        schema '$ref' => '#/components/schemas/ErrorResponse'
+        run_test!
+      end
+    end
+  end
+
+  path '/api/v1/auth/resend_email_verification' do
+    post 'Resend email verification' do
+      tags 'Auth'
+      produces 'application/json'
+      security [ { apiKeyAuth: [] } ]
+
+      response '200', 'verification email queued' do
+        schema type: :object,
+               properties: {
+                 message: { type: :string },
+                 user: { type: :object }
+               }
+        run_test!
+      end
+
+      response '401', 'unauthorized' do
+        schema '$ref' => '#/components/schemas/ErrorResponse'
+        run_test!
+      end
+
+      response '403', 'insufficient scope' do
+        schema '$ref' => '#/components/schemas/ErrorResponse'
+        run_test!
+      end
+
+      response '429', 'resend limit exceeded' do
+        schema '$ref' => '#/components/schemas/ErrorResponse'
+        run_test!
+      end
+    end
+  end
+
+  path '/api/v1/auth/password_reset' do
+    post 'Request a mobile password reset' do
+      tags 'Auth'
+      consumes 'application/json'
+      produces 'application/json'
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          email: { type: :string, format: :email }
+        },
+        required: %w[email]
+      }
+
+      response '200', 'generic reset response' do
+        schema type: :object, properties: {
+          message: { type: :string }
+        }
+        run_test!
+      end
+    end
+
+    patch 'Reset password with a token' do
+      tags 'Auth'
+      consumes 'application/json'
+      produces 'application/json'
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          token: { type: :string },
+          password: { type: :string },
+          password_confirmation: { type: :string }
+        },
+        required: %w[token password password_confirmation]
+      }
+
+      response '200', 'password updated' do
+        schema type: :object, properties: {
+          message: { type: :string }
+        }
+        run_test!
+      end
+
+      response '403', 'password features disabled' do
+        schema '$ref' => '#/components/schemas/ErrorResponse'
+        run_test!
+      end
+
+      response '422', 'invalid token, SSO-only account, or password validation error' do
+        schema '$ref' => '#/components/schemas/ErrorResponse'
+        run_test!
+      end
+    end
+  end
 end

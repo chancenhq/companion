@@ -1,0 +1,9 @@
+---
+en:
+  activerecord:
+    errors:
+      models:
+        invitation:
+          attributes:
+            base:
+              family_country_missing: Set a country for this family before inviting anyone.

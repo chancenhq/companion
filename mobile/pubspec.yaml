@@ -33,6 +33,8 @@ dependencies:
   flutter_markdown: ^0.7.2
   sentry_flutter: ^8.14.2
   upgrader: ^13.5.0
+  sign_in_with_apple: ^6.1.0
+  webview_flutter: ^4.10.0
 
 dev_dependencies:
   flutter_test:
