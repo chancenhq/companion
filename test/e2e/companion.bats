@@ -76,7 +76,7 @@ teardown_file() {
   status_code=$(printf '%s\n' "${response}" | tail -n 1)
   [ "${status_code}" -eq 200 ]
   verified=$("${COMPOSE[@]}" exec -T app bundle exec rails runner \
-    'puts User.find_by!(email: "companion-e2e-verification@example.com").email_verified?')
+    'puts User.find_by!(email: "companion-e2e-verification@example.com").email_verified?' | tail -n 1)
   [ "${verified}" = "true" ]
 }
 
