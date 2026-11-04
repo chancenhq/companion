@@ -69,8 +69,9 @@ teardown_file() {
 
 @test "an email confirmation link verifies the user's email" {
   confirmation_token=$(jq -r '.email_confirmation_token' "${STATE_FILE}")
-  response=$(curl -sS -w $'\n%{http_code}' \
-    "${BASE_URL}/email_confirmation?token=${confirmation_token}")
+  response=$(curl -sS -w $'\n%{http_code}' -G \
+    --data-urlencode "token=${confirmation_token}" \
+    "${BASE_URL}/email_confirmation")
 
   status_code=$(printf '%s\n' "${response}" | tail -n 1)
   [ "${status_code}" -eq 200 ]
