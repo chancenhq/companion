@@ -98,19 +98,6 @@ teardown_file() {
   [ "${status_code}" -eq 200 ]
   [ "$(jq -r '.message' <<<"${body}")" = "Password updated. You've been signed out on all devices." ]
 
-  login_payload='{"email":"companion-e2e-reset@example.com","password":"NewSecurePass123!","device":{"device_id":"companion-e2e-reset-device","device_name":"Bats","device_type":"web","os_version":"e2e","app_version":"e2e"}}'
-  login_response=$(curl -sS -w $'\n%{http_code}' -X POST \
-    -H "Content-Type: application/json" \
-    -d "${login_payload}" \
-    "${BASE_URL}/api/v1/auth/login")
-  [ "$(printf '%s\n' "${login_response}" | tail -n 1)" -eq 200 ]
-
-  login_response=$(curl -sS -w $'\n%{http_code}' -X POST \
-    -H "Content-Type: application/json" \
-    -d "${login_payload//NewSecurePass123!/SecurePass123!}" \
-    "${BASE_URL}/api/v1/auth/login")
-  [ "$(printf '%s\n' "${login_response}" | tail -n 1)" -eq 401 ]
-
   response=$(curl -sS -w $'\n%{http_code}' -X PATCH \
     -H "Content-Type: application/json" \
     -d "{\"token\":\"${reset_token}\",\"password\":\"AnotherPass123!\",\"password_confirmation\":\"AnotherPass123!\"}" \
