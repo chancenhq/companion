@@ -1,0 +1,25 @@
+<%= content_for :page_title, t(".title") %>
+
+<div class="flex items-center justify-between gap-2 mb-4">
+  <h1 class="text-xl font-medium text-primary"><%= t(".title") %></h1>
+
+  <%# Kebab holds secondary "jump out" actions for the integration. DS::Menu is %>
+  <%# action-list only (links/buttons), so config inputs stay in the section below. %>
+  <%= render DS::Menu.new(icon_vertical: true, testid: "chancen-menu") do |menu| %>
+    <% if Setting.metabase_url.present? %>
+      <% menu.with_item(
+        variant: "link",
+        text: t(".open_metabase"),
+        href: Setting.metabase_url,
+        icon: "external-link",
+        target: "_blank"
+      ) %>
+    <% else %>
+      <% menu.with_item(variant: "button", text: t(".open_metabase"), icon: "external-link", disabled: true) %>
+    <% end %>
+  <% end %>
+</div>
+
+<%= settings_section title: t(".metabase") do %>
+  <%= render "settings/chancens/metabase_settings" %>
+<% end %>

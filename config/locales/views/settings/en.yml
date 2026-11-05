@@ -383,6 +383,7 @@ en:
       recurring_transactions_label: Recurring
       rules_label: Rules
       mcp_label: MCP
+      chancen_label: Chancen
       security_label: Security
       self_hosting_label: Self-Hosting
       sso_providers_label: SSO Providers
