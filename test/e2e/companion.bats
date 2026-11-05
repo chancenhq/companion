@@ -7,7 +7,7 @@ ARTIFACT_DIR="${E2E_ARTIFACT_DIR:-tmp/companion-e2e}"
 
 wait_for_app() {
   for _ in $(seq 1 60); do
-    if curl -fsS "${BASE_URL}/up" >/dev/null 2>&1; then
+    if curl --max-time 5 -fsS "${BASE_URL}/up" >/dev/null 2>&1; then
       return 0
     fi
     sleep 2
@@ -17,8 +17,14 @@ wait_for_app() {
 }
 
 setup_file() {
-  command -v docker >/dev/null || skip "docker is not installed"
-  docker info >/dev/null 2>&1 || skip "docker daemon is not running"
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "docker is not installed" >&2
+    return 1
+  fi
+  if ! docker info >/dev/null 2>&1; then
+    echo "docker daemon is not running" >&2
+    return 1
+  fi
   mkdir -p "${ARTIFACT_DIR}"
 
   "${COMPOSE[@]}" up -d --build
@@ -92,6 +98,19 @@ teardown_file() {
   [ "${status_code}" -eq 200 ]
   [ "$(jq -r '.message' <<<"${body}")" = "Password updated. You've been signed out on all devices." ]
 
+  login_payload='{"email":"companion-e2e-reset@example.com","password":"NewSecurePass123!","device":{"device_id":"companion-e2e-reset-device","device_name":"Bats","device_type":"web","os_version":"e2e","app_version":"e2e"}}'
+  login_response=$(curl -sS -w $'\n%{http_code}' -X POST \
+    -H "Content-Type: application/json" \
+    -d "${login_payload}" \
+    "${BASE_URL}/api/v1/auth/login")
+  [ "$(printf '%s\n' "${login_response}" | tail -n 1)" -eq 200 ]
+
+  login_response=$(curl -sS -w $'\n%{http_code}' -X POST \
+    -H "Content-Type: application/json" \
+    -d "${login_payload//NewSecurePass123!/SecurePass123!}" \
+    "${BASE_URL}/api/v1/auth/login")
+  [ "$(printf '%s\n' "${login_response}" | tail -n 1)" -eq 401 ]
+
   response=$(curl -sS -w $'\n%{http_code}' -X PATCH \
     -H "Content-Type: application/json" \
     -d "{\"token\":\"${reset_token}\",\"password\":\"AnotherPass123!\",\"password_confirmation\":\"AnotherPass123!\"}" \
@@ -121,7 +140,7 @@ teardown_file() {
 @test "the application preserves storage across a container restart" {
   marker="companion-e2e-persisted"
   "${COMPOSE[@]}" exec -T app sh -c "printf '%s' '${marker}' > /rails/storage/e2e-marker"
-  "${COMPOSE[@]}" restart app
+  "${COMPOSE[@]}" up -d --force-recreate app
   wait_for_app
 
   run "${COMPOSE[@]}" exec -T app cat /rails/storage/e2e-marker
