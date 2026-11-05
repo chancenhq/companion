@@ -13,6 +13,7 @@ on:
       - "app/**"
       - "config/**"
       - "db/**"
+      - "lib/**"
       - "test/e2e/**"
       - ".github/workflows/e2e.yml"
   push:
@@ -29,6 +30,7 @@ on:
       - "app/**"
       - "config/**"
       - "db/**"
+      - "lib/**"
       - "test/e2e/**"
       - ".github/workflows/e2e.yml"
 
