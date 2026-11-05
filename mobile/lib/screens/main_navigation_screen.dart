@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import 'chat_list_screen.dart';
 import 'insights_screen.dart';
+import 'isa_transactions_screen.dart';
 import 'settings_screen.dart';
 import '../widgets/email_verification_banner.dart';
 
@@ -36,6 +37,14 @@ List<_Tab> _tabsFor(String uiLayout) {
         icon: Icon(Icons.insights_outlined),
         selectedIcon: Icon(Icons.insights),
         label: 'My Account',
+      ),
+    ),
+    _Tab(
+      screen: IsaTransactionsScreen(),
+      destination: NavigationDestination(
+        icon: Icon(Icons.receipt_long_outlined),
+        selectedIcon: Icon(Icons.receipt_long),
+        label: 'Payments',
       ),
     ),
   ];

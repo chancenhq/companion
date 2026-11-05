@@ -21,6 +21,13 @@ class AccountUpstreamException implements Exception {
   const AccountUpstreamException(this.statusCode);
 }
 
+/// Thrown when the API rejects a financial-data request because the user's
+/// email is not yet verified. Shared by services that hit email-gated
+/// endpoints (e.g. My Account, ISA transactions).
+class EmailVerificationRequiredException implements Exception {
+  const EmailVerificationRequiredException();
+}
+
 class MyAccountService {
   Future<StudentAccount?> fetchMyAccount(String accessToken) async {
     try {
