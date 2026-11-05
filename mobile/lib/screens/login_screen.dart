@@ -21,14 +21,15 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  static const _emailPlaceholder = 'user@example.com';
-  static const _passwordPlaceholder = 'Password1!';
-  final _emailController = TextEditingController(text: _emailPlaceholder);
-  final _passwordController = TextEditingController(text: _passwordPlaceholder);
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
   final _otpController = TextEditingController();
   final _emailFocus = FocusNode();
   final _passwordFocus = FocusNode();
   bool _obscurePassword = true;
+  int _logoTapCount = 0;
+  DateTime? _firstLogoTapAt;
+  bool _devUnlocked = false;
   late final TapGestureRecognizer _signUpTapRecognizer;
   static const _legacyProviders = [
     SsoProvider(name: 'google_oauth2', strategy: 'google_oauth2', label: ''),
@@ -40,10 +41,6 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     _signUpTapRecognizer = TapGestureRecognizer()..onTap = _openSignUpPage;
-    _emailFocus.addListener(() => _clearPlaceholderOnFocus(
-          _emailFocus, _emailController, _emailPlaceholder));
-    _passwordFocus.addListener(() => _clearPlaceholderOnFocus(
-          _passwordFocus, _passwordController, _passwordPlaceholder));
   }
 
   Future<void> _openSettings() async {
@@ -81,10 +78,24 @@ class _LoginScreenState extends State<LoginScreen> {
     return _ssoProvidersFuture!;
   }
 
-  void _clearPlaceholderOnFocus(
-      FocusNode node, TextEditingController controller, String placeholder) {
-    if (node.hasFocus && controller.text == placeholder) {
-      controller.clear();
+  void _handleLogoTap() {
+    final now = DateTime.now();
+    if (_firstLogoTapAt == null ||
+        now.difference(_firstLogoTapAt!) > const Duration(seconds: 5)) {
+      _firstLogoTapAt = now;
+      _logoTapCount = 1;
+      return;
+    }
+
+    _logoTapCount++;
+    if (_logoTapCount >= 7 && !_devUnlocked) {
+      setState(() => _devUnlocked = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Developer options enabled'),
+          duration: Duration(seconds: 2),
+        ),
+      );
     }
   }
 
@@ -180,10 +191,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   children: [
                     const SizedBox(height: 48),
                     // Logo/Title
-                    SvgPicture.asset(
-                      'assets/images/companion-logo.svg',
-                      width: 80,
-                      height: 80,
+                    GestureDetector(
+                      onTap: _handleLogoTap,
+                      child: SvgPicture.asset(
+                        'assets/images/companion-logo.svg',
+                        width: 80,
+                        height: 80,
+                      ),
                     ),
                     const SizedBox(height: 24),
                     Text.rich(
@@ -423,70 +437,77 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     const SizedBox(height: 24),
 
-                    // Backend URL info
-                    InkWell(
-                      onTap: () => _openSettings(),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: colorScheme.surfaceContainerHighest
-                              .withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Column(
-                          children: [
-                            Text(
-                              l.loginServerUrlHeading,
-                              style:
-                                  Theme.of(context).textTheme.bodySmall?.copyWith(
-                                        color: colorScheme.onSurfaceVariant,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              ApiConfig.baseUrl,
-                              style:
-                                  Theme.of(context).textTheme.bodySmall?.copyWith(
-                                        color: colorScheme.primary,
-                                        fontFamily: 'monospace',
-                                      ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
+                    if (_devUnlocked) ...[
+                      // Backend URL info
+                      InkWell(
+                        onTap: () => _openSettings(),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerHighest
+                                .withValues(alpha: 0.3),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                l.loginServerUrlHeading,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color: colorScheme.onSurfaceVariant,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                ApiConfig.baseUrl,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color: colorScheme.primary,
+                                      fontFamily: 'monospace',
+                                    ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
 
-                    const SizedBox(height: 12),
+                      const SizedBox(height: 12),
 
-                    // API Key Login Button
-                    Consumer<AuthProvider>(
-                      builder: (context, authProvider, _) {
-                        return SureButton(
-                          label: l.loginApiKeyLoginButton,
-                          variant: SureButtonVariant.ghost,
-                          onPressed:
-                              authProvider.isLoading ? null : _showApiKeyDialog,
-                          leading:
-                              const Icon(Icons.vpn_key_outlined, size: 18),
-                        );
-                      },
-                    ),
+                      // API Key Login Button
+                      Consumer<AuthProvider>(
+                        builder: (context, authProvider, _) {
+                          return SureButton(
+                            label: l.loginApiKeyLoginButton,
+                            variant: SureButtonVariant.ghost,
+                            onPressed:
+                                authProvider.isLoading ? null : _showApiKeyDialog,
+                            leading:
+                                const Icon(Icons.vpn_key_outlined, size: 18),
+                          );
+                        },
+                      ),
+                    ],
                   ],
                 ),
               ),
             ),
-            Positioned(
-              right: 8,
-              top: 8,
-              child: IconButton(
-                icon: const Icon(Icons.settings_outlined),
-                tooltip: l.loginBackendSettingsTooltip,
-                onPressed: () => _openSettings(),
+            if (_devUnlocked)
+              Positioned(
+                right: 8,
+                top: 8,
+                child: IconButton(
+                  icon: const Icon(Icons.settings_outlined),
+                  tooltip: l.loginBackendSettingsTooltip,
+                  onPressed: () => _openSettings(),
+                ),
               ),
-            ),
           ],
         ),
       ),

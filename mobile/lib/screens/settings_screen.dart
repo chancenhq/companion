@@ -642,14 +642,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: Text(l.settingsAppVersion(_appVersion ?? '…')),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(' > ui_layout: ${authProvider.user?.uiLayout}'),
-                Text(' > ai_enabled: ${authProvider.user?.aiEnabled}'),
-              ],
-            ),
+            subtitle: _devMode
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(' > ui_layout: ${authProvider.user?.uiLayout}'),
+                      Text(' > ai_enabled: ${authProvider.user?.aiEnabled}'),
+                    ],
+                  )
+                : null,
           ),
 
           ListTile(
@@ -713,18 +715,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
 
-          SwitchListTile(
-            secondary: const Icon(Icons.view_list),
-            title: Text(l.settingsGroupByAccountType),
-            subtitle: Text(l.settingsGroupByAccountTypeSubtitle),
-            value: _groupByType,
-            onChanged: (value) async {
-              await PreferencesService.instance.setGroupByType(value);
-              setState(() {
-                _groupByType = value;
-              });
-            },
-          ),
+          if (_devMode)
+            SwitchListTile(
+              secondary: const Icon(Icons.view_list),
+              title: Text(l.settingsGroupByAccountType),
+              subtitle: Text(l.settingsGroupByAccountTypeSubtitle),
+              value: _groupByType,
+              onChanged: (value) async {
+                await PreferencesService.instance.setGroupByType(value);
+                setState(() {
+                  _groupByType = value;
+                });
+              },
+            ),
 
           Consumer<ThemeProvider>(
             builder: (context, themeProvider, _) {
@@ -832,14 +835,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
-          SwitchListTile(
-            secondary: const Icon(Icons.visibility_off_outlined),
-            title: Text(l.settingsPrivacyHideAmountsLabel),
-            subtitle: Text(l.settingsPrivacyHideAmountsContent),
-            value: context.watch<PrivacyProvider>().hidden,
-            onChanged: (value) =>
-                context.read<PrivacyProvider>().setHidden(value),
-          ),
+          if (_devMode)
+            SwitchListTile(
+              secondary: const Icon(Icons.visibility_off_outlined),
+              title: Text(l.settingsPrivacyHideAmountsLabel),
+              subtitle: Text(l.settingsPrivacyHideAmountsContent),
+              value: context.watch<PrivacyProvider>().hidden,
+              onChanged: (value) =>
+                  context.read<PrivacyProvider>().setHidden(value),
+            ),
           if (_biometricSupported)
             SwitchListTile(
               secondary: const Icon(Icons.fingerprint),
@@ -865,23 +869,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
 
           ListTile(
-            leading: const Icon(Icons.restart_alt, color: Colors.red),
-            title: Text(l.settingsResetAccount),
-            subtitle: Text(l.settingsResetAccountTileSubtitle),
-            trailing: _activeDestructiveAction == _resetAction
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : null,
-            enabled: _activeDestructiveAction == null,
-            onTap: _activeDestructiveAction != null
-                ? null
-                : () => _handleResetAccount(context),
-          ),
-
-          ListTile(
             leading: const Icon(Icons.delete_forever, color: Colors.red),
             title: Text(l.settingsDeleteAccount),
             subtitle: Text(l.settingsDeleteAccountTileSubtitle),
@@ -897,6 +884,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ? null
                 : () => _handleDeleteAccount(context),
           ),
+
+          if (_devMode)
+            ListTile(
+              leading: const Icon(Icons.restart_alt, color: Colors.red),
+              title: Text(l.settingsResetAccount),
+              subtitle: Text(l.settingsResetAccountTileSubtitle),
+              trailing: _activeDestructiveAction == _resetAction
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : null,
+              enabled: _activeDestructiveAction == null,
+              onTap: _activeDestructiveAction != null
+                  ? null
+                  : () => _handleResetAccount(context),
+            ),
 
           const Divider(),
 
