@@ -17,7 +17,7 @@ class Setting < RailsSettings::Base
   field :llm_provider, type: :string, default: ENV.fetch("LLM_PROVIDER", "openai")
 
   # Public write-only project token used by the mobile analytics client.
-  field :posthog_public_key, type: :string, default: ENV["POSTHOG_KEY"].presence || ENV["POSTHOG_PUBLIC_KEY"].presence
+  field :posthog_public_key, type: :string, default: ENV["POSTHOG_KEY"].presence
   field :posthog_host, type: :string, default: ENV.fetch("POSTHOG_HOST", "https://us.i.posthog.com")
 
   # Jev (TypeSafe) — a classification provider, not an LLM. Reachable either
