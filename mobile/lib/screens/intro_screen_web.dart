@@ -1,6 +1,8 @@
-import 'dart:html' as html;
+import 'dart:js_interop';
 import 'dart:ui_web' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:web/web.dart' as web;
 
 class IntroScreenPlatform extends StatefulWidget {
   const IntroScreenPlatform({super.key, this.onStartChat});
@@ -24,8 +26,8 @@ class _IntroScreenPlatformState extends State<IntroScreenPlatform> {
     _viewType = 'intro-screen-web-$currentId';
 
     ui.platformViewRegistry.registerViewFactory(_viewType, (int viewId) {
-      final frame = html.IFrameElement()
-        ..srcdoc = _introHtmlContent
+      final frame = web.HTMLIFrameElement()
+        ..srcdoc = _introHtmlContent.toJS
         ..style.width = '100%'
         ..style.height = '100%'
         ..style.border = '0';
@@ -76,7 +78,7 @@ const String _introHtmlContent = '''
         padding-right: 0.75rem;
       }
 
-      .lg\:px-10 {
+      .lg:px-10 {
         padding-left: 2.5rem;
         padding-right: 2.5rem;
       }
