@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import '../services/analytics_service.dart';
 import 'chat_list_screen.dart';
 import 'insights_screen.dart';
 import 'isa_transactions_screen.dart';
@@ -13,9 +14,14 @@ import '../widgets/email_verification_banner.dart';
 /// To add or reorder tabs for a user type, edit [_tabsFor] only —
 /// MainNavigationScreen never needs to change.
 class _Tab {
-  const _Tab({required this.screen, required this.destination});
+  const _Tab({
+    required this.screen,
+    required this.destination,
+    required this.analyticsName,
+  });
   final Widget screen;
   final NavigationDestination destination;
+  final String analyticsName;
 }
 
 /// Returns the tab list for the given user layout.
@@ -25,6 +31,7 @@ List<_Tab> _tabsFor(String uiLayout) {
   return const [
     _Tab(
       screen: ChatListScreen(),
+      analyticsName: 'chat_list',
       destination: NavigationDestination(
         icon: Icon(Icons.chat_bubble_outline),
         selectedIcon: Icon(Icons.chat_bubble),
@@ -33,6 +40,7 @@ List<_Tab> _tabsFor(String uiLayout) {
     ),
     _Tab(
       screen: InsightsScreen(),
+      analyticsName: 'my_account',
       destination: NavigationDestination(
         icon: Icon(Icons.insights_outlined),
         selectedIcon: Icon(Icons.insights),
@@ -60,6 +68,12 @@ class MainNavigationScreen extends StatefulWidget {
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
 
+  @override
+  void initState() {
+    super.initState();
+    AnalyticsService.instance.screen('chat_list');
+  }
+
   Future<void> _handleDestinationSelected(
     int index,
     AuthProvider authProvider,
@@ -72,7 +86,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       if (!enabled) return;
     }
 
-    if (mounted) setState(() => _currentIndex = index);
+    if (mounted) {
+      setState(() => _currentIndex = index);
+      final screenName =
+          index < tabs.length ? tabs[index].analyticsName : 'settings';
+      AnalyticsService.instance.screen(screenName);
+    }
   }
 
   Future<void> _handleSelectSettings(
@@ -158,7 +177,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     if (!enabled && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(authProvider.errorMessage ?? 'Unable to enable AI right now.'),
+          content: Text(
+              authProvider.errorMessage ?? 'Unable to enable AI right now.'),
           backgroundColor: Colors.red,
         ),
       );
