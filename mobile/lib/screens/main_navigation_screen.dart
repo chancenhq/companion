@@ -49,6 +49,7 @@ List<_Tab> _tabsFor(String uiLayout) {
     ),
     _Tab(
       screen: IsaTransactionsScreen(),
+      analyticsName: 'isa_transactions',
       destination: NavigationDestination(
         icon: Icon(Icons.receipt_long_outlined),
         selectedIcon: Icon(Icons.receipt_long),
