@@ -37,6 +37,7 @@ dependencies:
   sign_in_with_apple: ^6.1.0
   webview_flutter: ^4.10.0
   posthog_flutter: ^4.0.0
+  web: ^1.0.0
 
 dev_dependencies:
   flutter_test:
