@@ -66,22 +66,10 @@ class PosthogTest < ActiveSupport::TestCase
     assert_nil $posthog_feedback
   end
 
-  test "deprecated public key initializes operator analytics as a fallback" do
-    normal_client = mock("normal analytics")
-    PostHog::Client.expects(:new).with(
-      has_entries(api_key: "legacy-public-key", host: "https://us.i.posthog.com")
-    ).returns(normal_client)
-
-    load_initializer(POSTHOG_PUBLIC_KEY: "legacy-public-key")
-
-    assert_same normal_client, $posthog
-  end
-
   private
     def load_initializer(**overrides)
       defaults = {
         POSTHOG_KEY: nil,
-        POSTHOG_PUBLIC_KEY: nil,
         POSTHOG_HOST: nil,
         POSTHOG_FEEDBACK_ENABLED: "true",
         POSTHOG_DEVELOPMENT_ENABLED: "false"
