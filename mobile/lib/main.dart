@@ -1,7 +1,9 @@
 ﻿import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
 import 'package:provider/provider.dart';
+import 'providers/app_config_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/accounts_provider.dart';
 import 'providers/categories_provider.dart';
@@ -19,6 +21,7 @@ import 'screens/biometric_lock_screen.dart';
 import 'screens/main_navigation_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/sso_onboarding_screen.dart';
+import 'services/analytics_service.dart';
 import 'services/api_config.dart';
 import 'services/connectivity_service.dart';
 import 'services/log_service.dart';
@@ -144,6 +147,7 @@ class SureApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => LogService.instance),
         ChangeNotifierProvider(create: (_) => ConnectivityService()),
+        ChangeNotifierProvider(create: (_) => AppConfigProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => ChatProvider()),
         ChangeNotifierProvider(create: (_) => MyAccountProvider()),
@@ -186,7 +190,10 @@ class SureApp extends StatelessWidget {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           debugShowCheckedModeBanner: false,
-          navigatorObservers: TelemetryService.instance.navigatorObservers,
+          navigatorObservers: [
+            ...TelemetryService.instance.navigatorObservers,
+            PosthogObserver(),
+          ],
           theme: _chancenBranded(SureTheme.light),
           darkTheme: _chancenBranded(SureTheme.dark),
           themeMode: themeProvider.themeMode,
@@ -214,6 +221,7 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
   bool _hasBackendUrl = false;
   bool _isLocked = false;
   bool _onboardingComplete = true; // assume complete until checked (no flash)
+  String? _lastScreenName;
   late final AppLinks _appLinks;
   StreamSubscription<Uri>? _linkSubscription;
 
@@ -230,6 +238,7 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
     _checkBackendConfig();
     _checkOnboarding();
     _initDeepLinks();
+    Provider.of<AppConfigProvider>(context, listen: false).load();
   }
 
   @override
@@ -362,6 +371,15 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
     setState(() {
       _hasBackendUrl = true;
     });
+    Provider.of<AppConfigProvider>(context, listen: false).load();
+  }
+
+  void _trackScreenIfChanged(String name) {
+    if (_lastScreenName == name) return;
+    _lastScreenName = name;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      AnalyticsService.instance.screen(name);
+    });
   }
 
   @override
@@ -394,12 +412,14 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
         // SSO callbacks must win over everything — including first-launch
         // onboarding — so the deep link is never dropped from the widget tree.
         if (authProvider.ssoOnboardingPending) {
+          _trackScreenIfChanged('sso_onboarding');
           return const SsoOnboardingScreen();
         }
 
         // Onboarding (country select + consent) must complete before the app
         // is accessible, even when the user signed up on page 1 of the flow.
         if (!_onboardingComplete) {
+          _trackScreenIfChanged('onboarding');
           return OnboardingScreen(
             onComplete: _onOnboardingComplete,
             initialPage: authProvider.isAuthenticated ? 2 : 0,
@@ -409,14 +429,17 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
         if (authProvider.isAuthenticated) {
           // Members accept the privacy/terms for their country once.
           if (authProvider.countryConfirmationRequired) {
+            _trackScreenIfChanged('country_selection');
             return const CountrySelectionScreen();
           }
 
           // SSO users must set a password before they can be locked out.
           if (authProvider.user?.hasPassword == false) {
+            _trackScreenIfChanged('sso_set_password');
             return const SsoOnboardingScreen(passwordOnlyMode: true);
           }
 
+          // MainNavigationScreen tracks its own tab screens.
           return Stack(
             children: [
               UpgradeAlert(
@@ -440,6 +463,7 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
           });
         }
 
+        _trackScreenIfChanged('login');
         return const LoginScreen();
       },
     );

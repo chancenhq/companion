@@ -8,7 +8,7 @@ def (Rails.configuration.x.posthog).browser_enabled?
   Rails.env.production? || (Rails.env.development? && development_enabled)
 end
 
-Rails.configuration.x.posthog.api_key = ENV["POSTHOG_KEY"].presence
+Rails.configuration.x.posthog.api_key = ENV["POSTHOG_KEY"].presence || ENV["POSTHOG_PUBLIC_KEY"].presence
 Rails.configuration.x.posthog.host = ENV.fetch("POSTHOG_HOST", "https://us.i.posthog.com")
 Rails.configuration.x.posthog.feedback_enabled = ActiveModel::Type::Boolean.new.cast(ENV.fetch("POSTHOG_FEEDBACK_ENABLED", "true"))
 # Public client configuration for shared feedback, including self-hosted Sankey.
