@@ -4806,6 +4806,32 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/ErrorResponse"
+  "/api/v1/app_config":
+    get:
+      summary: Retrieve public mobile app configuration
+      tags:
+      - App Config
+      description: Returns public client configuration used to initialize mobile services.
+      responses:
+        '200':
+          description: app configuration returned
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - posthog
+                properties:
+                  posthog:
+                    type: object
+                    properties:
+                      host:
+                        type: string
+                        format: uri
+                        nullable: true
+                      api_key:
+                        type: string
+                        nullable: true
   "/api/v1/auth/signup":
     post:
       summary: Sign up a new user
@@ -5401,6 +5427,191 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/ErrorResponse"
+  "/api/v1/auth/apple_sign_in":
+    post:
+      summary: Sign in with Apple
+      tags:
+      - Auth
+      parameters: []
+      responses:
+        '200':
+          description: tokens issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  token_type:
+                    type: string
+                  expires_in:
+                    type: integer
+                  created_at:
+                    type: integer
+                  user:
+                    type: object
+        '400':
+          description: missing identity token or device information
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        '401':
+          description: invalid Apple identity token
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        '422':
+          description: Apple account cannot be created or linked
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                identity_token:
+                  type: string
+                  description: Signed identity token returned by Apple
+                device:
+                  type: object
+                  properties:
+                    device_id:
+                      type: string
+                    device_name:
+                      type: string
+                    device_type:
+                      type: string
+                    os_version:
+                      type: string
+                    app_version:
+                      type: string
+                  required:
+                  - device_id
+                  - device_name
+                  - device_type
+                  - os_version
+                  - app_version
+              required:
+              - identity_token
+              - device
+        required: true
+  "/api/v1/auth/resend_email_verification":
+    post:
+      summary: Resend email verification
+      tags:
+      - Auth
+      security:
+      - apiKeyAuth: []
+      responses:
+        '200':
+          description: verification email queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  user:
+                    type: object
+        '401':
+          description: unauthorized
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        '403':
+          description: insufficient scope
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        '429':
+          description: resend limit exceeded
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+  "/api/v1/auth/password_reset":
+    post:
+      summary: Request a mobile password reset
+      tags:
+      - Auth
+      parameters: []
+      responses:
+        '200':
+          description: generic reset response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+              required:
+              - email
+        required: true
+    patch:
+      summary: Reset password with a token
+      tags:
+      - Auth
+      parameters: []
+      responses:
+        '200':
+          description: password updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '403':
+          description: password features disabled
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        '422':
+          description: invalid token, SSO-only account, or password validation error
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                password:
+                  type: string
+                password_confirmation:
+                  type: string
+              required:
+              - token
+              - password
+              - password_confirmation
+        required: true
   "/api/v1/balance_sheet":
     get:
       summary: Show balance sheet
@@ -6159,6 +6370,17 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/ErrorResponse"
+  "/api/v1/countries":
+    get:
+      summary: List countries
+      tags:
+      - Countries
+      description: Lists the live Chancen countries with their Privacy Policy and
+        Terms of Use links. Public (no API key) because the picker and consent screen
+        run before sign-up.
+      responses:
+        '200':
+          description: countries listed
   "/api/v1/family_exports":
     get:
       summary: Lists family exports
@@ -10611,6 +10833,20 @@ paths:
               schema:
                 "$ref": "#/components/schemas/ErrorResponse"
   "/api/v1/users/me":
+    get:
+      summary: Get current user
+      tags:
+      - Users
+      description: Returns the current user profile used by the mobile app (verification
+        state, country, consent, and whether a password is set). Available before
+        email verification.
+      security:
+      - apiKeyAuth: []
+      responses:
+        '200':
+          description: user returned
+        '401':
+          description: unauthorized
     delete:
       summary: Delete account
       tags:
@@ -10636,6 +10872,74 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/ErrorResponse"
+  "/api/v1/users/me/country":
+    patch:
+      summary: Update country and consent
+      tags:
+      - Users
+      description: Records the member's country and the privacy/terms version they
+        accepted. The country is locked once set — only a matching code is accepted
+        afterwards. Available before email verification.
+      security:
+      - apiKeyAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: country and consent saved
+        '401':
+          description: unauthorized
+        '403':
+          description: insufficient scope
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user:
+                  type: object
+                  properties:
+                    country_code:
+                      type: string
+                      example: KE
+                    consent_version:
+                      type: string
+                      example: '1.0'
+  "/api/v1/users/me/password":
+    patch:
+      summary: Update password
+      tags:
+      - Users
+      description: Sets or changes the current user's password. SSO-only accounts
+        (no password yet) may set one without providing a current password. Available
+        before email verification.
+      security:
+      - apiKeyAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: password updated
+        '401':
+          description: unauthorized
+        '422':
+          description: current password incorrect
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user:
+                  type: object
+                  properties:
+                    current_password:
+                      type: string
+                    password:
+                      type: string
   "/api/v1/valuations":
     get:
       summary: List valuations
