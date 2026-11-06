@@ -342,7 +342,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
             );
           }
 
-          return RefreshIndicator(
+          final chatListView = RefreshIndicator(
             onRefresh: _handleRefresh,
             child: ListView.builder(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -459,6 +459,22 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 );
               },
             ),
+          );
+
+          if (!chatProvider.hasIncompleteChatList) return chatListView;
+          return Column(
+            children: [
+              MaterialBanner(
+                content: Text(l.chatListIncomplete),
+                actions: [
+                  TextButton(
+                    onPressed: _handleRefresh,
+                    child: Text(l.commonTryAgain),
+                  ),
+                ],
+              ),
+              Expanded(child: chatListView),
+            ],
           );
         },
       ),
