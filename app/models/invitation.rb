@@ -17,6 +17,7 @@ class Invitation < ApplicationRecord
   validate :inviter_is_admin, on: :create
   validate :no_other_pending_invitation, on: :create
   validate :family_has_country, on: :create
+  validate :not_inviting_self, on: :create
 
   before_validation :normalize_email
   before_validation :set_country_from_family, on: :create
@@ -46,66 +47,19 @@ class Invitation < ApplicationRecord
     pending.where(email_sent_at: nil).find_by(email: email.to_s.strip.downcase)
   end
 
-  def accept_for(user)
-    return false if user.blank?
-    return false unless pending?
-    return false unless emails_match?(user)
-    return false if would_orphan_owned_accounts?(user)
-
-    transaction do
-      release_provider_item_ownership(user)
-      user.update!(family_id: family_id, role: role.to_s)
-      user.record_country!(country_code) if country_code.present?
-      update!(accepted_at: Time.current)
-      family.auto_share_existing_accounts_with(user)
-    end
-    true
-  end
-
-  # would_orphan_owned_accounts? blocks the move when the user owns accounts
-  # that would be left behind, but a provider item can be owned without owning
-  # any account (it may have generated none yet, or its accounts belong to
-  # someone else). Such an item keeps its old family_id while its owner leaves,
-  # and the next save fails ProviderItemOwnable's same-family validation --
-  # which would leave the connection unsyncable. Release ownership instead: the
-  # item reverts to admin-managed, exactly as before ownership existed.
-  def release_provider_item_ownership(user)
-    return if user.family_id.blank? || user.family_id == family_id
-
-    ProviderItemOwnable.owned_item_classes.each do |item_class|
-      item_class.where(owner_id: user.id)
-                .where.not(family_id: family_id)
-                .update_all(owner_id: nil, updated_at: Time.current)
-    end
-  end
-
-  def would_orphan_owned_accounts?(user)
-    return false if user.blank?
-    return false if user.family_id.blank?
-    return false if user.family_id == family_id
-
-    user.owned_accounts.where.not(family_id: family_id).exists?
-  end
-
   # Marks the invitation used by a newly created account and gives that
   # account the invitation's country.
   def accept_signup!(user)
     update!(accepted_at: Time.current)
     user.record_country!(country_code) if country_code.present?
     # A new account joining via invitation must honor the family's default
-    # sharing policy, exactly as accept_for does for existing users. The method
+    # sharing policy. The method
     # is guarded by a same-family membership check, so it no-ops safely when the
     # user is not (yet) a member of this invitation's family.
     family.auto_share_existing_accounts_with(user)
   end
 
   private
-
-    def emails_match?(user)
-      inv_email = email.to_s.strip.downcase
-      usr_email = user.email.to_s.strip.downcase
-      inv_email.present? && usr_email.present? && inv_email == usr_email
-    end
 
     def generate_token
       loop do
@@ -181,6 +135,13 @@ class Invitation < ApplicationRecord
       end
 
       errors.add(:email, "has already been invited to this family") if exists
+    end
+
+    # The inviter already has an account, and an invitation never moves one.
+    def not_inviting_self
+      return if email.blank? || inviter.nil?
+
+      errors.add(:email, :own_email) if email == inviter.email.to_s.strip.downcase
     end
 
     def inviter_is_admin
