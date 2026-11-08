@@ -7,3 +7,5 @@ en:
           attributes:
             base:
               family_country_missing: Set a country for this family before inviting anyone.
+            email:
+              own_email: "can't be your own email address"
