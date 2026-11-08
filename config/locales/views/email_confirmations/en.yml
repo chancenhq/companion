@@ -1,0 +1,14 @@
+---
+en:
+  email_confirmations:
+    new:
+      success_login: Your email address has been confirmed. Please sign in.
+      invalid_token: That confirmation link is invalid or has expired.
+    verified:
+      title: Email verified
+      body: Your email address has been confirmed. You can return to the app and
+        continue.
+    invalid:
+      title: Link invalid or expired
+      body: This confirmation link is invalid or has expired. Please request a new
+        verification email from the app.
