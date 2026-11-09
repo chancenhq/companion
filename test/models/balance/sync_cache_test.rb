@@ -60,6 +60,62 @@ class Balance::SyncCacheTest < ActiveSupport::TestCase
     assert_equal 120.0, converted_entry.amount  # 100 * 1.2 = 120
   end
 
+  test "uses custom exchange rate from trade when present" do
+    security = Security.create!(ticker: "TST", name: "Test")
+
+    _entry = @account.entries.create!(
+      date: Date.current,
+      name: "Test Trade",
+      amount: 100,
+      currency: "EUR",
+      entryable: Trade.new(
+        security: security,
+        qty: 1,
+        price: 100,
+        currency: "EUR",
+        exchange_rate: 1.5
+      )
+    )
+
+    sync_cache = Balance::SyncCache.new(@account)
+    converted_entries = sync_cache.send(:converted_entries)
+
+    converted_entry = converted_entries.first
+    assert_equal "USD", converted_entry.currency
+    assert_equal 150.0, converted_entry.amount
+  end
+
+  test "excludes pending transactions while retaining posted transactions and non-transaction entries" do
+    pending = @account.entries.create!(
+      date: Date.current,
+      name: "Pending Transaction",
+      amount: 100,
+      currency: "USD",
+      entryable: Transaction.new(extra: { "plaid" => { "pending" => true } })
+    )
+    posted = @account.entries.create!(
+      date: Date.current,
+      name: "Posted Transaction",
+      amount: 200,
+      currency: "USD",
+      entryable: Transaction.new(extra: { "plaid" => { "pending" => false } })
+    )
+    security = Security.create!(ticker: "KEPT", name: "Kept Trade")
+    trade = @account.entries.create!(
+      date: Date.current,
+      name: "Trade",
+      amount: 300,
+      currency: "USD",
+      entryable: Trade.new(security: security, qty: 1, price: 300, currency: "USD")
+    )
+
+    entry_names = Balance::SyncCache.new(@account).send(:converted_entries).map(&:name)
+
+    assert_not_includes entry_names, pending.name
+    assert_includes entry_names, posted.name
+    assert_includes entry_names, trade.name
+  end
+
   test "converts multiple entries with correct rates" do
     # Create exchange rates
     ExchangeRate.create!(
@@ -125,6 +181,75 @@ class Balance::SyncCacheTest < ActiveSupport::TestCase
     assert_in_delta 120.0, amounts[2], 0.01  # 100 EUR * 1.2
   end
 
+  test "excludes an entry with no available exchange rate instead of failing the whole account" do
+    convertible = @account.entries.create!(
+      date: Date.current,
+      name: "USD Transaction",
+      amount: 75,
+      currency: "USD",
+      entryable: Transaction.new(extra: {})
+    )
+    _unconvertible = @account.entries.create!(
+      date: Date.current,
+      name: "EUR Transaction",
+      amount: 100,
+      currency: "EUR",
+      entryable: Transaction.new(extra: {})
+    )
+
+    sync_cache = Balance::SyncCache.new(@account)
+    converted_entries = sync_cache.send(:converted_entries)
+
+    assert_equal [ convertible.name ], converted_entries.map(&:name)
+    assert_equal 1, sync_cache.unconvertible_entry_count
+  end
+
+  test "records a debug log entry naming the missing currency pairs" do
+    @account.entries.create!(
+      date: Date.current,
+      name: "EUR Transaction",
+      amount: 100,
+      currency: "EUR",
+      entryable: Transaction.new(extra: {})
+    )
+    @account.entries.create!(
+      date: Date.current,
+      name: "GBP Transaction",
+      amount: 50,
+      currency: "GBP",
+      entryable: Transaction.new(extra: {})
+    )
+
+    assert_difference "DebugLogEntry.count", 1 do
+      Balance::SyncCache.new(@account).send(:converted_entries)
+    end
+
+    log = DebugLogEntry.order(:created_at).last
+    assert_equal "Balance::SyncCache", log.source
+    assert_equal "warn", log.level
+    assert_equal @account, log.account
+    assert_equal Setting.exchange_rate_provider, log.provider_key
+    assert_equal 2, log.metadata["unconvertible_entry_count"]
+    assert_equal [ "EUR->USD", "GBP->USD" ], log.metadata["missing_rate_pairs"].sort
+  end
+
+  test "records no debug log entry when every entry converts" do
+    @account.entries.create!(
+      date: Date.current,
+      name: "USD Transaction",
+      amount: 75,
+      currency: "USD",
+      entryable: Transaction.new(extra: {})
+    )
+
+    assert_no_difference "DebugLogEntry.count" do
+      sync_cache = Balance::SyncCache.new(@account)
+      sync_cache.send(:converted_entries)
+
+      assert_equal 0, sync_cache.unconvertible_entry_count
+    end
+  end
+
   # get_holdings_value
 
   test "returns 0 for date with no holdings" do
@@ -169,6 +294,41 @@ class Balance::SyncCacheTest < ActiveSupport::TestCase
     assert_equal 100, Balance::SyncCache.new(@account).get_holdings_value(Date.current)
   end
 
+  test "reports a holding valued at 1:1 rather than accepting the wrong number silently" do
+    security = Security.create!(ticker: "TST", name: "Test")
+    @account.holdings.create!(security: security, date: Date.current, qty: 1, price: 100, amount: 100, currency: "EUR")
+
+    sync_cache = Balance::SyncCache.new(@account)
+
+    assert_difference "DebugLogEntry.count", 1 do
+      sync_cache.get_holdings_value(Date.current)
+    end
+
+    assert_equal 1, sync_cache.unconvertible_holding_count
+
+    log = DebugLogEntry.order(:created_at).last
+    assert_equal "Balance::SyncCache", log.source
+    assert_equal "warn", log.level
+    assert_equal @account, log.account
+    assert_equal 1, log.metadata["unconvertible_holding_count"]
+    assert_equal [ "EUR->USD" ], log.metadata["missing_rate_pairs"]
+  end
+
+  test "records no holding diagnostic when every holding converts" do
+    ExchangeRate.create!(from_currency: "EUR", to_currency: "USD", date: Date.current, rate: 1.5)
+
+    security = Security.create!(ticker: "TST", name: "Test")
+    @account.holdings.create!(security: security, date: Date.current, qty: 1, price: 100, amount: 100, currency: "EUR")
+
+    sync_cache = Balance::SyncCache.new(@account)
+
+    assert_no_difference "DebugLogEntry.count" do
+      assert_equal 150.0, sync_cache.get_holdings_value(Date.current)
+    end
+
+    assert_equal 0, sync_cache.unconvertible_holding_count
+  end
+
   test "prioritizes custom rate over fetched rate" do
     # Create fetched rate
     ExchangeRate.create!(
@@ -196,5 +356,48 @@ class Balance::SyncCacheTest < ActiveSupport::TestCase
     converted_entry = converted_entries.first
     # Should use custom rate (1.5), not fetched rate (1.2)
     assert_equal 150.0, converted_entry.amount  # 100 * 1.5, not 100 * 1.2
+  end
+
+  test "prioritizes trade custom rate over fetched rate" do
+    ExchangeRate.create!(
+      from_currency: "EUR",
+      to_currency: "USD",
+      date: Date.current,
+      rate: 1.2
+    )
+
+    security = Security.create!(ticker: "TST2", name: "Test 2")
+
+    _entry = @account.entries.create!(
+      date: Date.current,
+      name: "EUR Trade with custom rate",
+      amount: 100,
+      currency: "EUR",
+      entryable: Trade.new(
+        security: security,
+        qty: 1,
+        price: 100,
+        currency: "EUR",
+        exchange_rate: 1.5
+      )
+    )
+
+    sync_cache = Balance::SyncCache.new(@account)
+    converted_entries = sync_cache.send(:converted_entries)
+
+    converted_entry = converted_entries.first
+    assert_equal 150.0, converted_entry.amount
+  end
+
+  test "start_date leaves out entries dated before it" do
+    @account.entries.create!(date: 3.days.ago.to_date, name: "Before", amount: 10, currency: "USD", entryable: Transaction.new)
+    @account.entries.create!(date: 3.days.ago.to_date, name: "Before value", amount: 900, currency: "USD", entryable: Valuation.new)
+    @account.entries.create!(date: 1.day.ago.to_date, name: "Inside", amount: 20, currency: "USD", entryable: Transaction.new)
+
+    sync_cache = Balance::SyncCache.new(@account, start_date: 2.days.ago.to_date)
+
+    assert_empty sync_cache.get_entries(3.days.ago.to_date)
+    assert_nil sync_cache.get_valuation(3.days.ago.to_date)
+    assert_equal [ "Inside" ], sync_cache.get_entries(1.day.ago.to_date).map(&:name)
   end
 end

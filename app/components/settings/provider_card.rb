@@ -9,27 +9,25 @@ class Settings::ProviderCard < ApplicationComponent
     I18n.t(key) if key
   end
 
-  def initialize(provider_key:, name:, tagline: nil, region: nil, kind: nil, tier: nil,
-                 maturity: :stable, logo_bg: "bg-gray-500", logo_text: nil)
+  def initialize(provider_key:, name:, tagline: nil, region: nil, kinds: nil, tier: nil, maturity: :stable, external_link: nil)
     @provider_key = provider_key
     @name         = name
     @tagline      = tagline
     @region       = region
-    @kind         = kind
+    @kinds        = Array(kinds).compact
     @tier         = tier
     @maturity     = maturity.to_sym
-    @logo_bg      = logo_bg
-    @logo_text    = logo_text || name.first(2).upcase
+    @external_link = external_link
   end
 
-  attr_reader :name, :tagline, :logo_bg, :logo_text
+  attr_reader :provider_key, :name, :tagline, :external_link
 
   def maturity_label
     self.class.maturity_label(@maturity)
   end
 
   def meta_line
-    [ @region, @kind, @tier ].compact.join(" · ")
+    [ @region, @kinds.join(" / "), @tier ].compact_blank.join(" · ")
   end
 
   def connect_path
@@ -41,7 +39,7 @@ class Settings::ProviderCard < ApplicationComponent
       providers_filter_target: "card",
       provider_name: @name.to_s.downcase,
       provider_region: @region.to_s.downcase,
-      provider_kind: @kind.to_s.downcase
+      provider_kind: @kinds.map { |kind| kind.to_s.downcase }.join(" ")
     }
   end
 end

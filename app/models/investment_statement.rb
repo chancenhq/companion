@@ -14,11 +14,9 @@ class InvestmentStatement
 
   # Get totals for a specific period
   def totals(period: Period.current_month)
-    trades_in_period = family.trades
-      .joins(:entry)
-      .where(entries: { date: period.date_range, account_id: investment_account_ids })
+    account_ids = investment_account_ids
 
-    result = totals_query(trades_scope: trades_in_period)
+    result = totals_query(account_ids: account_ids, date_range: period.date_range)
 
     PeriodTotals.new(
       contributions: Money.new(result[:contributions], family.currency),
@@ -66,50 +64,109 @@ class InvestmentStatement
   # All current holdings across investment accounts. Holdings are returned in
   # their native currency; callers that aggregate across accounts must convert
   # to family currency via convert_to_family_currency.
+  #
+  # Memoized: top_holdings, allocation, unrealized_gains, unrealized_gains_trend,
+  # and day_change each call this, so an unmemoized version ran the same
+  # DISTINCT ON query up to 5x per dashboard/report request.
   def current_holdings
-    return Holding.none unless investment_accounts.any?
-
-    # Get the latest holding for each security per account
-    Holding
-      .where(account_id: investment_account_ids)
-      .where.not(qty: 0)
-      .where(
-        id: Holding
-          .where(account_id: investment_account_ids)
-          .select("DISTINCT ON (holdings.account_id, holdings.security_id) holdings.id")
-          .order(Arel.sql("holdings.account_id, holdings.security_id, holdings.date DESC"))
-      )
+    @current_holdings ||= Holding::CurrentForInvestmentAccounts
+      .new(investment_account_ids)
+      .relation
       .includes(:security, :account)
   end
 
-  # Top holdings by family-currency value
+  # Top investments rolled up by security across accounts, ranked by
+  # family-currency value. Weight is % of total portfolio (including cash).
+  # Presence is gated on holdings totals — not Account#balance — so a stale
+  # zero portfolio_value still surfaces real positions.
   def top_holdings(limit: 5)
-    current_holdings
-      .to_a
-      .sort_by { |h| -convert_to_family_currency(h.amount, h.currency) }
+    rolled_up = holdings_rolled_up_by_security
+    return [] if rolled_up.empty?
+
+    holdings_total = rolled_up.sum { |_, value, _| value }
+    return [] if holdings_total.zero?
+
+    total = weight_denominator(holdings_total)
+
+    # Rank/limit on value first; only then compute cost-basis trends for the
+    # rows that will be rendered (avoids avg_cost/trade lookups for the rest).
+    rolled_up
       .first(limit)
-  end
-
-  # Portfolio allocation by security. Weights and amounts are computed in the
-  # family's currency so cross-currency holdings compare correctly.
-  def allocation
-    converted = current_holdings.to_a.map do |holding|
-      [ holding, convert_to_family_currency(holding.amount, holding.currency) ]
-    end
-
-    total = converted.sum { |_, value| value }
-    return [] if total.zero?
-
-    converted
-      .sort_by { |_, value| -value }
-      .map do |holding, value|
+      .map do |security, value, holdings|
         HoldingAllocation.new(
-          security: holding.security,
+          security: security,
           amount: Money.new(value, family.currency),
           weight: (value / total * 100).round(2),
-          trend: holding.trend
+          trend: combined_holding_trend(holdings)
         )
       end
+  end
+
+  # Portfolio allocation by security (rolled up across accounts). Shares the
+  # weight denominator with top_holdings so the same security never reports two
+  # different percentages. Weights therefore sum to the invested share of the
+  # portfolio, not to 100 — cash is the residual.
+  def allocation
+    rolled_up = holdings_rolled_up_by_security
+    holdings_total = rolled_up.sum { |_, value, _| value }
+    return [] if holdings_total.zero?
+
+    total = weight_denominator(holdings_total)
+
+    rolled_up.map do |security, value, holdings|
+      HoldingAllocation.new(
+        security: security,
+        amount: Money.new(value, family.currency),
+        weight: (value / total * 100).round(2),
+        trend: combined_holding_trend(holdings)
+      )
+    end
+  end
+
+  # Allocation of the portfolio grouped by a classification column of the
+  # security. Each account's cash -- its balance less its holdings, positive
+  # only (`positive_account_cash`) -- is placed where the grouping says cash
+  # belongs, so every grouping and every level of the drill-down sums to the
+  # same total, and weights sum to 100 within rounding. Segments are
+  # sorted largest first. Amounts convert to the family currency at the latest
+  # rate; a currency with no rate counts 1:1 (`convert_to_family_currency`).
+  ALLOCATION_GROUPINGS = %w[asset_class asset_sub_class sector region].freeze
+
+  # The bucket a holding falls into when the column it is grouped by is empty.
+  # It is a real segment, not a gap, so a portfolio of unclassified securities
+  # is told it has nothing classified yet rather than handed an empty list.
+  UNCLASSIFIED = "unclassified".freeze
+
+  # Where account cash and cash securities are filed: the asset class and the
+  # sub-class a cash balance belongs to. Values from Security::ASSET_CLASSES
+  # and Security::ASSET_SUB_CLASSES.
+  CASH_ASSET_CLASS = "liquidity".freeze
+  CASH_SUB_CLASS = "cash".freeze
+
+  # One level down from a classification segment: asset class -> sub-class ->
+  # positions. Sector and region do not nest, so they return [].
+  #
+  # `parent` is the asset class the sub-class was reached through. A sub-class
+  # name such as `unclassified` repeats across asset classes, so without it the
+  # bottom level would list other classes' positions too.
+  def allocation_children(by, bucket, parent: nil)
+    case by.to_s
+    when "asset_class" then allocation_sub_classes_within(bucket)
+    when "asset_sub_class" then allocation_holdings_within(:asset_sub_class, bucket, CASH_SUB_CLASS, parent: parent)
+    else []
+    end
+  end
+
+  # A grouping outside ALLOCATION_GROUPINGS returns no segments, so a grouping
+  # name taken from a query string cannot raise.
+  def allocation_by(by)
+    case by.to_s
+    when "asset_class" then allocation_by_classification(:asset_class, cash_bucket: CASH_ASSET_CLASS)
+    when "asset_sub_class" then allocation_by_classification(:asset_sub_class, cash_bucket: CASH_SUB_CLASS)
+    when "sector" then allocation_by_classification(:sector)
+    when "region" then allocation_by_classification(:region)
+    else []
+    end
   end
 
   # Unrealized gains across all holdings, summed in family currency
@@ -156,6 +213,77 @@ class InvestmentStatement
     )
   end
 
+  def period_return_trend(period: Period.current_month)
+    currency = family.currency
+    account_ids = investment_account_ids
+    return nil if account_ids.empty?
+
+    absolute_return = ActiveRecord::Base.connection.select_value(
+      ActiveRecord::Base.sanitize_sql_array([
+        <<~SQL.squish,
+          SELECT COALESCE(SUM(b.net_market_flows * COALESCE(er.rate, 1)), 0)
+          FROM balances b
+          JOIN accounts a ON a.id = b.account_id
+          LEFT JOIN exchange_rates er ON (
+            er.date = b.date
+            AND er.from_currency = b.currency
+            AND er.to_currency = :currency
+          )
+          WHERE a.id IN (:account_ids)
+            AND a.family_id = :family_id
+            AND a.status IN ('draft', 'active')
+            AND b.date BETWEEN :start_date AND :end_date
+        SQL
+        {
+          currency: currency,
+          account_ids: account_ids,
+          family_id: family.id,
+          start_date: period.date_range.begin,
+          end_date: period.date_range.end
+        }
+      ])
+    ).to_d
+
+    period_start = period.date_range.begin
+
+    # Single query for all accounts' most recent pre-period balance (strict < to avoid
+    # double-counting the first day's net_market_flows in both the denominator and absolute_return).
+    # FX conversion is done in SQL (matching absolute_return) so balance rows whose currency
+    # differs from the account's current currency (e.g. after a currency change) are still picked up.
+    start_value = ActiveRecord::Base.connection.select_value(
+      ActiveRecord::Base.sanitize_sql_array([
+        <<~SQL.squish,
+          SELECT COALESCE(SUM(b.end_balance * COALESCE(er.rate, 1)), 0)
+          FROM accounts a
+          INNER JOIN balances b ON b.account_id = a.id
+          LEFT JOIN exchange_rates er ON (
+            er.date = :period_start
+            AND er.from_currency = b.currency
+            AND er.to_currency = :currency
+          )
+          INNER JOIN (
+            SELECT b2.account_id, MAX(b2.date) AS max_date
+            FROM balances b2
+            WHERE b2.account_id IN (:account_ids)
+              AND b2.date < :period_start
+            GROUP BY b2.account_id
+          ) latest ON latest.account_id = b.account_id AND b.date = latest.max_date
+          WHERE a.id IN (:account_ids)
+            AND a.family_id = :family_id
+            AND a.status IN ('draft', 'active')
+        SQL
+        { account_ids: account_ids, period_start: period_start, family_id: family.id, currency: currency }
+      ])
+    ).to_d
+
+    return nil if start_value.zero?
+
+    Trend.new(
+      current: Money.new(start_value + absolute_return, currency),
+      previous: Money.new(start_value, currency)
+    )
+  end
+
   # Day change across portfolio, summed in family currency
   def day_change
     changes = current_holdings.to_a.filter_map do |h|
@@ -180,7 +308,7 @@ class InvestmentStatement
   # Investment accounts
   def investment_accounts
     @investment_accounts ||= begin
-      scope = family.accounts.visible.where(accountable_type: %w[Investment Crypto])
+      scope = family.accounts.visible.included_in_reports.where(accountable_type: %w[Investment Crypto])
       scope = scope.included_in_finances_for(user) if user
       scope
     end
@@ -228,18 +356,240 @@ class InvestmentStatement
       end
     end
 
-    HoldingAllocation = Data.define(:security, :amount, :weight, :trend)
+    HoldingAllocation = Data.define(:security, :amount, :weight, :trend) do
+      def ticker = security.ticker
+      def name = security.name.presence || ticker
+      def amount_money = amount
+    end
+
+    AllocationSegment = Data.define(:id, :name, :amount, :weight)
+
+    # One shape for all four classification groupings: read the column off the
+    # security, fall back to UNCLASSIFIED, and place each account's cash
+    # (`positive_account_cash`) where that grouping says it belongs.
+    #
+    # `cash_bucket` is the argument that matters. Cash is not a holding -- it
+    # sits on the account -- so every grouping has to say where it goes, and
+    # the honest answer differs. A cash balance IS liquidity, and IS cash as a
+    # sub-class. It has no sector and no region, so for those it falls to
+    # UNCLASSIFIED rather than being invented into someone's slice.
+    def allocation_by_classification(column, cash_bucket: nil)
+      grouped = Hash.new(0)
+
+      allocatable_holdings.each do |holding|
+        value = convert_to_family_currency(holding.amount, holding.currency)
+        grouped[classification_bucket(holding.security, column, cash_bucket)] += value
+      end
+
+      grouped[cash_bucket || UNCLASSIFIED] += account_cash_total if account_cash_total.positive?
+
+      build_segments(grouped.map { |bucket, value| [ bucket, bucket, value ] })
+    end
+
+    # Sub-classes inside one asset class. Cash is carried here too: it belongs
+    # to `liquidity`/`cash`, so expanding Liquidity has to show it rather than
+    # an empty list that contradicts the parent row's amount.
+    def allocation_sub_classes_within(asset_class)
+      grouped = Hash.new(0)
+
+      holdings_classified_as(:asset_class, asset_class, CASH_ASSET_CLASS).each do |holding|
+        bucket = classification_bucket(holding.security, :asset_sub_class, CASH_SUB_CLASS)
+        grouped[bucket] += convert_to_family_currency(holding.amount, holding.currency)
+      end
+
+      grouped[CASH_SUB_CLASS] += account_cash_total if asset_class == CASH_ASSET_CLASS && account_cash_total.positive?
+
+      build_segments(grouped.map { |bucket, value| [ bucket, bucket, value ] })
+    end
+
+    # The bottom of the ladder. Named by security so the row reads as a position
+    # rather than as another bucket.
+    #
+    # It lists one row per security, summed in the family currency, and adds the
+    # account cash the parent counts (`account_cash_rows`), so at every level a
+    # bucket's positions sum to the bucket.
+    def allocation_holdings_within(column, bucket, cash_bucket = nil, parent: nil)
+      cash_rows = account_cash_rows(bucket, cash_bucket, parent)
+
+      # One row per security: `current_holdings` has a row per account, so a
+      # security held in several accounts, in any currencies, is summed here.
+      grouped = Hash.new(0)
+      names = {}
+      holdings_classified_as(column, bucket, cash_bucket, parent: parent).each do |holding|
+        grouped[holding.security_id] += convert_to_family_currency(holding.amount, holding.currency)
+        names[holding.security_id] ||= holding.security.name.presence || holding.security.ticker
+      end
+      build_segments(grouped.map { |id, value| [ id, names[id], value ] } + cash_rows)
+    end
+
+    # Account cash as a position of the cash bucket: ONE row, the sum over
+    # accounts of each account's cash (balance less holdings) in the family
+    # currency where it is positive -- the rule `allocation_sub_classes_within` and
+    # `allocation_by_classification` count it by. It belongs to Liquidity/Cash
+    # only, so any other bucket, or a cash sub-class reached from another asset
+    # class, gets none.
+    def account_cash_rows(bucket, cash_bucket, parent)
+      return [] unless cash_bucket.present? && bucket == cash_bucket
+      return [] unless parent.nil? || parent == CASH_ASSET_CLASS
+
+      [ [ "cash", I18n.t("models.investment_statement.cash"), account_cash_total ] ]
+    end
+
+    # Each investment account with cash, and that cash in the family currency.
+    # An account's cash is its balance less its allocatable holdings, each
+    # converted on its own and then subtracted, kept only where positive. Every
+    # allocation grouping and level counts account cash through this one rule,
+    # so a parent bucket and the positions below it cannot disagree about it,
+    # and no grouping counts a balance another grouping drops.
+    #
+    # Not Account#cash_balance. It can be absent (a manual or never-synced
+    # account), or default to the whole balance when a provider sends no cash
+    # figure (`Account::ProviderImportAdapter#update_balance`), which would
+    # count the holdings twice. `Balance::BaseCalculator` derives an
+    # investment account's cash the same way, so on synced data the two agree.
+    # Per account, so one account's margin cannot net against another's cash.
+    def positive_account_cash
+      @positive_account_cash ||= investment_accounts.filter_map do |account|
+        balance = convert_to_family_currency(account.balance.to_d, account.currency)
+        cash = balance - account_holdings_totals[account.id]
+        [ account, cash ] if cash.positive?
+      end
+    end
+
+    # Each account's allocatable holdings in the family currency, by account id.
+    def account_holdings_totals
+      @account_holdings_totals ||= allocatable_holdings.each_with_object(Hash.new(0)) do |holding, totals|
+        totals[holding.account_id] += convert_to_family_currency(holding.amount, holding.currency)
+      end
+    end
+
+    def account_cash_total
+      positive_account_cash.sum { |_, value| value }
+    end
+
+    # One rule for which bucket a holding falls in, shared by the grouping, the
+    # drill-down and the filter, so the three cannot disagree.
+    #
+    # A cash security is answered from `cash?` rather than from its columns. A
+    # non-primary-currency cash position is a real holding -- `Security.cash_for`
+    # creates one per currency -- and its `asset_class` may be nil. Reading the
+    # column alone would file the family's euros under Unclassified while the
+    # account's own euro cash balance sat under Liquidity: two answers for the
+    # same money on one chart.
+    def classification_bucket(security, column, cash_bucket)
+      return cash_bucket if security.cash? && cash_bucket.present?
+
+      security.public_send(column).presence || UNCLASSIFIED
+    end
+
+    # The allocatable holdings filed under `bucket` for `column`, which is what
+    # the bottom level lists. `parent`, when given, also requires the holding's
+    # asset class to match, because a sub-class name such as `unclassified`
+    # repeats across asset classes (see `allocation_children`).
+    def holdings_classified_as(column, bucket, cash_bucket = nil, parent: nil)
+      allocatable_holdings.select do |holding|
+        classification_bucket(holding.security, column, cash_bucket) == bucket &&
+          (parent.nil? || classification_bucket(holding.security, :asset_class, CASH_ASSET_CLASS) == parent)
+      end
+    end
+
+    # The allocation ladder's holdings, filtered by the per-row rule
+    # `holdings_rolled_up_by_security` applies: a negative amount is corrupt
+    # data (`Holding::Materializer` writes through `upsert_all`, skipping
+    # validation). It is applied before anything sums, so a level above cannot
+    # net a negative row that the bottom level then drops.
+    def allocatable_holdings
+      @allocatable_holdings ||= current_holdings.select do |holding|
+        convert_to_family_currency(holding.amount, holding.currency).positive?
+      end
+    end
+
+    def build_segments(rows)
+      rows = rows.reject { |_, _, value| value.nil? || value <= 0 }
+      total = rows.sum { |_, _, value| value }
+      return [] if total.zero?
+
+      rows
+        .sort_by { |_, _, value| -value }
+        .map do |id, name, value|
+          AllocationSegment.new(id: id.to_s, name: name, amount: Money.new(value, family.currency), weight: (value / total * 100).round(2))
+        end
+    end
+
+    # Groups current holdings by security and sums family-currency value.
+    # Returns [[security, value, holdings], ...] sorted by value descending.
+    # Callers that need return trends should call combined_holding_trend only
+    # for rows they will render (e.g. after top_holdings applies its limit).
+    # Shared by top_holdings and allocation so one security cannot report two
+    # different percentages.
+    #
+    # max(portfolio_value, holdings_total) rather than portfolio_value alone:
+    # portfolio_value includes cash, which goes negative on margin or an
+    # unsettled buy and would push a weight past 100%. The holdings total acts
+    # as a floor. It also covers a stale-zero portfolio_value, where the cached
+    # Account#balance lags behind the Holding rows.
+    def weight_denominator(holdings_total)
+      [ portfolio_value, holdings_total ].max
+    end
+
+    def holdings_rolled_up_by_security
+      current_holdings
+        .to_a
+        .group_by(&:security_id)
+        .filter_map do |_security_id, holdings|
+          # Filter row by row rather than on the netted total. current_holdings
+          # is DISTINCT ON (account_id, security_id), so one security held in two
+          # accounts yields two rows; a negative row in one would otherwise net
+          # against the good row in the other and understate the position.
+          positive_holdings = holdings.select do |holding|
+            convert_to_family_currency(holding.amount, holding.currency).positive?
+          end
+          next if positive_holdings.empty?
+
+          security = positive_holdings.first.security
+          value = positive_holdings.sum { |h| convert_to_family_currency(h.amount, h.currency) }
+
+          # positive_holdings, not holdings, so the trend excludes the bad row too.
+          [ security, value, positive_holdings ]
+        end
+        .sort_by { |_, value, _| -value }
+    end
+
+    def combined_holding_trend(holdings)
+      currents = []
+      previouses = []
+
+      holdings.each do |holding|
+        trend = holding.trend
+        next unless trend
+
+        currents << convert_to_family_currency(trend.current, holding.currency)
+        previouses << convert_to_family_currency(trend.previous, holding.currency)
+      end
+
+      return nil if currents.empty?
+
+      Trend.new(
+        current: Money.new(currents.sum, family.currency),
+        previous: Money.new(previouses.sum, family.currency)
+      )
+    end
 
     def investment_account_ids
       @investment_account_ids ||= investment_accounts.pluck(:id)
     end
 
-    def totals_query(trades_scope:)
-      sql_hash = Digest::MD5.hexdigest(trades_scope.to_sql)
+    def totals_query(account_ids:, date_range:)
+      if account_ids.empty?
+        return Totals.new(family, account_ids: account_ids, date_range: date_range).call
+      end
+
+      account_ids_hash = Digest::MD5.hexdigest(account_ids.sort.join(","))
 
       Rails.cache.fetch([
-        "investment_statement", "totals_query", family.id, user&.id, sql_hash, family.entries_cache_version
-      ]) { Totals.new(family, trades_scope: trades_scope).call }
+        "investment_statement", "totals_query/v2", family.id, user&.id, family.currency,
+        account_ids_hash, date_range.begin, date_range.end, family.entries_cache_version
+      ]) { Totals.new(family, account_ids: account_ids, date_range: date_range).call }
     end
 
     def monetizable_currency

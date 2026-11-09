@@ -13,15 +13,22 @@ class BalanceSheet::ClassificationGroup
   end
 
   def name
-    classification.titleize.pluralize
+    I18n.t("pages.dashboard.balance_sheet.classifications.#{classification}", default: classification.titleize.pluralize)
   end
 
   def icon
     classification == "asset" ? "plus" : "minus"
   end
 
+  # Accounts that count towards totals: included in the viewer's finances and
+  # not excluded from reports. Account groups use the same rule.
+  def self.counted_accounts(accounts)
+    accounts.select { |a| a.respond_to?(:included_in_finances?) ? a.included_in_finances? : true }
+            .reject { |a| a.respond_to?(:exclude_from_reports?) && a.exclude_from_reports? }
+  end
+
   def total
-    accounts.select { |a| a.respond_to?(:included_in_finances?) ? a.included_in_finances? : true }.sum(&:converted_balance)
+    self.class.counted_accounts(accounts).sum(&:converted_balance)
   end
 
   def syncing?
@@ -34,7 +41,7 @@ class BalanceSheet::ClassificationGroup
                      .transform_keys { |at| Accountable.from_type(at) }
                      .map do |accountable, account_rows|
                        BalanceSheet::AccountGroup.new(
-                         name: I18n.t("accounts.types.#{accountable.name.underscore}", default: accountable.display_name),
+                         name: accountable.display_name,
                          color: accountable.color,
                          accountable_type: accountable,
                          accounts: account_rows,

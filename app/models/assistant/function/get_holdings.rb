@@ -1,6 +1,4 @@
 class Assistant::Function::GetHoldings < Assistant::Function
-  include Pagy::Backend
-
   SUPPORTED_ACCOUNT_TYPES = %w[Investment Crypto].freeze
 
   class << self
@@ -64,6 +62,7 @@ class Assistant::Function::GetHoldings < Assistant::Function
       properties: {
         page: {
           type: "integer",
+          minimum: 1,
           description: "Page number"
         },
         accounts: {
@@ -87,11 +86,9 @@ class Assistant::Function::GetHoldings < Assistant::Function
   def call(params = {})
     holdings_query = build_holdings_query(params)
 
-    pagy, paginated_holdings = pagy(
-      holdings_query.includes(:security, :account).order(amount: :desc),
-      page: params["page"] || 1,
-      limit: default_page_size
-    )
+    ordered_holdings = holdings_query.order(amount: :desc)
+    pagy = Pagy.new(count: ordered_holdings.count, page: resolved_page(params), limit: default_page_size)
+    paginated_holdings = ordered_holdings.includes(:security, :account).offset(pagy.offset).limit(pagy.limit)
 
     total_value = holdings_query.sum(:amount)
 
@@ -143,8 +140,7 @@ class Assistant::Function::GetHoldings < Assistant::Function
         )
 
       if params["securities"].present?
-        security_ids = family.securities.where(ticker: params["securities"]).pluck(:id)
-        holdings = holdings.where(security_id: security_ids)
+        holdings = holdings.joins(:security).where(securities: { ticker: params["securities"] })
       end
 
       holdings

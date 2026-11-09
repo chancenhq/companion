@@ -1,7 +1,10 @@
 class Import::UploadsController < ApplicationController
+  include ImportGuestGuardable
+
   layout "imports"
 
   before_action :set_import
+  before_action :require_import_editable!, only: :update
 
   def show
   end
@@ -21,6 +24,7 @@ class Import::UploadsController < ApplicationController
     elsif csv_valid?(csv_str)
       @import.account = import_account_id.present? ? accessible_accounts.find(import_account_id) : nil
       @import.assign_attributes(raw_file_str: csv_str, col_sep: upload_params[:col_sep])
+      @import.preset_for_uploaded_csv
       @import.save!(validate: false)
 
       redirect_to import_configuration_path(@import, template_hint: true), notice: t("imports.create.csv_uploaded")
@@ -41,8 +45,8 @@ class Import::UploadsController < ApplicationController
         return
       end
 
-      if uploaded.size > SureImport::MAX_NDJSON_SIZE
-        flash.now[:alert] = t("imports.create.file_too_large", max_size: SureImport::MAX_NDJSON_SIZE / 1.megabyte)
+      if uploaded.size > SureImport.max_ndjson_size
+        flash.now[:alert] = t("imports.create.file_too_large", max_size: SureImport.max_ndjson_size / 1.megabyte)
         render :show, status: :unprocessable_entity
         return
       end
@@ -72,20 +76,22 @@ class Import::UploadsController < ApplicationController
         render :show, status: :unprocessable_entity and return
       end
 
-      unless import_account_id.present?
-        flash.now[:alert] = "Please select an account for the QIF import"
+      normalized_qif = QifParser.normalize_encoding(csv_str)
+
+      unless import_account_id.present? || QifParser.parse_accounts(normalized_qif).any?
+        flash.now[:alert] = t(".qif_account_required")
         render :show, status: :unprocessable_entity and return
       end
 
       ActiveRecord::Base.transaction do
-        @import.account = accessible_accounts.find(import_account_id)
-        @import.raw_file_str = QifParser.normalize_encoding(csv_str)
+        @import.account = accessible_accounts.find(import_account_id) if import_account_id.present?
+        @import.raw_file_str = normalized_qif
         @import.save!(validate: false)
         @import.generate_rows_from_csv
         @import.sync_mappings
       end
 
-      redirect_to import_qif_category_selection_path(@import), notice: "QIF file uploaded successfully."
+      redirect_to import_qif_category_selection_path(@import), notice: t(".qif_uploaded")
     end
 
     def csv_str

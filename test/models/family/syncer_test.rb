@@ -1,17 +1,20 @@
 require "test_helper"
 
 class Family::SyncerTest < ActiveSupport::TestCase
+  include ActiveJob::TestHelper
   setup do
     @family = families(:dylan_family)
   end
 
   test "syncs provider items and manual accounts" do
     family_sync = syncs(:family)
+    @family.akahu_items.create!(
+      name: "Test Akahu",
+      app_token: "app_token",
+      user_token: "user_token"
+    )
 
     manual_accounts_count = @family.accounts.manual.count
-    plaid_items_count = @family.plaid_items.syncable.count
-    binance_items_count = @family.binance_items.syncable.count
-
     syncer = Family::Syncer.new(@family)
 
     Account.any_instance
@@ -19,57 +22,69 @@ class Family::SyncerTest < ActiveSupport::TestCase
            .with(parent_sync: family_sync, window_start_date: nil, window_end_date: nil)
            .times(manual_accounts_count)
 
-    PlaidItem.any_instance
-               .expects(:sync_later)
-               .with(parent_sync: family_sync, window_start_date: nil, window_end_date: nil)
-               .times(plaid_items_count)
-
-    BinanceItem.any_instance
-               .expects(:sync_later)
-               .with(parent_sync: family_sync, window_start_date: nil, window_end_date: nil)
-               .times(binance_items_count)
+    syncable_item_associations.each do |association|
+      association.klass.any_instance
+                 .expects(:sync_later)
+                 .with(parent_sync: family_sync, window_start_date: nil, window_end_date: nil)
+                 .times(@family.public_send(association.name).syncable.count)
+    end
 
     syncer.perform_sync(family_sync)
 
     assert_equal "completed", family_sync.reload.status
   end
 
-  test "only applies active rules during sync" do
+  test "syncs ibkr items through reflective provider discovery" do
     family_sync = syncs(:family)
-
-    # Create an active rule
-    active_rule = @family.rules.create!(
-      resource_type: "transaction",
-      active: true,
-      actions: [ Rule::Action.new(action_type: "exclude_transaction") ]
-    )
-
-    # Create a disabled rule
-    disabled_rule = @family.rules.create!(
-      resource_type: "transaction",
-      active: false,
-      actions: [ Rule::Action.new(action_type: "exclude_transaction") ]
-    )
-
     syncer = Family::Syncer.new(@family)
 
-    # Stub the relation to return our specific instances so expectations work
-    @family.rules.stubs(:where).with(active: true).returns([ active_rule ])
+    assert_includes syncable_item_associations.map(&:name), :ibkr_items
 
-    # Expect apply_later to be called only for the active rule
-    active_rule.expects(:apply_later).once
-    disabled_rule.expects(:apply_later).never
-
-    # Mock the account and plaid item syncs to avoid side effects
     Account.any_instance.stubs(:sync_later)
-    PlaidItem.any_instance.stubs(:sync_later)
-    SimplefinItem.any_instance.stubs(:sync_later)
-    LunchflowItem.any_instance.stubs(:sync_later)
-    EnableBankingItem.any_instance.stubs(:sync_later)
-    SophtronItem.any_instance.stubs(:sync_later)
-    BinanceItem.any_instance.stubs(:sync_later)
+    syncable_item_associations.reject { |association| association.name == :ibkr_items }.each do |association|
+      association.klass.any_instance.stubs(:sync_later)
+    end
+
+    IbkrItem.any_instance
+            .expects(:sync_later)
+            .with(parent_sync: family_sync, window_start_date: nil, window_end_date: nil)
+            .times(@family.ibkr_items.syncable.count)
 
     syncer.perform_sync(family_sync)
-    syncer.perform_post_sync
   end
+
+  test "applies rules in one ordered run per family after sync" do
+    syncer = Family::Syncer.new(@family)
+
+    assert_enqueued_with(job: ApplyRulesJob, args: [ @family ]) do
+      syncer.perform_post_sync
+    end
+    assert_no_enqueued_jobs(only: RuleJob)
+  end
+
+  # Issue #2925: merchants whose website arrived before Brandfetch was
+  # configured get their logo on the next sync.
+  test "backfills provider merchant logos after sync" do
+    @family.expects(:backfill_provider_merchant_logos).once
+
+    Family::Syncer.new(@family).perform_post_sync
+  end
+
+  test "a logo backfill failure does not stop rules from being applied" do
+    ProviderMerchant.stubs(:backfill_logos).raises(StandardError, "boom")
+
+    assert_enqueued_with(job: ApplyRulesJob, args: [ @family ]) do
+      Family::Syncer.new(@family).perform_post_sync
+    end
+  end
+
+  private
+    def syncable_item_associations
+      Family.reflect_on_all_associations(:has_many).select do |association|
+        association.name.to_s.end_with?("_items") &&
+          association.klass.included_modules.include?(Syncable)
+      rescue NameError
+        false
+      end
+    end
 end

@@ -3,47 +3,72 @@
 <div class="relative" data-controller="select <%= "list-filter" if searchable %> form-dropdown" data-select-menu-placement-value="<%= menu_placement %>" data-action="dropdown:select->form-dropdown#onSelect">
   <div class="form-field <%= options[:container_class] %>">
     <div class="form-field__body">
-        <%= form.label method, options[:label], class: "form-field__label" if options[:label].present? %>
-        <%= form.hidden_field method,
-            value: @selected_value,
-            data: {
-              "form-dropdown-target": "input",
-              "auto-submit-target": "auto",
-              **(options.dig(:html_options, :data) || {})
-            } %>
+        <%= form.label method, options[:label], class: "form-field__label", id: label_id if options[:label].present? %>
+        <% unless disabled? %>
+          <%= form.hidden_field method,
+              value: @selected_value,
+              data: {
+                "form-dropdown-target": "input",
+                "auto-submit-target": "auto",
+                **(options.dig(:html_options, :data) || {})
+              } %>
+        <% end %>
+        <%# `aria-expanded` reflects MENU open/closed state — managed by the
+            select controller's openMenu/close. Init as "false"; previously
+            this incorrectly mirrored whether a value was selected.
+
+            `aria-labelledby` points at BOTH the visible label and the
+            trigger button itself so AT users hear "<label> <selected
+            value>" — referencing only the label would override the
+            button's text node and suppress the current value. %>
         <button type="button"
+                id="<%= trigger_id %>"
                 class="form-field__input w-full"
+                <%= "disabled" if disabled? %>
                 data-select-target="button"
-                data-action="click->select#toggle"
+                data-action="click->select#toggle focus->select#handleButtonFocus"
                 aria-haspopup="listbox"
-                aria-expanded="<%= @selected_value.present? ? "true" : "false" %>"
-                aria-labelledby="<%= "#{method}_label" %>">
-          <%= selected_item&.dig(:label) || @placeholder %>
+                aria-expanded="false"
+                tabindex="0"
+                <%= tag.attributes(aria: { labelledby: "#{label_id} #{trigger_id}" }) if options[:label].present? %>>
+          <% if trigger_logo? %>
+            <span class="flex items-center gap-2 min-w-0">
+              <%= logo_markup(selected_item) %>
+              <span class="truncate"><%= selected_item[:label] %></span>
+            </span>
+          <% else %>
+            <%= selected_item&.dig(:label) || @placeholder %>
+          <% end %>
         </button>
     </div>
   </div>
-  <div class="absolute z-50 p-1.5 w-full min-w-32 rounded-lg shadow-lg shadow-border-xs bg-container mt-1.5 transition duration-150 ease-out -translate-y-1 opacity-0 hidden" data-select-target="menu">
+  <div class="absolute z-50 p-1.5 w-full min-w-32 rounded-lg shadow-border-lg bg-container mt-1.5 transition duration-150 ease-out -translate-y-1 opacity-0 hidden" data-select-target="menu">
     <% if searchable %>
-      <div class="relative flex items-center bg-container border border-secondary rounded-lg mb-1">
-        <input type="search"
-               placeholder="<%= t("helpers.select.search_placeholder") %>"
-               autocomplete="off"
-               class="bg-container text-primary text-sm placeholder:text-secondary font-normal h-10 pl-10 w-full border-none rounded-lg focus:outline-hidden focus:ring-0"
-               data-list-filter-target="input"
-               data-action="list-filter#filter">
-        <%= helpers.icon("search", class: "absolute inset-0 ml-2 transform top-1/2 -translate-y-1/2") %>
+      <div class="flex items-center bg-container rounded-lg mb-1 focus-ring-within transition-shadow">
+        <%= render DS::SearchInput.new(
+          variant: :embedded,
+          placeholder: t("helpers.select.search_placeholder"),
+          data: {
+            list_filter_target: "input",
+            action: "input->list-filter#filter input->select#syncTabindex"
+          }
+        ) %>
       </div>
     <% end %>
     <div data-list-filter-target="list" data-select-target="content" class="flex flex-col gap-0.5 max-h-64 overflow-auto"
           role="listbox" tabindex="-1">
       <% items.each do |item| %>
         <% is_selected = item[:value] == selected_value %>
-        <% obj = item[:object] %>
+        <% is_child = child?(item) %>
 
+        <%# Options use tabindex="-1" always — keyboard focus is managed
+            programmatically so listbox items never appear in the Tab
+            sequence and skip past the trigger to the next form field. %>
         <div class="filterable-item text-primary text-sm cursor-pointer flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-container-inset-hover <%= "bg-container-inset" if is_selected %>"
               role="option"
-              tabindex="0"
+              tabindex="-1"
               aria-selected="<%= is_selected %>"
+              data-select-target="option"
               data-action="click->select#select"
               data-value="<%= item[:value] %>"
               data-filter-name="<%= item[:label] %>">
@@ -52,25 +77,16 @@
             <%= helpers.icon("check") %>
           </span>
 
+          <% if is_child %>
+            <%= helpers.icon("corner-down-right", size: "sm") %>
+          <% end %>
+
           <% case variant %>
           <% when :simple %>
             <%= item[:label] %>
 
           <% when :logo %>
-            <% unless item[:value].nil? %>
-              <% if logo_for(item) %>
-                <%= image_tag logo_for(item),
-                      class: "w-6 h-6 rounded-full border border-secondary",
-                      loading: "lazy" %>
-              <% else %>
-                <%= render DS::FilledIcon.new(
-                      variant: :text,
-                      text: item[:label],
-                      size: "sm",
-                      rounded: true
-                    ) %>
-              <% end %>
-            <% end %>
+            <%= logo_markup(item) unless item[:value].nil? %>
             <%= item[:label] %>
 
           <% when :badge %>

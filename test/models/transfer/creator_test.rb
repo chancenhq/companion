@@ -1,6 +1,8 @@
 require "test_helper"
 
 class Transfer::CreatorTest < ActiveSupport::TestCase
+  include ActiveJob::TestHelper
+
   setup do
     @family = families(:dylan_family)
     @source_account = accounts(:depository)
@@ -317,5 +319,57 @@ class Transfer::CreatorTest < ActiveSupport::TestCase
 
     assert transfer.persisted?
     assert_in_delta(-0.0001, transfer.inflow_transaction.entry.amount, 0.0001)
+  end
+
+  test "schedules entry scheduled sync jobs for future-dated transfers" do
+    creator = Transfer::Creator.new(
+      family: @family,
+      source_account_id: @source_account.id,
+      destination_account_id: @destination_account.id,
+      date: 3.days.from_now.to_date,
+      amount: @amount
+    )
+
+    transfer = nil
+    assert_enqueued_jobs 2, only: EntryScheduledSyncJob do
+      transfer = creator.create
+    end
+
+    enqueued_ids = enqueued_jobs.select { |j| j["job_class"] == "EntryScheduledSyncJob" }.flat_map { |j| j["arguments"] }
+    assert_includes enqueued_ids, transfer.inflow_transaction.entry.id
+    assert_includes enqueued_ids, transfer.outflow_transaction.entry.id
+  end
+
+  test "syncs both accounts for a same-day (non-scheduled) transfer" do
+    creator = Transfer::Creator.new(
+      family: @family,
+      source_account_id: @source_account.id,
+      destination_account_id: @destination_account.id,
+      date: Date.current,
+      amount: @amount
+    )
+
+    Account.any_instance.expects(:sync_later).at_least(2)
+
+    creator.create
+  end
+
+  test "creates transfer with tags applied to both transactions" do
+    other_depository = @family.accounts.create!(name: "Savings", balance: 1000, currency: "USD", accountable: Depository.new)
+    tag = tags(:one)
+
+    creator = Transfer::Creator.new(
+      family: @family,
+      source_account_id: @source_account.id,
+      destination_account_id: other_depository.id,
+      date: @date,
+      amount: @amount,
+      tag_ids: [ tag.id ]
+    )
+
+    transfer = creator.create
+
+    assert_equal [ tag.id ], transfer.outflow_transaction.tag_ids
+    assert_equal [ tag.id ], transfer.inflow_transaction.tag_ids
   end
 end

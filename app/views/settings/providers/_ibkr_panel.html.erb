@@ -1,0 +1,202 @@
+<div id="ibkr-providers-panel" class="space-y-4">
+  <%= render "settings/providers/setup_steps",
+             steps: [
+               t(".steps.step_1"),
+               t(".steps.step_2"),
+               t(".steps.step_3"),
+               t(".steps.step_4"),
+               t(".steps.step_5")
+             ] %>
+
+  <% error_msg = local_assigns[:error_message] || @error_message %>
+  <% if error_msg.present? %>
+    <%= render DS::Alert.new(message: error_msg, variant: :error) %>
+  <% end %>
+
+  <%= render DS::Disclosure.new(variant: :card_inset) do |disclosure| %>
+    <% disclosure.with_summary_content do %>
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="text-xs font-medium uppercase text-subdued tracking-wider mb-2"><%= t(".flex_query_details.eyebrow") %></p>
+          <p class="text-sm font-medium text-primary"><%= t(".flex_query_details.title") %></p>
+          <p class="text-xs text-secondary mt-1"><%= t(".flex_query_details.summary") %></p>
+        </div>
+        <%= icon "chevron-down", class: "mt-0.5 text-secondary group-open:rotate-180 motion-safe:transition-transform motion-safe:duration-150" %>
+      </div>
+    <% end %>
+
+    <div class="mt-4 space-y-4 text-sm text-secondary">
+      <div class="space-y-2">
+        <p class="font-medium text-primary"><%= t(".flex_query_details.sections_heading") %></p>
+        <ul class="list-disc list-inside space-y-2">
+          <li>
+            <span class="text-primary"><%= t(".sections.account_information") %></span>
+          </li>
+          <li>
+            <span class="text-primary"><%= t(".sections.cash_report") %></span>
+            <ul class="list-disc list-inside mt-1 ml-4 space-y-1">
+              <li><%= t(".sections.cash_report_options") %></li>
+              <li><%= t(".sections.cash_report_fields") %></li>
+            </ul>
+          </li>
+          <li>
+            <span class="text-primary"><%= t(".sections.cash_transactions") %></span>
+            <ul class="list-disc list-inside mt-1 ml-4 space-y-1">
+              <li><%= t(".sections.cash_transactions_options") %></li>
+              <li><%= t(".sections.cash_transactions_fields") %></li>
+            </ul>
+          </li>
+          <li>
+            <span class="text-primary"><%= t(".sections.change_in_position_value_summary") %></span>
+          </li>
+          <li>
+            <span class="text-primary"><%= t(".sections.net_asset_value") %></span>
+            <ul class="list-disc list-inside mt-1 ml-4 space-y-1">
+              <li><%= t(".sections.net_asset_value_options") %></li>
+              <li><%= t(".sections.net_asset_value_fields") %></li>
+            </ul>
+          </li>
+          <li>
+            <span class="text-primary"><%= t(".sections.open_positions") %></span>
+            <ul class="list-disc list-inside mt-1 ml-4 space-y-1">
+              <li><%= t(".sections.open_positions_options") %></li>
+              <li><%= t(".sections.open_positions_fields") %></li>
+            </ul>
+          </li>
+          <li>
+            <span class="text-primary"><%= t(".sections.trades") %></span>
+            <ul class="list-disc list-inside mt-1 ml-4 space-y-1">
+              <li><%= t(".sections.trades_options") %></li>
+              <li><%= t(".sections.trades_fields") %></li>
+            </ul>
+          </li>
+        </ul>
+      </div>
+
+      <div class="space-y-2">
+        <p class="font-medium text-primary"><%= t(".flex_query_details.configuration_heading") %></p>
+        <ul class="list-disc list-inside space-y-1">
+          <li><%= t(".configuration.models") %></li>
+          <li><%= t(".configuration.format") %></li>
+          <li><%= t(".configuration.period") %></li>
+          <li><%= t(".configuration.date_format") %></li>
+          <li><%= t(".configuration.time_format") %></li>
+          <li><%= t(".configuration.date_time_separator") %></li>
+          <li><%= t(".configuration.profit_and_loss") %></li>
+          <li><%= t(".configuration.all_other_options") %></li>
+        </ul>
+      </div>
+
+      <p class="text-xs text-secondary"><%= t(".report_window_note") %></p>
+    </div>
+  <% end %>
+
+  <% active_items = local_assigns[:ibkr_items] || Current.family.ibkr_items.active.ordered %>
+
+  <% if active_items.any? %>
+    <div class="space-y-3">
+      <% active_items.each do |item| %>
+        <%= render DS::Disclosure.new(variant: :card) do |disclosure| %>
+          <% disclosure.with_summary_content do %>
+            <div class="flex items-center justify-between gap-2 w-full">
+              <div class="flex items-center gap-3">
+                <%= render ProviderLogo.new(provider_key: :ibkr) %>
+                <div>
+                  <p class="font-medium text-primary"><%= item.name %></p>
+                  <p class="text-xs text-secondary">
+                    <%= item.credentials_configured? ? item.sync_status_summary : t(".not_configured") %>
+                  </p>
+                </div>
+              </div>
+            </div>
+          <% end %>
+
+          <div class="mt-4 space-y-4">
+            <div class="flex flex-wrap items-center gap-2">
+              <%= render DS::Button.new(
+                text: t(".sync"),
+                icon: "refresh-cw",
+                variant: :outline,
+                href: sync_ibkr_item_path(item, source: "panel"),
+                method: :post,
+                disabled: item.syncing?
+              ) %>
+              <%= render DS::Button.new(
+                text: t(".disconnect"),
+                icon: "trash-2",
+                variant: :outline_destructive,
+                href: ibkr_item_path(item),
+                method: :delete,
+                data: { turbo_confirm: t(".disconnect_confirm_named", name: item.name) }
+              ) %>
+            </div>
+
+            <%= styled_form_with model: item,
+                                 url: ibkr_item_path(item),
+                                 scope: :ibkr_item,
+                                 method: :patch,
+                                 data: { turbo: true },
+                                 class: "space-y-3" do |form| %>
+              <%= form.text_field :name,
+                                  label: t(".connection_name_label"),
+                                  placeholder: t(".connection_name_placeholder") %>
+
+              <%= form.text_field :query_id,
+                                  label: t(".query_id_label"),
+                                  placeholder: t(".query_id_placeholder_existing"),
+                                  type: :password,
+                                  value: nil %>
+
+              <%= form.text_field :token,
+                                  label: t(".token_label"),
+                                  placeholder: t(".token_placeholder_existing"),
+                                  type: :password,
+                                  value: nil %>
+
+              <div class="flex flex-wrap justify-end gap-2">
+                <%= render DS::Link.new(
+                  text: t(".setup_accounts"),
+                  icon: "settings",
+                  variant: "secondary",
+                  href: setup_accounts_ibkr_item_path(item),
+                  frame: :modal
+                ) %>
+                <%= render DS::Button.new(text: t(".update_configuration"), type: :submit) %>
+              </div>
+            <% end %>
+          </div>
+        <% end %>
+      <% end %>
+    </div>
+
+    <%= render "settings/providers/add_connection_heading", label: t(".add_connection") %>
+  <% end %>
+
+  <% new_item = Current.family.ibkr_items.build(name: local_assigns[:new_item_name]) %>
+  <%= styled_form_with model: new_item,
+                       url: ibkr_items_path,
+                       scope: :ibkr_item,
+                       method: :post,
+                       data: { turbo: true },
+                       class: "space-y-3" do |form| %>
+    <%= form.text_field :name,
+                        label: t(".connection_name_label"),
+                        placeholder: t(".connection_name_placeholder") %>
+
+    <%= form.text_field :query_id,
+                        label: t(".query_id_label"),
+                        placeholder: t(".query_id_placeholder_new"),
+                        type: :password,
+                        value: nil %>
+
+    <%= form.text_field :token,
+                        label: t(".token_label"),
+                        placeholder: t(".token_placeholder_new"),
+                        type: :password,
+                        value: nil %>
+
+    <div class="flex justify-end">
+      <%= form.submit t(".add_connection") %>
+    </div>
+  <% end %>
+</div>

@@ -4,6 +4,7 @@ module Localize
   included do
     around_action :switch_locale
     around_action :switch_timezone
+    helper_method :locale_from_param
   end
 
   private
@@ -111,7 +112,17 @@ module Localize
     end
 
     def switch_timezone(&action)
-      timezone = Current.family.try(:timezone) || Time.zone
-      Time.use_zone(timezone, &action)
+      Time.use_zone(resolved_timezone, &action)
+    end
+
+    # `Time.use_zone` raises ArgumentError on anything it doesn't recognize,
+    # which would otherwise take down every request/render for the affected
+    # family -- including the login page, since this runs on every request.
+    # Family#resolved_time_zone validates and falls back to the app default
+    # instead of crashing; it's also what Sync#perform uses in the background,
+    # so a scheduled entry's arrival date agrees with the family's clock in
+    # both places.
+    def resolved_timezone
+      Current.family&.resolved_time_zone || Time.zone
     end
 end

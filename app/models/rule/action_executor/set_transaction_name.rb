@@ -7,6 +7,14 @@ class Rule::ActionExecutor::SetTransactionName < Rule::ActionExecutor
     nil
   end
 
+  def claimed_attributes
+    [ :name ]
+  end
+
+  def actionable?(value)
+    value.present?
+  end
+
   def execute(transaction_scope, value: nil, ignore_attribute_locks: false, rule_run: nil)
     return 0 if value.blank?
 
@@ -24,7 +32,8 @@ class Rule::ActionExecutor::SetTransactionName < Rule::ActionExecutor
       txn.entry.enrich_attribute(
         :name,
         value,
-        source: "rule"
+        source: "rule",
+        ignore_locks: ignore_attribute_locks
       )
     end
   end

@@ -6,7 +6,6 @@ hu:
       subtitle: Átfogó betekintés a pénzügyi helyzetedbe
       export: CSV exportálása
       print_report: Jelentés nyomtatása
-      drag_to_reorder: "Húzd a szakasz átrendezéséhez"
       toggle_section: "Szakasz láthatóságának váltása"
       periods:
         monthly: Havi
@@ -18,6 +17,21 @@ hu:
         from: Kezdő dátum
         to: Záró dátum
       showing_period: "Adatok megjelenítése: %{start} – %{end}"
+      previous_period: "Előző időszak"
+      next_period: "Következő időszak"
+      today: "Ma"
+      period_label:
+        quarterly: "N%{quarter} %{year}"
+        ytd: "ÉTD %{year}"
+        past_year: "%{year}"
+        last_6_months: "%{start} – %{end}"
+      period_picker:
+        quarter: "N%{quarter} %{year}"
+        ytd: "ÉTD %{year}"
+      previous_year: "Előző év"
+      next_year: "Következő év"
+      previous_decade: "Előző évtized"
+      next_decade: "Következő évtized"
     invalid_date_range: "A záró dátum nem lehet korábbi a kezdő dátumnál. A dátumok fel lettek cserélve."
     summary:
       total_income: Összes bevétel
@@ -118,10 +132,10 @@ hu:
       title: Nettó vagyon
       current_net_worth: Jelenlegi nettó vagyon
       period_change: Időszaki változás
-      assets_vs_liabilities: Eszközök vs. kötelezettségek
-      total_assets: Eszközök
+      assets_vs_liabilities: Vagyon vs. kötelezettségek
+      total_assets: Vagyon
       total_liabilities: Kötelezettségek
-      no_assets: Nincsenek eszközök
+      no_assets: Nincs vagyon
       no_liabilities: Nincsenek kötelezettségek
     investment_performance:
       title: Befektetési teljesítmény
@@ -155,22 +169,20 @@ hu:
       title: Befektetési pénzáramlás
       description: Kövesd nyomon a befektetési számláidra be- és onnan kiáramló pénzt
       contributions: Befizetések
+      contributions_description: Befektetésekbe befizetett összeg
       withdrawals: Kivétek
+      withdrawals_description: Befektetésekből kivett összeg
       net_flow: Nettó pénzáramlás
+      net_flow_description: Teljes nettó változás
     google_sheets_instructions:
-      title_with_key: "✅ URL másolása Google Sheetshez"
-      title_no_key: "⚠️ API-kulcs szükséges"
-      ready: A CSV URL (API-kulccsal) készen áll.
-      steps: "Importálás Google Sheetsbe:\n1. Hozz létre egy új Google Sheetet\n2. Az A1 cellába írd be az alábbi képletet\n3. Nyomj Entert"
-      security_warning: "Ez az URL tartalmazza az API-kulcsodat. Tartsd biztonságban!"
+      title_no_key: "API-kulcs szükséges"
       need_key: Az adatok Google Sheetsbe importálásához API-kulcs szükséges.
       step1: "Menj a Beállítások → API-kulcsok menüpontra"
       step2: "Hozz létre egy új API-kulcsot \"olvasás\" jogosultsággal"
       step3: Másold ki az API-kulcsot
-      step4: "Add hozzá az URL-hez így: ?api_key=A_TE_KULCSOD"
+      step4: "Add hozzá az URL-hez így: &api_key=A_TE_KULCSOD"
       example: Példa
       then_use: Ezután használd a teljes URL-t =IMPORTDATA() képlettel a Google Sheetsben.
-      open_sheets: Google Sheets megnyitása
       go_to_api_keys: Ugrás az API-kulcsokhoz
       close: Rendben
     print:
@@ -190,7 +202,7 @@ hu:
         title: Nettó vagyon
         current_balance: Jelenlegi egyenleg
         this_period: ebben az időszakban
-        assets: Eszközök
+        assets: Vagyon
         liabilities: Kötelezettségek
         no_liabilities: Nincsenek kötelezettségek
       trends:

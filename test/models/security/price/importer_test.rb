@@ -81,6 +81,32 @@ class Security::Price::ImporterTest < ActiveSupport::TestCase
     ).import_provider_prices
   end
 
+  test "logs provider fetch failures to debug log" do
+    Security::Price.delete_all
+
+    error = Provider::Error.new("Rate limit exceeded")
+
+    @provider.stubs(:fetch_security_prices).returns(provider_error_response(error))
+
+    assert_difference "DebugLogEntry.count", 1 do
+      Security::Price::Importer.new(
+        security: @security,
+        security_provider: @provider,
+        start_date: 2.days.ago.to_date,
+        end_date: Date.current
+      ).import_provider_prices
+    end
+
+    entry = DebugLogEntry.order(:created_at).last
+    assert_equal "security_price_fetch", entry.category
+    assert_equal "warn", entry.level
+    assert_equal "Could not fetch prices for ticker", entry.message
+    assert_equal "security/price/importer", entry.source.underscore
+    assert_equal @security.id, entry.metadata["security_id"]
+    assert_equal @security.ticker, entry.metadata["ticker"]
+    assert_equal "Rate limit exceeded", entry.metadata["provider_error"]
+  end
+
   test "writes post-listing prices when holding predates provider history" do
     # Regression: a 2018-06-15 trade for a pair the provider only has from
     # 2020-01-03 onwards (e.g. BTCEUR on Binance) used to hit the
@@ -470,38 +496,44 @@ class Security::Price::ImporterTest < ActiveSupport::TestCase
   test "retries fetch when refetchable provisional prices exist" do
     Security::Price.delete_all
 
-    # Skip if today is a weekend
-    return if Date.current.saturday? || Date.current.sunday?
+    # A provisional price for "today" is only refetchable on a weekday, where the
+    # provider would have a real quote for it. Pin to the next weekday rather
+    # than bailing out at the top of the test, so the case is covered every day
+    # it is run instead of silently vanishing on weekends.
+    test_date = Date.current
+    test_date += 1.day while test_date.saturday? || test_date.sunday?
 
-    # Pre-populate with provisional price for today
-    Security::Price.create!(
-      security: @security,
-      date: Date.current,
-      price: 100,
-      currency: "USD",
-      provisional: true
-    )
+    travel_to test_date do
+      # Pre-populate with provisional price for today
+      Security::Price.create!(
+        security: @security,
+        date: Date.current,
+        price: 100,
+        currency: "USD",
+        provisional: true
+      )
 
-    # Provider now returns today's actual price
-    provider_response = provider_success_response([
-      OpenStruct.new(security: @security, date: Date.current, price: 165, currency: "USD")
-    ])
+      # Provider now returns today's actual price
+      provider_response = provider_success_response([
+        OpenStruct.new(security: @security, date: Date.current, price: 165, currency: "USD")
+      ])
 
-    @provider.expects(:fetch_security_prices)
-             .with(symbol: @security.ticker, exchange_operating_mic: @security.exchange_operating_mic,
-                   start_date: get_provider_fetch_start_date(Date.current), end_date: Date.current)
-             .returns(provider_response)
+      @provider.expects(:fetch_security_prices)
+               .with(symbol: @security.ticker, exchange_operating_mic: @security.exchange_operating_mic,
+                     start_date: get_provider_fetch_start_date(Date.current), end_date: Date.current)
+               .returns(provider_response)
 
-    Security::Price::Importer.new(
-      security: @security,
-      security_provider: @provider,
-      start_date: Date.current,
-      end_date: Date.current
-    ).import_provider_prices
+      Security::Price::Importer.new(
+        security: @security,
+        security_provider: @provider,
+        start_date: Date.current,
+        end_date: Date.current
+      ).import_provider_prices
 
-    db_price = Security::Price.find_by(security: @security, date: Date.current)
-    assert_equal 165, db_price.price, "Price should be updated from provider"
-    assert_not db_price.provisional, "Price should no longer be provisional after provider returns real price"
+      db_price = Security::Price.find_by(security: @security, date: Date.current)
+      assert_equal 165, db_price.price, "Price should be updated from provider"
+      assert_not db_price.provisional, "Price should no longer be provisional after provider returns real price"
+    end
   end
 
   test "skips fetch when all prices are non-provisional" do

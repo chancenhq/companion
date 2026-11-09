@@ -5,8 +5,10 @@ class PlaidAccount < ApplicationRecord
   if encryption_ready?
     encrypts :raw_payload
     encrypts :raw_transactions_payload
-    # Support reading data encrypted under the old column name after rename
-    encrypts :raw_holdings_payload, previous: { attribute: :raw_investments_payload }
+    # Renamed from raw_investments_payload; rename_column keeps the stored ciphertext,
+    # which decrypts under the new name because Active Record Encryption does not bind
+    # ciphertext to the attribute name, so no `previous:` scheme is needed.
+    encrypts :raw_holdings_payload
     encrypts :raw_liabilities_payload
   end
 
@@ -70,6 +72,6 @@ class PlaidAccount < ApplicationRecord
     # Plaid guarantees at least one of these.  This validation is a sanity check for that guarantee.
     def has_balance
       return if current_balance.present? || available_balance.present?
-      errors.add(:base, "Plaid account must have either current or available balance")
+      errors.add(:base, :no_balance)
     end
 end

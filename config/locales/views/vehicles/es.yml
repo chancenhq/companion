@@ -11,6 +11,8 @@ es:
       mileage_unit: Unidad
       model: Modelo
       model_placeholder: Camry
+      purchase_date: Fecha de compra
+      purchase_price: Precio de compra
       year: Año
       year_placeholder: '2025'
     new:
@@ -23,3 +25,13 @@ es:
       trend: Tendencia
       unknown: Desconocido
       year: Año
+    tabs:
+      overview:
+        current_price: Precio actual
+        make_model: Marca y modelo
+        mileage: Kilometraje
+        purchase_price: Precio de compra
+        trend: Tendencia
+        unknown: Desconocido
+        year: Año
+        edit_account_details: Editar detalles de la cuenta

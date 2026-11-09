@@ -39,14 +39,23 @@ class Merchant::Merger
 
     Merchant.transaction do
       source_merchants.each do |source|
+        scope = family.transactions.where(merchant_id: source.id)
+
+        # Protect the manual reassignment from being reverted on the next
+        # provider sync (issue #1977). Must run before the merchant_id update
+        # so the scope still matches the source merchant.
+        Entry.mark_user_modified_for_transactions!(scope)
+
         # Reassign family's transactions to target
-        family.transactions.where(merchant_id: source.id).update_all(merchant_id: target_merchant.id)
+        scope.update_all(merchant_id: target_merchant.id)
 
         # Delete FamilyMerchant, keep ProviderMerchant (it may be used by other families)
         source.destroy! if source.is_a?(FamilyMerchant)
 
         @merged_count += 1
       end
+
+      Rule.replace_merchant_references!(family, from: source_merchants.map(&:id), to: target_merchant.id)
     end
 
     true

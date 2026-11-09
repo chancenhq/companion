@@ -23,53 +23,99 @@
       <div class="pb-4 px-3 pt-2 text-sm space-y-3 text-primary">
         <div class="space-y-3">
           <dl class="flex items-center gap-2 justify-between">
-            <dt class="text-secondary">From</dt>
+            <dt class="text-secondary"><%= t(".from") %></dt>
             <dd class="flex items-center gap-2 font-medium">
               <%= render "accounts/logo", account: @transfer.from_account, size: "sm" %>
               <%= link_to @transfer.from_account.name, account_path(@transfer.from_account), data: { turbo_frame: "_top" } %>
             </dd>
           </dl>
           <dl class="flex items-center gap-2 justify-between">
-            <dt class="text-secondary">Date</dt>
+            <dt class="text-secondary"><%= t(".date") %></dt>
             <dd class="font-medium"><%= l(@transfer.outflow_transaction.entry.date, format: :long) %></dd>
           </dl>
           <dl class="flex items-center gap-2 justify-between">
-            <dt class="text-secondary">Amount</dt>
-            <dd class="font-medium text-red-500 privacy-sensitive"><%= format_money @transfer.outflow_transaction.entry.amount_money * -1 %></dd>
+            <dt class="text-secondary"><%= t(".transfer_amount") %></dt>
+            <dd class="font-medium text-destructive privacy-sensitive"><%= format_money @transfer.outflow_transaction.entry.amount_money * -1 %></dd>
           </dl>
+          <% if @transfer.has_source_fee? %>
+            <dl class="flex items-center gap-2 justify-between">
+              <dt class="text-secondary"><%= t(".source_fee") %></dt>
+              <dd class="font-medium text-destructive privacy-sensitive"><%= format_money Money.new(@transfer.derived_source_fee_amount, @transfer.from_account.currency) * -1 %></dd>
+            </dl>
+            <dl class="flex items-center gap-2 justify-between pt-1 border-t border-alpha-black-50">
+              <dt class="text-secondary font-medium"><%= t(".total") %></dt>
+              <dd class="font-medium text-destructive privacy-sensitive">
+                <%= format_money (@transfer.outflow_transaction.entry.amount_money + Money.new(@transfer.derived_source_fee_amount, @transfer.from_account.currency)) * -1 %>
+              </dd>
+            </dl>
+          <% end %>
         </div>
         <%= render "shared/ruler", classes: "my-2" %>
         <div class="space-y-3">
           <dl class="flex items-center gap-2 justify-between">
-            <dt class="text-secondary">To</dt>
+            <dt class="text-secondary"><%= t(".to") %></dt>
             <dd class="flex items-center gap-2 font-medium">
               <%= render "accounts/logo", account: @transfer.to_account, size: "sm" %>
               <%= link_to @transfer.to_account.name, account_path(@transfer.to_account), data: { turbo_frame: "_top" } %>
             </dd>
           </dl>
           <dl class="flex items-center gap-2 justify-between">
-            <dt class="text-secondary">Date</dt>
+            <dt class="text-secondary"><%= t(".date") %></dt>
             <dd class="font-medium"><%= l(@transfer.inflow_transaction.entry.date, format: :long) %></dd>
           </dl>
           <dl class="flex items-center gap-2 justify-between">
-            <dt class="text-secondary">Amount</dt>
-            <dd class="font-medium text-green-500 privacy-sensitive">+<%= format_money @transfer.inflow_transaction.entry.amount_money * -1 %></dd>
+            <dt class="text-secondary"><%= t(".transfer_amount") %></dt>
+            <dd class="font-medium text-success privacy-sensitive">+<%= format_money @transfer.inflow_transaction.entry.amount_money * -1 %></dd>
           </dl>
+          <% if @transfer.has_destination_fee? %>
+            <dl class="flex items-center gap-2 justify-between">
+              <dt class="text-secondary"><%= t(".destination_fee") %></dt>
+              <dd class="font-medium text-destructive privacy-sensitive"><%= format_money Money.new(@transfer.derived_destination_fee_amount, @transfer.to_account.currency) * -1 %></dd>
+            </dl>
+            <dl class="flex items-center gap-2 justify-between pt-1 border-t border-alpha-black-50">
+              <dt class="text-secondary font-medium"><%= t(".total") %></dt>
+              <dd class="font-medium text-success privacy-sensitive">+<%= format_money (@transfer.inflow_transaction.entry.amount_money * -1) - Money.new(@transfer.derived_destination_fee_amount, @transfer.to_account.currency) %></dd>
+            </dl>
+          <% end %>
         </div>
       </div>
     <% end %>
     <% dialog.with_section(title: t(".details")) do %>
-      <%= styled_form_with model: @transfer,
-              data: { controller: "auto-submit-form" }, class: "space-y-2" do |f| %>
+      <div class="space-y-2">
+        <%# Separate forms: the investment contribution switch reloads the page, so
+            it must not be submitted along with every category or notes edit. %>
         <% if @transfer.categorizable? %>
-          <%= f.collection_select :category_id, @categories.alphabetically, :id, :name, { label: "Category", include_blank: "Uncategorized", selected: @transfer.outflow_transaction.category&.id }, "data-auto-submit-form-target": "auto" %>
+          <%= styled_form_with model: @transfer, data: { controller: "auto-submit-form" } do |f| %>
+            <%= f.collection_select :category_id, @categories, :id, :name, { label: t(".category"), include_blank: t(".uncategorized"), selected: @transfer.outflow_transaction.category&.id, variant: :badge, searchable: true }, "data-auto-submit-form-target": "auto" %>
+          <% end %>
         <% end %>
-        <%= f.text_area :notes,
-                  label: t(".note_label"),
-                  placeholder: t(".note_placeholder"),
-                  rows: 5,
-                  "data-auto-submit-form-target": "auto" %>
-      <% end %>
+        <% if @can_switch_investment_contribution %>
+          <%= styled_form_with model: @transfer,
+                data: { controller: "auto-submit-form" },
+                class: "flex items-center justify-between gap-4 py-1" do |f| %>
+            <div class="space-y-1">
+              <p class="text-sm text-primary"><%= t(".investment_contribution_title") %></p>
+              <p class="text-xs text-secondary"><%= t(".investment_contribution_subtitle") %></p>
+            </div>
+            <%= f.toggle :investment_contribution, data: { auto_submit_form_target: "auto" } %>
+          <% end %>
+        <% end %>
+        <%= styled_form_with model: @transfer,
+                data: { controller: "auto-submit-form" }, class: "space-y-2" do |f| %>
+          <%= render DS::TagSelect.new(
+                form: f,
+                tags: @tags,
+                selected_ids: @transfer.outflow_transaction.tag_ids,
+                auto_submit: true,
+                update_url: tags_transfer_path(@transfer)
+              ) %>
+          <%= f.text_area :notes,
+                    label: t(".note_label"),
+                    placeholder: t(".note_placeholder"),
+                    rows: 5,
+                    "data-auto-submit-form-target": "auto" %>
+        <% end %>
+      </div>
     <% end %>
     <% dialog.with_section(title: t(".settings")) do %>
       <div class="pb-4">
@@ -94,12 +140,19 @@
             <h4 class="text-primary"><%= t(".delete_title") %></h4>
             <p class="text-secondary"><%= t(".delete_subtitle") %></p>
           </div>
-          <%= button_to t(".delete"),
-                transfer_path(@transfer),
+          <%= render DS::Button.new(
+                text: t(".delete"),
+                variant: :outline_destructive,
+                size: :md,
+                href: transfer_path(@transfer),
                 method: :delete,
-                class:  "rounded-lg px-3 py-2 whitespace-nowrap text-red-500 text-sm
-                          font-medium border border-secondary",
-                data:   { turbo_confirm: true, turbo_frame: "_top" } %>
+                confirm: CustomConfirm.new(
+                  title: t(".delete_title"),
+                  body: t(".delete_subtitle"),
+                  destructive: true
+                ),
+                frame: "_top"
+              ) %>
         </div>
       </div>
     <% end %>

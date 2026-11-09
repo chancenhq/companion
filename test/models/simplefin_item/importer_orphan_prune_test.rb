@@ -171,4 +171,55 @@ class SimplefinItem::ImporterOrphanPruneTest < ActiveSupport::TestCase
     stats = @sync.reload.sync_stats
     assert_equal 2, stats["accounts_pruned"], "should track both pruned accounts"
   end
+
+  test "clears upstream_account_ids when a later discovery on the same item finds zero accounts" do
+    # First discovery: provider returns one account, so upstream_account_ids gets set.
+    mock_provider = mock()
+    mock_provider.expects(:get_accounts).at_least_once.returns({
+      accounts: [ { id: "ACT-business", name: "Business", balance: "100.00", currency: "USD", type: "checking" } ]
+    })
+    SimplefinItem::Importer.new(@item, simplefin_provider: mock_provider, sync: @sync)
+      .send(:perform_account_discovery)
+
+    assert_equal [ "ACT-business" ], @item.upstream_account_ids
+
+    # Second discovery on the same SimplefinItem instance (e.g. a later sync run) finds
+    # nothing upstream (both the plain and pending=true attempts return zero accounts).
+    # It must NOT leave the stale IDs from the first discovery in place, or
+    # repair_stale_linkages could later act on obsolete provider state (see GH #2852).
+    empty_provider = mock()
+    empty_provider.expects(:get_accounts).at_least_once.returns({ accounts: [] })
+    SimplefinItem::Importer.new(@item, simplefin_provider: empty_provider, sync: @sync)
+      .send(:perform_account_discovery)
+
+    assert_nil @item.upstream_account_ids, "stale upstream_account_ids from a prior discovery must be cleared"
+  end
+
+  test "does not prune or record a complete inventory from partial discovery" do
+    old_sfa = SimplefinAccount.create!(
+      simplefin_item: @item,
+      account_id: "ACT-old-id",
+      name: "Old Account",
+      currency: "USD",
+      current_balance: 100,
+      account_type: "checking"
+    )
+
+    mock_provider = mock()
+    mock_provider.expects(:get_accounts).once.returns({
+      accounts: [
+        { id: "ACT-new-id", name: "New Account", balance: "200.00", currency: "USD", type: "checking" }
+      ],
+      errlist: [
+        { code: "con.auth", msg: "Authentication required", conn_id: "CON-failed" }
+      ]
+    })
+
+    importer = SimplefinItem::Importer.new(@item, simplefin_provider: mock_provider, sync: @sync)
+    importer.send(:perform_account_discovery)
+
+    assert_not_nil SimplefinAccount.find_by(id: old_sfa.id), "partial discovery must not prune omitted accounts"
+    assert_not_nil @item.simplefin_accounts.find_by(account_id: "ACT-new-id"), "returned accounts should still import"
+    assert_nil @item.upstream_account_ids, "partial discovery must not become the complete upstream inventory"
+  end
 end

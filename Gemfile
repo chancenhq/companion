@@ -3,14 +3,17 @@ source "https://rubygems.org"
 ruby file: ".ruby-version"
 
 # Rails
-gem "rails", "~> 7.2.2"
+gem "rails", "~> 8.1.0"
 
 # Drivers
 gem "pg", "~> 1.5"
 gem "redis", "~> 5.4"
 
+# Bech32/Bech32m encoding for watch-only Bitcoin addresses.
+gem "bech32", "1.5.1"
+
 # Deployment
-gem "puma", ">= 5.0"
+gem "puma", ">= 7.2.1"
 gem "bootsnap", require: false
 
 # Assets
@@ -44,7 +47,11 @@ gem "sentry-rails"
 gem "sentry-sidekiq"
 gem "posthog-ruby"
 gem "logtail-rails"
-gem "skylight", groups: [ :production ]
+if ENV["SKYLIGHT_ENABLED"] == "true"
+  gem "skylight", group: :development, require: false
+else
+  gem "skylight", group: :production
+end
 
 # Active Storage
 gem "aws-sdk-s3", "~> 1.208.0", require: false
@@ -55,7 +62,7 @@ gem "image_processing", ">= 1.2"
 gem "ostruct"
 gem "bcrypt", "~> 3.1"
 gem "jwt"
-gem "ed25519" # For Coinbase CDP API authentication
+gem "apnotic", "~> 1.8"
 gem "jbuilder"
 gem "countries"
 
@@ -72,24 +79,24 @@ gem "octokit"
 gem "pagy"
 gem "rails-i18n"
 gem "rails-settings-cached"
-gem "tzinfo-data", platforms: %i[windows jruby]
+gem "tzinfo-data", platforms: %i[mswin mswin64 mingw x64_mingw jruby]
 gem "csv"
 gem "rchardet" # Character encoding detection
 gem "redcarpet"
 gem "stripe"
 gem "plaid"
-gem "snaptrade", "~> 2.0"
 gem "httparty"
 gem "rotp", "~> 6.3"
 gem "rqrcode", "~> 3.0"
 gem "webauthn", "~> 3.4"
+gem "websocket-driver", "~> 0.8"
 gem "activerecord-import"
-gem "rubyzip", "~> 2.3"
+gem "rubyzip", "~> 3.4"
 gem "pdf-reader", "~> 2.12"
 
 # OpenID Connect, OAuth & SAML authentication
 gem "omniauth", "~> 2.1"
-gem "omniauth-rails_csrf_protection"
+gem "omniauth-rails_csrf_protection", ">= 2.0"
 gem "omniauth_openid_connect"
 gem "omniauth-google-oauth2"
 gem "omniauth-github"
@@ -101,10 +108,12 @@ gem "after_commit_everywhere", "~> 1.0"
 
 # AI
 gem "ruby-openai"
-gem "langfuse-ruby", "~> 0.1.4", require: "langfuse"
+gem "anthropic", "~> 1.0"
+gem "opentelemetry-sdk", "~> 1.13"
+gem "opentelemetry-exporter-otlp", "~> 0.36"
 
 group :development, :test do
-  gem "debug", platforms: %i[mri windows]
+  gem "debug", platforms: %i[mri mswin mswin64 mingw x64_mingw]
   gem "brakeman", require: false
   gem "rubocop-rails-omakase", require: false
   gem "i18n-tasks"

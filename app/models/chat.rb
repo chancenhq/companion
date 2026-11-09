@@ -51,10 +51,24 @@ class Chat < ApplicationRecord
       prompt.first(80)
     end
 
-    # Returns the default AI model to use for chats
-    # Priority: AI Config > Setting
+    # Returns the default AI model to use for chats.
+    # Resolved from the configured llm_provider so installs that swap providers
+    # don't have to manually update every chat default. Falls through to a
+    # provider that actually has credentials configured, otherwise the chosen
+    # provider's classes would later raise "no LLM provider supports model …"
+    # even when the other provider is configured.
     def default_model
-      Provider::Openai.effective_model.presence || Setting.openai_model
+      prefers_anthropic = Setting.llm_provider == "anthropic"
+
+      if prefers_anthropic && Provider::Anthropic.configured?
+        Provider::Anthropic.effective_model.presence || Setting.anthropic_model
+      elsif Provider::Openai.configured?
+        Provider::Openai.effective_model.presence || Setting.openai_model
+      elsif Provider::Anthropic.configured?
+        Provider::Anthropic.effective_model.presence || Setting.anthropic_model
+      else
+        Provider::Openai.effective_model.presence || Setting.openai_model
+      end
     end
   end
 
@@ -111,14 +125,141 @@ class Chat < ApplicationRecord
   def ask_assistant_later(message)
     clear_error
     pending = messages.create!(type: "AssistantMessage", content: "", ai_model: message.ai_model, status: :pending)
+    broadcast_pending_status(pending, busy: true) if BackgroundJobHealth.ai_busy?
     AssistantResponseJob.perform_later(message, pending)
   end
 
   def ask_assistant(message, assistant_message: nil)
+    # The assistant can be turned off while a response is still queued. Drop
+    # the pending "Thinking…" bubble rather than calling a provider.
+    unless user.family.assistant_enabled?
+      assistant_message&.destroy
+      return
+    end
+
+    broadcast_pending_status(assistant_message) if assistant_message
     assistant.respond_to(message, assistant_message: assistant_message)
   end
 
+  # Not broadcast_update: it adds `chat` to the locals and drops a nil bubble.
+  def hold_reservation
+    Turbo::StreamsChannel.broadcast_update_to self, targets: ChatReservation::TARGETS, partial: "chats/reservation",
+                                              locals: { bubble: ChatReservation.bubble(ChatReservation.hold!) }
+  rescue => e
+    Rails.logger.warn("ChatReservation hold failed: #{e.class}: #{e.message}")
+  end
+
+  # The pending bubble says "busy" while the response waits behind another AI
+  # job, and "Thinking" once its job starts.
+  def broadcast_pending_status(assistant_message, busy: false)
+    broadcast_update target: ActionView::RecordIdentifier.dom_id(assistant_message, :status),
+                     html: I18n.t(busy ? "chats.ai_busy" : "chats.thinking")
+  end
+
+  # How long a pending "Thinking…" bubble may wait before the browser watchdog
+  # reports it as undelivered. Configurable because a local model on slow
+  # hardware can legitimately take minutes to produce its first token, and the
+  # custom OpenAI-compatible provider path is non-streaming — so nothing renders
+  # until the whole generation finishes.
+  DEFAULT_RESPONSE_TIMEOUT = 90.seconds
+
+  # Floor on the configured value. Below this the watchdog would fire during
+  # normal cloud-model latency and kill healthy responses.
+  MIN_RESPONSE_TIMEOUT = 30.seconds
+
+  # How far *below* the client timeout the server's own floor sits, so a client
+  # whose clock runs modestly ahead is not refused on its first report. This is
+  # only an optimisation to keep retries rare: correctness for arbitrary skew
+  # comes from `MessagesController#report_timeout` answering non-OK when it
+  # declines, which leaves the watchdog free to try again on its next tick.
+  SERVER_TIMEOUT_GRACE = 10.seconds
+
+  class << self
+    # Client-side watchdog timeout. Precedence: ENV > Setting > default, with
+    # non-positive values treated as unset (a 0-second timeout is never meant).
+    def response_timeout
+      configured = ENV["AI_RESPONSE_TIMEOUT"].to_s.strip.to_i
+      configured = Setting.ai_response_timeout.to_i unless configured.positive?
+      return DEFAULT_RESPONSE_TIMEOUT unless configured.positive?
+
+      [ configured.seconds, MIN_RESPONSE_TIMEOUT ].max
+    end
+
+    # Same value in milliseconds, for the Stimulus `responseTimeout` value.
+    def response_timeout_ms
+      response_timeout.to_i * 1000
+    end
+
+    # Minimum age before the server will treat a still-pending response as
+    # undelivered. The client clock is untrusted, so the server enforces its own
+    # floor — kept just under the client's so a genuine report is never refused.
+    def undelivered_response_timeout
+      response_timeout - SERVER_TIMEOUT_GRACE
+    end
+  end
+
+  # Handles the case where an assistant response was never delivered — the
+  # background worker never ran `AssistantResponseJob` (or it died before it
+  # could broadcast an error), leaving a `pending` "Thinking…" bubble forever.
+  # Mirrors `Assistant::Builtin`'s rescue: clears the dead bubble, records a
+  # friendly error + a debug log entry, and broadcasts the error/Retry UI.
+  #
+  # Driven by an untrusted client watchdog, so the state change is gated behind a
+  # row lock + a server-side age check: we re-read the row under lock and only act
+  # if it is *still* pending and has genuinely waited past the timeout, so we never
+  # race a worker that is finishing a legitimate (slow) response.
+  def handle_undelivered_response!(assistant_message)
+    return false unless assistant_message.is_a?(AssistantMessage)
+
+    resolved = assistant_message.with_lock do
+      next false unless assistant_message.pending?
+      next false if assistant_message.created_at > self.class.undelivered_response_timeout.ago
+
+      if assistant_message.content.blank?
+        assistant_message.destroy!
+      else
+        # Demote partially-streamed turns to `failed` so history builders exclude them.
+        assistant_message.update_columns(status: "failed")
+      end
+      true
+    end
+
+    return false unless resolved
+
+    capture_undelivered_response!(assistant_message)
+    update!(error: undelivered_error_payload(assistant_message).to_json)
+    broadcast_append target: messages_target, partial: "chats/error", locals: { chat: self }
+    true
+  end
+
   private
+
+    def undelivered_error_payload(assistant_message)
+      {
+        message: I18n.t("chat.errors.no_response"),
+        technical_message: "Assistant response was never delivered. The background worker did not process " \
+          "AssistantResponseJob for message ##{assistant_message.id} (model #{assistant_message.ai_model}). " \
+          "#{BackgroundJobHealth.summary}",
+        type: "DeliveryTimeout"
+      }
+    end
+
+    def capture_undelivered_response!(assistant_message)
+      DebugLogEntry.capture(
+        category: "assistant",
+        level: "error",
+        message: "Assistant response not delivered — background worker likely down or not polling the AI queues",
+        source: "chat.delivery_timeout",
+        metadata: {
+          chat_id: id,
+          message_id: assistant_message.id,
+          ai_model: assistant_message.ai_model,
+          waited_seconds: (Time.current - assistant_message.created_at).round,
+          background_jobs: BackgroundJobHealth.snapshot
+        },
+        family: user&.family
+      )
+    end
 
     def build_error_payload(error)
       technical_message = error_message_for(error)

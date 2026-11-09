@@ -5,6 +5,7 @@ ro:
       payments:
         renewal: "Contribuția ta continuă pe %{date}."
   settings:
+    encryption_migration_guide: Ghid de configurare a criptării și de migrare
     ai_prompts:
       show:
         page_title: Prompturi AI
@@ -43,6 +44,12 @@ ro:
         theme_system: Sistem
         theme_title: Temă
         timezone: Fus orar
+    appearances:
+      show:
+        modals_title: Ferestre modale
+        modals_subtitle: Personalizați comportamentul ferestrelor modale
+        disable_modal_click_outside_title: Mențineți ferestrele modale deschise la clic exterior
+        disable_modal_click_outside_description: Previne închiderea ferestrelor modale la clic în afara lor. Util pentru a evita pierderea accidentală a modificărilor nesalvate.
     profiles:
       destroy:
         cannot_remove_self: Nu te poți elimina singur din cont.
@@ -98,6 +105,7 @@ ro:
       accounts_label: Conturi
       advanced_section_title: Avansat
       ai_prompts_label: Prompturi AI
+      auto_matches_label: Potriviri automate
       api_key_label: Cheie API
       payment_label: Plată
       categories_label: Categorii

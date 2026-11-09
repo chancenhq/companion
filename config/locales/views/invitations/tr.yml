@@ -1,6 +1,12 @@
 ---
 tr:
   invitations:
+    accept_choice:
+      create_account: Yeni hesap oluştur
+      existing_account_hint: "Zaten bir hesabınız mı var? Mevcut hesaplar davetiye ile başka bir haneye katılamaz."
+      joined_household: Haneye katıldınız.
+      message: "%{inviter} sizi %{role} olarak katılmaya davet etti."
+      title: "%{family} hanesine katıl"
     create:
       failure: Davetiye gönderilemedi
       success: Davetiye başarıyla gönderildi
@@ -12,8 +18,10 @@ tr:
       email_label: E-posta Adresi
       email_placeholder: E-posta adresi girin
       role_admin: Yönetici
+      role_guest: Misafir
       role_label: Rol
       role_member: Üye
       submit: Davet Gönder
-      subtitle: "%{product_name}'de aile hesabınıza katılmaları için bir davetiye gönderin"
+      subtitle: "%{product_name}'de %{moniker} hesabınıza katılmaları için bir davetiye
+        gönderin"
       title: Birini Davet Et

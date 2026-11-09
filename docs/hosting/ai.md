@@ -17,23 +17,46 @@ Sure has **two separate AI systems** that operate independently. Understanding t
 
 ### 1. Chat Assistant (conversational)
 
-The interactive chat where users ask questions about their finances. Routes through one of two backends:
+The interactive chat where users ask questions about their finances. Routes through one of two backends, or is turned off:
 
-- **Builtin** (default): Uses the OpenAI-compatible provider configured via `OPENAI_ACCESS_TOKEN` / `OPENAI_URI_BASE` / `OPENAI_MODEL`. Calls Sure's function tools directly (get_accounts, get_transactions, etc.).
+- **Builtin** (default): Uses the LLM provider selected by `LLM_PROVIDER`: the OpenAI-compatible provider (`OPENAI_ACCESS_TOKEN` / `OPENAI_URI_BASE` / `OPENAI_MODEL`, the default) or the [native Anthropic provider](#anthropic-native). Calls Sure's function tools directly (get_accounts, get_transactions, etc.).
 - **External**: Delegates the entire conversation to a remote AI agent. The agent calls back to Sure via MCP to access financial data. Set `ASSISTANT_TYPE=external` as a global override, or configure each family's assistant type in Settings.
+- **None in app** (`mcp_only`): Removes the in-app chat for the household: the right-hand chat sidebar and its toggle, the mobile Assistant tab, and the buttons that start a chat. Bring your own agent and connect it through [MCP](mcp.md), which keeps working. Set `ASSISTANT_TYPE=mcp_only` to remove the chat for every family.
 
 ### 2. Auto-Categorization and Merchant Detection (background)
 
-Background jobs that classify transactions and detect merchants. These **always** use the OpenAI-compatible provider (`OPENAI_ACCESS_TOKEN`), regardless of what the chat assistant uses. They rely on structured function calling with JSON schemas, not conversational chat.
+Background jobs that classify transactions and detect merchants. These use the LLM provider selected by `LLM_PROVIDER` (OpenAI-compatible or native Anthropic; categorization uses Jev instead when it's selected), regardless of what the chat assistant uses. They rely on structured function calling with JSON schemas, not conversational chat.
 
 ### What this means in practice
 
 | Setting | Chat assistant | Auto-categorization |
 |---------|---------------|---------------------|
-| `ASSISTANT_TYPE=builtin` (default) | Uses OpenAI provider | Uses OpenAI provider |
-| `ASSISTANT_TYPE=external` | Uses external agent | Still uses OpenAI provider |
+| `ASSISTANT_TYPE=builtin` (default) | Uses the LLM provider | Uses the LLM provider |
+| `ASSISTANT_TYPE=external` | Uses external agent | Still uses the LLM provider |
+| `ASSISTANT_TYPE=mcp_only` | None in app; connect your own agent via MCP | Unchanged; uses the configured categorization provider |
 
-If you use an external agent for chat, you still need `OPENAI_ACCESS_TOKEN` set for auto-categorization and merchant detection to work. The two systems are fully independent.
+If you use an external agent for chat, you still need an LLM provider configured (`OPENAI_ACCESS_TOKEN` or `ANTHROPIC_API_KEY`) for auto-categorization and merchant detection to work. The two systems are fully independent.
+
+With `mcp_only`, Sure also skips the features that need a user's AI consent: the bills AI shortcuts (review, smart fill, smart configuration). Insights never use AI: their text comes from templates.
+
+### Where AI jobs run (Sidekiq lanes)
+
+AI work runs in the Sidekiq `worker`, in its own capsule ("lane"), so a slow model can't hold up syncs, balance recalculation and scheduled jobs. Both lanes are defined in `config/sidekiq.yml`:
+
+| Lane | Queues | Threads | Jobs |
+|------|--------|---------|------|
+| default | `scheduled`, `high_priority`, `medium_priority`, `low_priority`, `default` | `RAILS_MAX_THREADS - RAILS_AI_MAX_THREADS` (3 - 1 = 2) | syncs, balances, rules, imports, scheduled jobs |
+| ai | `ai_high_priority`, then `ai_low_priority` (strict order) | `RAILS_AI_MAX_THREADS` (default `1`) | chat (`ai_high_priority`); auto-categorization, merchant detection and enhancement, PDF processing (`ai_low_priority`) |
+
+- `RAILS_MAX_THREADS` is the worker's total thread count, as before, and also sizes its database pool. It must be greater than `RAILS_AI_MAX_THREADS` (so at least `2` by default): a lane with 0 threads stops the worker from starting ("Concurrency of 0 is not supported"). Puma reads the same variable, so if you lower it for the web service to save memory, set the worker's separately.
+- **Strict order:** a waiting chat runs next, but it doesn't interrupt the AI job already running. Auto-categorization, merchant-detection and merchant-enhancement jobs make one LLM call each, of `LLM_MAX_ITEMS_PER_CALL` items (default `25`), or more if the batch doesn't fit the context window; PDF import and chat jobs can make several. With one AI thread, a PDF import or other `ai_low_priority` job waits behind earlier ones, and continuous chat use pauses background AI work.
+- **Busy notice:** with one AI thread in a single worker process running the AI queues, while another AI job (a background job or another chat) is running, a chat's "Thinking" bubble says the system is busy until the chat's job starts. `AI_RESPONSE_TIMEOUT` includes that wait.
+- **Chat reservation:** with one AI thread, clicking into or typing in the chat box, and each finished reply, hold back new background AI jobs for 60 seconds, so the message runs next. This applies when a single worker process runs the AI queues; with several, a chat can run on one while another runs background jobs, so nothing is held. Back-to-back holds stop after 15 minutes and resume 60 seconds later, so background AI work gets a turn. When you click into or type in the chat box while background AI jobs wait, a bubble above it shows the countdown, or says one is still finishing. A job that is already running is not interrupted.
+- **One AI thread suits a model that serves one request at a time,** such as a local model on CPU: a chat turn's calls then run back to back, keeping the model's prompt cache warm. If your provider serves requests in parallel (hosted APIs, or a local server with several slots), raise `RAILS_AI_MAX_THREADS`, and `RAILS_MAX_THREADS` by the same amount so the default lane keeps its threads.
+- **The worker must load `config/sidekiq.yml`,** as `bundle exec sidekiq` does by default. A worker started with its own queue list (`sidekiq -q …`, a custom Helm `worker.command`) doesn't get the AI lane. If no worker polls `ai_high_priority` and `ai_low_priority`, **System health** (`/admin/system_health`) and the site-wide banner report "No worker is processing the AI queues", and the chat page warns that responses may not be delivered. Keep `-C config/sidekiq.yml`; adding `-q ai_high_priority -q ai_low_priority` also works, but AI jobs then share that worker's threads, and the chat reservation doesn't hold them, since a chat can usually take another thread.
+- **System health:** AI backlog doesn't count towards "queue backed up" (a large merchant-detection run can queue for hours), but "Oldest job age" still includes it. Check the queue table or `/sidekiq` to see which queue is waiting.
+- **Upgrading:** AI jobs moved from `high_priority` (chat), `medium_priority` and `scheduled` to the AI queues. Jobs already queued under the old names still run once, in the default lane.
+- **Large batches:** Sure doesn't limit `LLM_MAX_ITEMS_PER_CALL`. OpenAI-compatible providers split a batch that doesn't fit the context window; with the native Anthropic provider, raise `ANTHROPIC_MAX_TOKENS` (default `4096`) along with it, or replies are cut off.
 
 ## Quickstart: OpenAI Token
 
@@ -118,23 +141,102 @@ OPENAI_ACCESS_TOKEN=sk-proj-...
 
 # Optional: Request timeout in seconds (default: 60)
 # OPENAI_REQUEST_TIMEOUT=60
+
+# Optional: extra HTTP headers as a JSON object (see "Extra HTTP Headers" below)
+# OPENAI_EXTRA_HEADERS='{"x-opencode-session":"{session_id}"}'
 ```
 
 **Recommended models:**
+- `gpt-6.1-sol` - Latest Sol model for complex financial analysis; assistant tools require the native Responses API
+- `gpt-6-sol` - Strong reasoning for multi-step financial analysis; use the native OpenAI provider and Responses API for reasoning with function tools
 - `gpt-4.1` - Default, best balance of speed and quality
-- `gpt-5` - Latest model, highest quality (more expensive)
+- `gpt-5` - Earlier-generation reasoning model
 - `gpt-4o-mini` - Cheaper, good quality
 
 **Pricing:** See [OpenAI Pricing](https://openai.com/api/pricing/)
 
-### Google Gemini (via OpenRouter)
+GPT-6.1 Sol and GPT-6 Sol use the native Responses API for assistant tools.
+Leave the custom Base URL setting empty when connecting directly to OpenAI.
+GPT-6.1 Sol does not support tool calling in Chat Completions, or the `none`
+and `minimal` reasoning efforts. See the [model documentation](https://developers.openai.com/api/docs/models/gpt-6.1-sol).
+Native GPT-6.1 Sol, GPT-6 Sol,
+`o1`, and `o3` PDF vision requests use `max_completion_tokens`, which includes
+reasoning and visible output, when an output limit is explicitly configured.
+Set `LLM_MAX_RESPONSE_TOKENS` to a positive value to bound each such request;
+the default 512-token context reserve is not sent as a provider limit.
+Text extraction keeps its existing request behavior. Custom endpoints retain
+their existing token parameters. Increase the LLM context budget for cloud
+reasoning models; the default 2048-token context is intended for small local models.
+
+### Anthropic (native)
+
+Sure talks to Anthropic's Messages API directly. It serves chat (streamed), auto-categorization, merchant detection and enhancement, bill setup suggestions, and PDF imports (Claude reads the PDF itself; no vision setting needed).
+
+```bash
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=your-anthropic-api-key # pipelock:ignore
+
+# Optional
+# ANTHROPIC_MODEL=claude-sonnet-4-6
+# ANTHROPIC_MAX_TOKENS=4096
+# ANTHROPIC_REQUEST_TIMEOUT=600
+# ANTHROPIC_BASE_URL=
+```
+
+Or in the UI: **Settings** → **Self-Hosting** → **AI Provider** → **Anthropic (Claude)**, then API Key, Base URL and Default Model. An env var disables its field; `LLM_PROVIDER` locks the provider choice.
+
+| Variable | Default | What it does |
+|----------|---------|--------------|
+| `LLM_PROVIDER` | `openai` | `anthropic` selects this provider. If the selected provider has no key, Sure uses the other one. While a custom OpenAI-compatible provider is configured (`OPENAI_URI_BASE` with an access token and model), chat still goes to it, so remove those settings when switching. |
+| `ANTHROPIC_API_KEY` | — | API key. `ANTHROPIC_ACCESS_TOKEN` also works and wins if both are set. |
+| `ANTHROPIC_MODEL` | `claude-sonnet-4-6` | Model for chat and all background jobs. Must start with `claude` unless a base URL is set. |
+| `ANTHROPIC_MAX_TOKENS` | `4096` | Reply limit, sent with every request (the Messages API requires one). |
+| `ANTHROPIC_REQUEST_TIMEOUT` | `600` | HTTP timeout per call, in seconds. |
+| `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | Anthropic-compatible endpoint. Requires `ANTHROPIC_MODEL`. |
+
+How it differs from the OpenAI-compatible provider:
+
+- **No token budget.** `LLM_CONTEXT_WINDOW` (default `2048`) does less here:
+  - **Every provider:** below `4096`, the chat's system prompt lists accounts and categories only as counts, and the model fetches them with tools.
+  - **OpenAI-compatible:** it is also the budget, with `LLM_MAX_RESPONSE_TOKENS` and `LLM_SYSTEM_PROMPT_RESERVE`, for splitting auto-categorization and merchant batches, and for trimming chat history on Chat Completions endpoints (`LLM_MAX_HISTORY_TOKENS`). The native OpenAI Responses API keeps history on OpenAI's side, so nothing is trimmed there.
+  - **Native Anthropic:** only the system-prompt check applies. History is sent whole, batches aren't split, and `LLM_MAX_RESPONSE_TOKENS`, `LLM_MAX_HISTORY_TOKENS` and `LLM_SYSTEM_PROMPT_RESERVE` are ignored. Set `LLM_CONTEXT_WINDOW` by env (e.g. `200000`) so the prompt lists accounts and categories; its UI field is in the OpenAI panel.
+- **The reply limit is always sent.** A reply that needs more than `ANTHROPIC_MAX_TOKENS` is cut off, and on Claude 5 models the model's thinking counts toward it. Only bank statement extraction detects this (it logs a warning). Raise the limit if long answers or batch results come back incomplete.
+- **Batch size.** Auto-categorization, merchant detection and merchant enhancement send `LLM_MAX_ITEMS_PER_CALL` items per request (default `25`), with no splitting to fit the context window. Raise `ANTHROPIC_MAX_TOKENS` along with it, or replies are cut off (see [Where AI jobs run](#where-ai-jobs-run-sidekiq-lanes)).
+- **Its own timeout.** `ANTHROPIC_REQUEST_TIMEOUT` replaces `OPENAI_REQUEST_TIMEOUT`. `AI_RESPONSE_TIMEOUT` still covers the whole chat turn. `OPENAI_EXTRA_HEADERS`, `LLM_JSON_MODE` and `OPENAI_SUPPORTS_*` don't apply.
+
+**Bedrock, Vertex and proxies:** `ANTHROPIC_BASE_URL` can point at any endpoint that speaks the Anthropic Messages API, such as a gateway in front of AWS Bedrock or Google Vertex AI. Set `ANTHROPIC_MODEL` to that endpoint's model ID (for Bedrock, e.g. `anthropic.claude-sonnet-4-5-20250929-v1:0`); the `claude` prefix check is skipped. Sure sends the key as an Anthropic API key (`x-api-key`) and doesn't sign AWS or Google requests itself.
+
+### Google Gemini
+
+You can connect to Google Gemini either directly via Google AI Studio's OpenAI-compatible endpoint or via OpenRouter.
+
+**Recommended Gemini models:**
+
+- `gemini-4-argon` - Flagship frontier reasoning model; 1M token context, native multimodal and deep multi-step reasoning for complex financial analysis, code execution, and agentic workflows
+- `gemini-3.8-flash` - Best all-around choice; fast, strong reasoning, and reliable tool calling for chat and finance tools
+- `gemini-3.5-flash-lite` - Ultra-low cost and fast; ideal for background categorization and merchant detection
+- `gemini-3.1-pro-preview` - Best for complex financial analysis, portfolio queries, and multi-year trends
+- `gemini-2.5-flash` - Previous-generation budget model; fast and dependable fallback
+- `gemini-2.5-pro` - Previous-generation model for complex financial analysis
+
+#### Direct via Google AI Studio
+
+[Google AI Studio](https://aistudio.google.com/) provides direct API access to Gemini models with a free tier and an OpenAI-compatible endpoint:
+
+```bash
+OPENAI_ACCESS_TOKEN=your-google-ai-studio-api-key # pipelock:ignore
+OPENAI_URI_BASE=https://generativelanguage.googleapis.com/v1beta/openai
+OPENAI_MODEL=gemini-3.8-flash
+```
+
+#### Via OpenRouter
 
 [OpenRouter](https://openrouter.ai/) provides access to many models including Gemini:
 
 ```bash
 OPENAI_ACCESS_TOKEN=your-openrouter-api-key
 OPENAI_URI_BASE=https://openrouter.ai/api/v1
-OPENAI_MODEL=google/gemini-2.0-flash-exp
+OPENAI_MODEL=google/gemini-3.8-flash
 ```
 
 **Why OpenRouter?**
@@ -143,11 +245,9 @@ OPENAI_MODEL=google/gemini-2.0-flash-exp
 - Automatic fallbacks
 - Usage tracking
 
-**Recommended Gemini models via OpenRouter:**
-- `google/gemini-2.5-flash` - Fast and capable
-- `google/gemini-2.5-pro` - High quality, good for complex queries
+### Anthropic Claude via OpenRouter (OpenAI-compatible)
 
-### Anthropic Claude (via OpenRouter)
+This route uses the OpenAI-compatible provider and its token budget. To call Anthropic directly, use the [native Anthropic provider](#anthropic-native).
 
 ```bash
 OPENAI_ACCESS_TOKEN=your-openrouter-api-key
@@ -166,6 +266,33 @@ Any service offering an OpenAI-compatible API should work:
 - [Together AI](https://together.ai/) - Various open models
 - [Anyscale](https://www.anyscale.com/) - Llama models
 - [Replicate](https://replicate.com/) - Various models
+
+### Extra HTTP Headers
+
+Some gateways require custom headers on requests to OpenAI-compatible
+endpoints (e.g. OpenRouter's `HTTP-Referer`). Set `OPENAI_EXTRA_HEADERS`
+to a JSON object mapping header names to values:
+
+```bash
+# Single-quoted so the shell does not interpret braces or quotes.
+# A value containing the literal {session_id} is replaced with the chat's UUID
+# on each chat request, identifying the conversation rather than the install.
+OPENAI_EXTRA_HEADERS='{"x-opencode-session":"{session_id}"}'
+
+# Static value instead — sent on every OpenAI-provider request, including
+# batch jobs (auto-categorize, merchant detection, PDF processing):
+OPENAI_EXTRA_HEADERS='{"x-opencode-session":"b3f1c2d4-0000-0000-0000-000000000000"}'
+```
+
+Behavior:
+
+- A value containing the literal `{session_id}` is substituted with the chat's UUID on each chat request, so requests are attributable per conversation. Batch flows only receive static (non-`{session_id}`) headers, because a session only exists for a chat. If your gateway requires the header on every endpoint, use a static value.
+- Extra headers are attached to **chat requests** made by the OpenAI-compatible provider. Batch flows (auto-categorize, merchant detection, PDF processing) only receive static headers.
+- Values are stringified: nested JSON objects/arrays become Ruby inspect-style strings, not valid JSON. Header values must be plain strings.
+- User headers merge over the client's managed headers — setting `Authorization` here would override the access token.
+- Unset, blank, malformed, or non-object JSON is ignored with an error in the logs; chat keeps working. The raw value is never logged.
+- These headers are NOT sent to embedding, vector-store, or AI-health-probe calls — those build separate clients. A gateway requiring the header on those endpoints is not supported.
+- ENV-only: there is no settings-page equivalent. The value is re-read every time a provider client is built (nothing is cached), but updating the environment requires restarting the app.
 
 ## Local LLM Setup (Ollama)
 
@@ -216,6 +343,26 @@ OPENAI_URI_BASE=http://localhost:11434/v1
 # Model you pulled
 OPENAI_MODEL=llama3.1:13b
 
+# Raise this for large-context local models so auto-categorize and merchant detection
+# have enough prompt budget for categories + schemas before transaction rows are added.
+LLM_CONTEXT_WINDOW=8192
+
+# Slow local models often need a longer per-request HTTP timeout once the prompt budget issue is fixed.
+OPENAI_REQUEST_TIMEOUT=180
+
+# Chained tool calls per turn. Each iteration is another call to the model, so
+# lowering this is the cheapest way to keep a turn inside the timeout below.
+ASSISTANT_MAX_TOOL_CALL_ITERATIONS=2
+
+# Whole-turn budget before the chat gives up and shows a "no response" error.
+# Responses from custom providers are not streamed and tool-call rounds display
+# nothing, so this covers every call the turn makes, not just the first token.
+# Size it as a sum:
+#   (1 + ASSISTANT_MAX_TOOL_CALL_ITERATIONS) * OPENAI_REQUEST_TIMEOUT
+#     + tool execution + queue wait
+# Here (1 + 2) * 180 = 540s of model time, plus headroom, so 720.
+AI_RESPONSE_TIMEOUT=720
+
 # Optional: enable debug logging in the AI chat
 AI_DEBUG_MODE=true 
 ```
@@ -224,6 +371,10 @@ AI_DEBUG_MODE=true
 - You **must** set `OPENAI_MODEL` - the system cannot default to `gpt-4.1` as that model won't exist in Ollama
 - The `OPENAI_ACCESS_TOKEN` can be any non-empty value (Ollama ignores it)
 - If you don't set a model, chats will fail with a validation error
+- Auto-categorization uses a conservative default `LLM_CONTEXT_WINDOW=2048`, so large category lists or schemas can exhaust the prompt budget before any transactions are sent
+- If requests start timing out after raising `LLM_CONTEXT_WINDOW`, increase `OPENAI_REQUEST_TIMEOUT` too; these are separate limits. You can also set this in **Settings → Self-Hosting → OpenAI → Request Timeout** when the environment variable is not configured.
+- Responses from custom providers are **not streamed** — the chat shows "Thinking…" until the entire reply is generated, and a turn that chains tool calls stays there through every round, since tool-call responses have no text to display. If the chat errors while your model is clearly still working, raise `AI_RESPONSE_TIMEOUT` or lower `ASSISTANT_MAX_TOOL_CALL_ITERATIONS`; `OPENAI_REQUEST_TIMEOUT` alone will not help. `AI_RESPONSE_TIMEOUT` has to cover the whole turn, so size it as `(1 + ASSISTANT_MAX_TOOL_CALL_ITERATIONS) × OPENAI_REQUEST_TIMEOUT` plus tool execution and queue wait — a sum, not simply a larger number than the per-call limit
+- AI jobs run one at a time by default (`RAILS_AI_MAX_THREADS=1`), which suits a local model with one slot; see [Where AI jobs run](#where-ai-jobs-run-sidekiq-lanes) before raising it
 
 ### Docker Compose Example
 
@@ -234,6 +385,8 @@ services:
       - OPENAI_ACCESS_TOKEN=ollama-local
       - OPENAI_URI_BASE=http://ollama:11434/v1
       - OPENAI_MODEL=llama3.1:13b
+      - LLM_CONTEXT_WINDOW=8192
+      - OPENAI_REQUEST_TIMEOUT=180
       - AI_DEBUG_MODE=true # Optional: enable debug logging in the AI chat
     depends_on:
       - ollama
@@ -306,11 +459,14 @@ Similar requirements to categorization:
 For self-hosted deployments, you can configure AI settings through the web interface:
 
 1. Go to **Settings** → **Self-Hosting**
-2. Scroll to the **AI Provider** section
-3. Configure:
-   - **OpenAI Access Token** - Your API key
-   - **OpenAI URI Base** - Custom endpoint (leave blank for OpenAI)
-   - **OpenAI Model** - Model name (required for custom endpoints)
+2. Scroll to the **AI Provider** section and choose **OpenAI** or **Anthropic (Claude)**
+3. Configure the provider (OpenAI fields shown; for Anthropic see [Anthropic (native)](#anthropic-native)):
+   - **Access Token** - Your API key
+   - **API Base URL** - Custom endpoint (leave blank for OpenAI)
+   - **Model** - Model name (required for custom endpoints)
+   - **JSON Mode** - Structured-output format; `Auto` suits most models
+4. Optionally set **Max Items Per Batch** under the provider choice; it applies to every provider. For OpenAI-compatible endpoints, also tune **Token Budget** — Context Window and Max Response Tokens. The defaults are conservative so small-context local models work out of the box; raise them for cloud or large-context models.
+5. Optionally set **Chat Response Timeout** — how long the chat waits for a whole turn before showing a "no response" error (default 90s). Raise it for slow local models; see [Chat Errors While the Model Is Still Generating](#chat-errors-while-the-model-is-still-generating).
 
 **Note:** Environment variables take precedence over UI settings. When an env var is set, the corresponding UI field is disabled.
 
@@ -334,7 +490,7 @@ This is useful when:
 1. User sends a message in the Sure chat UI
 2. Sure sends the conversation to your agent's API endpoint (OpenAI chat completions format)
 3. Your agent processes it using whatever LLM, tools, or context it needs
-4. Your agent can call Sure's `/mcp` endpoint for financial data (accounts, transactions, balance sheet, holdings)
+4. Your agent can call Sure's `/mcp` endpoint for financial data and actions (accounts, transactions, balance sheet, budgets, file search, statement import, goals)
 5. Your agent streams the response back to Sure via Server-Sent Events (SSE)
 
 The agent's API must be **OpenAI chat completions compatible**: accept `POST` with a `messages` array, return SSE with `delta.content` chunks.
@@ -369,17 +525,24 @@ Sure exposes a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) 
 
 **Authentication:** Bearer token via `Authorization` header
 
-**Environment variables:**
+Sure supports both:
+
+- OAuth bearer tokens issued through its discovery and registration endpoints (`/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`, `POST /register`)
+- Static bearer tokens configured with `MCP_API_TOKEN` and `MCP_USER_EMAIL`
+
+**Static-token environment variables:**
 ```bash
 MCP_API_TOKEN=your-secret-token    # Bearer token the agent sends to authenticate
 MCP_USER_EMAIL=user@example.com    # Email of the Sure user the agent acts as
 ```
 
 The agent must send requests to `https://your-sure-instance/mcp` with:
-```
-Authorization: Bearer <MCP_API_TOKEN>
+```http
+Authorization: Bearer <access-token>
 Content-Type: application/json
 ```
+
+For OAuth clients, `<access-token>` is the issued Doorkeeper bearer token. For static-token clients, it is the configured `MCP_API_TOKEN`.
 
 **Supported methods:**
 
@@ -389,17 +552,9 @@ Content-Type: application/json
 | `tools/list` | Lists available tools with names, descriptions, and input schemas |
 | `tools/call` | Calls a specific tool by name with arguments |
 
-**Available tools** (exposed via `tools/list`):
-
-| Tool | Description |
-|------|-------------|
-| `get_accounts` | Retrieve account information |
-| `get_transactions` | Query transaction history |
-| `get_holdings` | Investment holdings data |
-| `get_balance_sheet` | Current financial position |
-| `get_income_statement` | Income and expenses |
-| `import_bank_statement` | Import bank statement data |
-| `search_family_files` | Search uploaded documents |
+**Available tools** (exposed via `tools/list`): the `/mcp` endpoint serves the
+same registry as the builtin assistant. See the canonical tool tables in
+[mcp.md](mcp.md#available-tools), which also cover the preview tools.
 
 **Example: list tools**
 ```bash
@@ -439,24 +594,46 @@ EXTERNAL_ASSISTANT_AGENT_ID=your-agent-name
 EXTERNAL_ASSISTANT_URL=http://my-agent.my-namespace.svc.cluster.local:18789/v1/chat/completions
 ```
 
+#### Giving the agent a long-term memory of its own
+
+An external agent can do more than answer questions about the current balance:
+with its own repository behind it, it can maintain a document-backed history of
+a family's wealth, where every figure traces back to the statement it came from.
+
+That is a two-install shape — Sure as the system of record, the agent harness as
+the model and the compiler — rather than a feature inside Sure. Sure exposes a
+set of preview MCP tools for it (the Statement Vault, coverage gaps, and
+valuations that require a source citation).
+
+See [Wealth history with an external agent harness](../llm-guides/wealth-agent-harness.md)
+for which side owns what, and [the blueprint](../llm-guides/wealth-blueprint.md)
+it implements.
+
 ### Security with Pipelock
 
-When [Pipelock](https://github.com/luckyPipewrench/pipelock) is enabled (`pipelock.enabled=true` in Helm, or the `pipelock` service in Docker Compose), all traffic between Sure and the external agent is scanned:
+When [Pipelock](https://github.com/luckyPipewrench/pipelock) is enabled (`pipelock.enabled=true` in Helm, or the `pipelock` service in Docker Compose), Sure configures two mediated routes:
 
 - **Outbound** (Sure -> agent): routed through Pipelock's forward proxy via `HTTPS_PROXY`
 - **Inbound** (agent -> Sure /mcp): routed through Pipelock's MCP reverse proxy (port 8889)
 
-Pipelock scans for prompt injection, DLP violations, and tool poisoning. The external agent does not need Pipelock installed. Sure's Pipelock handles both directions.
+The MCP reverse proxy scans readable MCP traffic for prompt injection, DLP violations, and tool poisoning. The forward proxy applies tunnel-level controls to HTTPS, but the default examples don't enable TLS interception and can't scan encrypted bodies. The external agent doesn't need Pipelock installed.
+
+If you need audit evidence, configure Pipelock's flight recorder as described in [Pipelock signed action receipts](pipelock.md#signed-action-receipts). Enabling Pipelock adds the mediated routes, while receipts require mounted evidence storage plus a receipt-signing key.
 
 **`NO_PROXY` behavior (Helm/Kubernetes only):** The Helm chart's env template sets `NO_PROXY` to include `.svc.cluster.local` and other internal domains. This means in-cluster agent URLs (like `http://agent.namespace.svc.cluster.local:18789`) bypass the forward proxy and go directly. If your agent is in-cluster, its traffic won't be forward-proxy scanned (but MCP callbacks from the agent are still scanned by the reverse proxy). Docker Compose deployments use a different `NO_PROXY` set; check your compose file for the exact values.
 
-**`mcpToolPolicy` note:** The Helm chart's `pipelock.mcpToolPolicy.enabled` defaults to `true`. If you haven't defined any policy rules, disable it:
+**`mcpToolPolicy` note:** The Helm chart's `pipelock.mcpToolPolicy.enabled` defaults to `false`. Pipelock rejects an enabled tool policy with no rules, so the chart ships it off by default. To turn it on, define at least one rule and set `enabled: true`:
 
 ```yaml
 # Helm values
 pipelock:
   mcpToolPolicy:
-    enabled: false
+    enabled: true
+    action: warn
+    rules:
+      - name: example
+        toolPattern: "^shell$"
+        action: block
 ```
 
 See the [Pipelock documentation](https://github.com/luckyPipewrench/pipelock) for tool policy configuration details.
@@ -639,26 +816,45 @@ Assistant.for_chat(chat) # => Assistant::Builtin instance
 
 ### Function Registry
 
-The `Assistant.function_classes` method centralizes all available financial tools:
-
-```ruby
-def self.function_classes
-  [
-    Function::GetTransactions,
-    Function::GetAccounts,
-    Function::GetHoldings,
-    Function::GetBalanceSheet,
-    Function::GetIncomeStatement,
-    Function::ImportBankStatement,
-    Function::SearchFamilyFiles
-  ]
-end
-```
+`Assistant.function_classes(user = nil)` centralizes all available financial
+tools. The full list lives in `app/models/assistant.rb` (not repeated here;
+it drifts). Passing a user matters: preview tools
+(`PREVIEW_FUNCTION_CLASSES`) are appended only when that user has preview
+features enabled.
 
 These functions are:
 - Used by builtin assistants for LLM function calling
 - Exposed via the MCP endpoint for external agents
 - Defined in `app/models/assistant/function/`
+
+### Responder loop
+
+`Assistant::Responder` drives the tool loop. Facts that matter when adding a
+function:
+
+- The iteration cap counts **rounds** (model round-trips), not individual
+  calls; parallel calls in one round count once. Default 8, override with
+  `ASSISTANT_MAX_TOOL_CALL_ITERATIONS`.
+- On the final permitted round the follow-up request offers **no tools**, so
+  the model must answer in text with whatever it gathered (a grace turn
+  instead of a dead chat). `ToolCallLimitError` remains as a backstop.
+- Tool failures do not raise out of the loop. `FunctionToolCaller` returns
+  `{error:, hint:}` results, and the system prompt tells the model to follow
+  the hint and retry exactly once. Functions should return
+  `{ error: "...", message: "..." }`-shaped soft failures for expected
+  problems (unknown ids, invalid dates) rather than raising.
+
+### System prompt structure
+
+The prompt is `Assistant::Configurable::STATIC_INSTRUCTIONS` (a frozen,
+byte-stable constant, which providers can cache as a repeated prefix)
+followed by a volatile `## Session context` block: date, formats, currency,
+an account roster and category names. The roster collapses to counts beyond
+25 accounts, categories beyond 60 names, and both collapse whenever the
+configured context window is below 4096 tokens.
+
+A family admin can replace the static half from **Settings → AI Prompts**
+without a redeploy; see [Custom System Prompts](#custom-system-prompts).
 
 ### Adding a New Assistant Type
 
@@ -835,6 +1031,8 @@ Langfuse helps you:
 
 4. Restart Sure
 
+Sure sends completed observations through Langfuse's v4 OpenTelemetry ingestion path. Existing keys and host settings still apply. See the [Langfuse migration and validation notes](langfuse.md#langfuse-v4) before upgrading an existing project.
+
 All LLM operations will now be logged to Langfuse, including:
 - Chat messages and responses
 - Auto-categorization requests
@@ -936,16 +1134,94 @@ Good test queries that exercise different capabilities:
 
 ### Cloud Costs
 
-Typical costs for OpenAI (as of early 2025):
+**Full pricing table last verified: October 17, 2026.** Every model
+listed in [`LlmUsage::PRICING`](../../app/models/llm_usage.rb) was checked against
+official sources on that date, except the Claude and OpenAI rows: those were
+last reviewed on November 1, 2026, without re-checking the Gemini rows.
+`PRICING_VERIFIED_ON` supplies the full-table verification date shown on
+the LLM usage screen. This is a manual review date, not a claim that providers
+changed every price that day.
 
-- **gpt-4.1:** ~$5-15 per 1M input tokens, ~$15-60 per 1M output tokens
-- **gpt-5:** ~2-3x more expensive than gpt-4.1
-- **gpt-4o-mini:** ~$0.15 per 1M input tokens (very cheap)
+Rates are USD per million tokens at the Standard tier. The source coverage is:
+
+| Models in the code | Official pricing source |
+| --- | --- |
+| GPT-6 Astra, GPT-6 Sol/6.1 Sol, GPT-6.1 Terra, GPT-6 Luna, GPT-5.6 (and its `gpt-5.6` alias for Sol), GPT-5.6/5.5 Cyber, GPT-5.5, GPT-5.4, GPT-5.3 Codex, GPT-5.2, GPT-5.1, GPT-5, GPT-4.1, GPT-4o, o1/o1-pro, o3, o4-mini, chat-latest (including listed variants) | [OpenAI pricing](https://developers.openai.com/api/docs/pricing) |
+| GPT-5.2/5.1 Chat aliases | [GPT-5.2 Chat](https://developers.openai.com/api/docs/models/gpt-5.2-chat-latest), [GPT-5.1 Chat](https://developers.openai.com/api/docs/models/gpt-5.1-chat-latest) |
+| o1-mini | [o1-mini](https://developers.openai.com/api/docs/models/o1-mini) |
+| Gemini 4 Argon, 3.8/3.7/3.6/3.5 Flash, 3.5/3.1 Flash-Lite, 3.1 Pro, 3 Flash, 2.5 Pro/Flash | [Google pricing](https://ai.google.dev/gemini-api/docs/pricing) |
+| Claude Fable 5/5.1, Opus 4/4.1/4.5/4.6/4.7/4.8/5/5.5, Sonnet 4/4.5/4.6/5/5.5, Haiku 4.5/5.5 | [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing) |
+
+#### Dated pricing changes
+
+| Model | Input / output | Latest relevant published date found |
+| --- | --- | --- |
+| Gemini 4 Argon | $2 / $10 | October 2026: launch promotional pricing through November 30, 2026 ($4 / $20 standard starting December 1, 2026) |
+| GPT-6.1 Sol | $2 / $10 | September 29, 2026: launch pricing |
+| GPT-6 Sol | $2 / $10 | September 22, 2026: launch pricing |
+| GPT-5.6 Sol | $4 / $20 | August 21, 2026: price reduction; promotion available at least through November 21, 2026 |
+| GPT-5.6 Terra | $2 / $12 | July 30, 2026: price reduction |
+| GPT-5.6 Luna | $0.20 / $1.20 | July 30, 2026: price reduction |
+| Claude Opus 4.7 | $5 / $25 | April 16, 2026: published launch rate; corrects Sure's erroneous $15 / $75 |
+| Claude Opus 4.6 | $5 / $25 | February 5, 2026: published base launch rate; corrects Sure's erroneous $15 / $75 |
+
+Dates above come from the [OpenAI changelog](https://developers.openai.com/api/docs/changelog),
+the [Gemini API documentation](https://ai.google.dev/gemini-api/docs/pricing),
+and the [Opus 4.7](https://www.anthropic.com/news/claude-opus-4-7) and
+[Opus 4.6](https://www.anthropic.com/news/claude-opus-4-6) announcements.
+For other listed rates, the latest price-change date was **not established**;
+their current prices were verified on October 17. Google's pricing page lists
+launch promotional pricing for Gemini 4 Argon ($2.00 / $10.00) through November 30, 2026,
+and Gemini 3.8, 3.7, and 3.6 Flash through December 31, 2026.
+
+#### Context tiers and estimate limits
+
+OpenAI's listed GPT-6 Astra, GPT-6 Sol, GPT-6.1 Sol, GPT-6.1 Terra, GPT-6 Luna,
+GPT-5.6, GPT-5.5/Pro and GPT-5.4/Pro
+rates increase above 272,000 input tokens: input doubles and output increases
+by 50% for the entire request. GPT-5.4 mini/nano retain their flat rates.
+Gemini 4 Argon is $2.00 / $10.00 through November 2026 ($4.00 / $20.00 standard starting
+December 2026) across its 1,048,576 token (1M) unified context window.
+Gemini 2.5 Pro changes from $1.25 / $10 to $2.50 / $15 above 200,000 input
+tokens. Gemini 3.1 Pro (and 3.1 Pro Preview) changes from $2.00 / $12.00 to
+$4.00 / $18.00 above 200,000 input tokens. Gemini 3.8 Flash, 3.7 Flash, and
+3.6 Flash are $0.75 / $3.75 through 2026 ($1.50 / $7.50 starting 2027).
+Gemini 3.5 Flash is $1.50 / $9.00, Gemini 3.5 Flash-Lite is $0.30 / $2.50,
+Gemini 3.1 Flash-Lite is $0.25 / $1.50, Gemini 3 Flash is $0.50 / $3.00,
+and Gemini 2.5 Flash remains $0.30 / $2.50.
+Claude Haiku 5.5 changes from $0.10 / $0.50 to $0.50 / $2.50 above 100,000
+prompt tokens, counting cache reads and writes. Other Claude models use
+standard rates throughout their context window. Claude cache reads cost 0.1x
+input, except Opus 5.5 and Sonnet 5.5 (0.05x) and Fable 5.1 (0.025x).
+A Claude model released after the last review (for example `claude-opus-6`)
+is estimated at the newest listed rate of its family (Fable, Opus, Sonnet or
+Haiku) until the table is updated. Likewise, an unlisted release of an OpenAI
+tier (for example `gpt-6.2-sol` or `gpt-7-astra`) is estimated at the newest
+listed Astra, Sol, Terra or Luna rate. A listed version row covers its dated snapshots but not
+later versions, so other unlisted OpenAI models (for example `gpt-5.9`) show
+no estimate instead of an older model's rate.
+
+Sure estimates individual requests using these tiers. Aggregate categorization
+previews assume short requests. For [OpenRouter's official API endpoints](https://openrouter.ai/docs/cookbook/administration/usage-accounting), saved
+usage prefers a valid nonnegative provider-reported `usage.cost` in USD, including
+zero, over the token-price estimate. Other endpoints, or responses with absent or
+invalid costs, use the bundled estimates. Unknown models can therefore have a
+recorded post-call cost even when their pre-run estimate is N/A. Saved usage costs
+are not recalculated. Estimates exclude regional premiums,
+alternative service tiers, tool charges and audio-specific rates. Anthropic
+five-minute cache writes and reads are included when reported. For Claude models
+reached through an OpenAI-compatible endpoint, `cached_tokens` are priced at the
+Claude cache-read rate. OpenAI and Gemini cache discounts and
+cache-write/storage charges are not currently modeled.
+Custom endpoints may charge different rates.
+
+For comparison, GPT-4.1 is $2 input / $8 output, GPT-5 is $1.25 / $10,
+and GPT-4o mini is $0.15 / $0.60.
 
 **Typical usage:**
 - Chat message: 500-2000 tokens (input) + 100-500 tokens (output)
 - Auto-categorization: 1000-3000 tokens per 25 transactions
-- Cost per chat message: $0.01-0.05 for gpt-4.1
+- Cost per chat message: about $0.0018-0.008 for GPT-4.1 at the token counts above
 
 **Optimization tips:**
 1. Use `gpt-4o-mini` for categorization
@@ -1017,6 +1293,58 @@ ollama list  # See what's installed
 ollama pull model-name  # Install a model
 ```
 
+### Chat Fails With a Bare "404" (Model Without Function Calling)
+
+**Symptom:** The assistant answers every message with an unexplained `404` (or
+another opaque provider error), while the same endpoint and model work for
+auto-categorization.
+
+**Cause:** The assistant reads accounts, transactions, and holdings through
+function calls, so every chat request carries a `tools` payload. A model
+without function-calling support rejects it — OpenRouter answers `404` for
+models such as `tngtech/deepseek-r1t2-chimera:free`.
+
+**Confirm it:** Open **System health → AI status**
+(`/admin/system_health?tab=ai`). **Function calling (tools)** reports *Not
+supported by the effective provider/model* when the endpoint served the plain
+chat check but rejected the same request carrying tools, and *Tools accepted,
+but the model called none* when the model answered with text instead of
+calling the tool.
+
+**Fix:** Set `OPENAI_MODEL` to a model your provider documents as supporting
+tools/function calling — see [For Chat Assistant](#for-chat-assistant) above —
+then run the checks again. Free tiers are a poor place to look: providers
+commonly log their prompts and completions for training, and the assistant
+sends your accounts, transactions, and holdings in every tool call.
+
+### "Fixed prompt tokens exceed context budget"
+
+**Symptom:** Auto-categorization or merchant detection fails immediately with an error like:
+
+```text
+Fixed prompt tokens (2108) exceed context budget (1280)
+```
+
+**Cause:** Sure computes the usable prompt budget as:
+
+```text
+context_window - max_response_tokens - system_prompt_reserve
+```
+
+The defaults are conservative:
+- `LLM_CONTEXT_WINDOW=2048`
+- `LLM_MAX_RESPONSE_TOKENS=512`
+- `LLM_SYSTEM_PROMPT_RESERVE=256`
+
+That leaves `1280` input tokens. On local or custom models, the fixed prompt can already exceed that budget once you include Sure's instructions, category taxonomy, and schema payloads.
+
+**Fix:**
+```bash
+LLM_CONTEXT_WINDOW=8192
+```
+
+Then restart both `web` and `worker` so the new env var is loaded. If you are using Docker Compose, make sure your compose file forwards `LLM_CONTEXT_WINDOW` into the containers.
+
 ### Slow Responses
 
 **Symptom:** Long wait times for AI responses
@@ -1031,6 +1359,42 @@ ollama pull model-name  # Install a model
 - Try a smaller model
 - Ensure you're using GPU, not CPU
 - Check for thermal throttling
+- If you see `Net::ReadTimeout` after fixing the context budget, raise `OPENAI_REQUEST_TIMEOUT` (for example `180`)
+
+### Chat Errors While the Model Is Still Generating
+
+**Symptom:** The chat shows "Thinking…" for a while, then an error saying the assistant is not available — but the model does produce a reply and LLM Usage shows tokens were generated.
+
+**Cause:** Three settings interact here, measured over different spans:
+
+- `OPENAI_REQUEST_TIMEOUT` (default `60`) — applies to **each HTTP call** to the model, on its own.
+- `ASSISTANT_MAX_TOOL_CALL_ITERATIONS` (default `8`) — how many chained tool-call rounds one turn may make. A turn costs up to `1 + this` model calls. On the final permitted round the model is offered no tools, so it answers in text instead of erroring.
+- `AI_RESPONSE_TIMEOUT` (default `90`) — covers the **whole turn**, and its clock starts when the message is queued, so Sidekiq queue time counts against it. With one AI thread, that includes waiting for the AI job already running (see [Where AI jobs run](#where-ai-jobs-run-sidekiq-lanes)).
+
+Responses from custom OpenAI-compatible providers are **not streamed**, so nothing appears in the chat until the entire reply is generated. Worse, the assistant only shows text once a response actually contains some — a tool-call-only response produces nothing to display — so a turn that chains several tool calls sits on "Thinking…" through all of them. At the defaults the worst case is nine sequential model calls plus eight tool-round executions.
+
+**Fix:** size `AI_RESPONSE_TIMEOUT` as a **sum**, not simply as a number larger than the per-call limit:
+
+```text
+AI_RESPONSE_TIMEOUT ≥ (1 + ASSISTANT_MAX_TOOL_CALL_ITERATIONS) × OPENAI_REQUEST_TIMEOUT
+                      + tool execution + queue wait
+```
+
+You have two levers, and the cheaper one is usually the tool-call cap, because it divides the first term. With `ASSISTANT_MAX_TOOL_CALL_ITERATIONS=2` a turn costs at most three model calls instead of nine, cutting the timeout you need by two-thirds. The trade-off is that genuinely long tool chains fail earlier, with a clear "exceeded the tool-call limit" error rather than a timeout.
+
+```bash
+OPENAI_REQUEST_TIMEOUT=300
+ASSISTANT_MAX_TOOL_CALL_ITERATIONS=2
+AI_RESPONSE_TIMEOUT=1200   # (1 + 2) × 300 = 900, plus 300 headroom
+```
+
+Keeping the full eight iterations at 300s per call would instead need `9 × 300 = 2700` plus headroom — which is why lowering the cap is usually the better trade.
+
+If `AI_RESPONSE_TIMEOUT` ends up below what the turn actually takes, you get a generic "no response" instead of the specific timeout error, and the job keeps running and burning tokens after the chat has given up.
+
+`OPENAI_REQUEST_TIMEOUT` and `AI_RESPONSE_TIMEOUT` can also be set at **Settings → Self-Hosting → OpenAI → Timeouts**, which takes effect without a restart when the corresponding environment variable is not configured. Environment variables win over the settings fields. The minimum accepted chat response timeout is `30`.
+
+Restart `web` and `worker` after changing the environment variables, and make sure your Docker Compose file forwards them into the containers.
 
 ### No Provider Available
 
@@ -1073,9 +1437,9 @@ ollama pull model-name  # Install a model
    kubectl logs deploy/sure-worker -c sidekiq --tail=50 | grep -i "external\|assistant\|error"
    ```
 
-4. **If using Pipelock:** Check pipelock sidecar logs. A crashed pipelock can block outbound requests:
+4. **If using Pipelock:** Check the Pipelock deployment logs. A crashed Pipelock proxy can block outbound requests:
    ```bash
-   kubectl logs deploy/sure-worker -c pipelock --tail=20
+   kubectl logs deploy/sure-pipelock --tail=20
    ```
 
 ### High Costs
@@ -1099,10 +1463,10 @@ ollama pull model-name  # Install a model
 
 The builtin AI assistant uses a system prompt that defines its behavior. The prompt is defined in `app/models/assistant/configurable.rb`. This does not apply to external assistants, which manage their own prompts.
 
-To customize:
-1. Fork the repository
-2. Edit the `default_instructions` method
-3. Rebuild and deploy
+The prompt has two halves: `STATIC_INSTRUCTIONS`, a frozen constant that is
+byte-identical on every request (providers cache and discount an
+exactly-repeated prefix), and a trailing `## Session context` block holding
+everything volatile (date, currency, account roster, categories).
 
 **What you can customize:**
 - Tone and personality
@@ -1110,20 +1474,93 @@ To customize:
 - Rules and constraints
 - Domain expertise
 
+#### In the browser (per family, no redeploy)
+
+A family admin can edit the prompts at **Settings → AI Prompts**. Overrides are
+stored per family, so one family's edits never affect another on the same
+deployment. Five prompts are editable: the chat system prompt, plus the
+transaction categorizer and merchant detector for each of OpenAI and Anthropic.
+Those last two are worded independently per provider, which is why each gets its
+own field.
+
+Each field opens with its built-in default instructions, or the family override
+if one was saved. Leaving a field blank falls back to the default, and clicking
+**Reset to default** asks for confirmation before restoring the original text.
+A status label and live character counter sit below each field, with an override
+cap of 20,000 characters per prompt.
+
+The categorizer and merchant detector ship two OpenAI variants: a terse one for
+smaller local models and a detailed one written for larger models. A single
+override replaces both, so on a deployment pointed at a custom endpoint
+(`OPENAI_URI_BASE` set) those fields open with the terse variant your models
+receive.
+
+Overriding the chat prompt gives up some prompt caching. The static half is
+byte-stable so providers discount the repeated prefix; a family that overrides it
+gets its own prefix, which no longer shares a cache entry with other families on
+the same API key. The first request after each edit also pays full price. The
+result is a small, temporary increase in cost.
+
+Evals always score the default. `Eval::Runners::ChatRunner` reads
+`STATIC_INSTRUCTIONS` directly, which keeps eval scores reproducible. Editing a
+family's prompt does not change them.
+
+Custom OpenAI-compatible endpoints need a little more care. The categorizer and
+merchant parsers look for a `{"categorizations": [...]}` or `{"merchants": [...]}`
+wrapper key, but Sure also asks for that key in a per-request message your
+override does not replace, so rewording or dropping the example JSON is safe on
+its own. Parsing breaks when an override *contradicts* the output format:
+asking for reasoning before the answer, a different wrapper key, YAML, or tags
+around the result. Smaller local models tend to follow the system prompt over
+the per-request one. Because of that, the editor still warns when a custom
+OpenAI override drops the example JSON: the request-level fallback usually
+covers it, but the warning is a precaution for models that don't fall back
+that way.
+
+That risk applies to every mode except a strict schema the endpoint honors:
+`none` applies no constraint, `json_object` guarantees JSON but not the shape,
+and `auto` (the default) retries in `none` mode once more than half the results
+come back empty. Native OpenAI (strict schema) and Anthropic (forced tool use)
+enforce the shape server-side.
+
+#### In code (the default every family starts from)
+
+1. Fork the repository
+2. Edit the `STATIC_INSTRUCTIONS` constant (keep customizations there so the
+   prompt stays cacheable; only put genuinely per-request data in the session
+   context builders)
+3. Rebuild and deploy
+
 ### Function Calling
 
 The assistant uses OpenAI's function calling (tool use) to access user data:
 
 **Available functions:**
-- `get_transactions` - Retrieve transaction history
-- `get_accounts` - Get account information
-- `get_holdings` - Investment holdings data
-- `get_balance_sheet` - Current financial position
-- `get_income_statement` - Income and expenses
-- `import_bank_statement` - Import bank statement data
-- `search_family_files` - Search uploaded documents
 
-These are defined in `app/models/assistant/function/`.
+Read and analysis:
+- `get_transactions` - Search transactions with filters, sorting and pagination
+- `get_recurring_transactions` - Detected and manual recurring transactions (subscriptions, bills) with totals
+- `get_accounts` - Accounts with ids and current balances; opt-in balance history series
+- `get_holdings` - Investment holdings
+- `get_balance_sheet` - Net worth, assets and liabilities with a configurable history period and interval
+- `get_income_statement` - Income and expenses for a period, with monthly series, prior-period comparison and account filtering
+- `get_budget` - Budget summary for a month
+- `get_merchants` - Merchants with the ids update_transaction accepts and the exact names get_transactions filters on
+- `get_tags` / `get_categories` - Tag and category listings with pagination
+
+Write:
+- `update_transaction`, `update_budget`, `create_goal`
+- `unmatch_transfer` - Unlink a wrongly matched transfer
+- `update_transfer` - Count a transfer into an investment account as spending or as a plain transfer
+- `create_tag` / `update_tag`, `create_category` / `update_category` / `delete_category`
+
+Documents:
+- `import_bank_statement` - Import bank statement data
+- `search_family_files` - Search uploaded documents (vector store)
+
+These are defined in `app/models/assistant/function/`. Preview tools
+(Statement Vault, `get_valuations`, `get_insights`) are listed in
+[mcp.md](mcp.md#preview-tools).
 
 ### Vector Store (Document Search)
 
@@ -1159,8 +1596,8 @@ OPENAI_ACCESS_TOKEN=sk-proj-...
 Use PostgreSQL's pgvector extension for fully local document search. All data stays on your infrastructure.
 
 **Requirements:**
-- Use the `pgvector/pgvector:pg16` Docker image instead of `postgres:16` (drop-in replacement)
-- An embedding model served via an OpenAI-compatible `/v1/embeddings` endpoint (e.g. Ollama with `nomic-embed-text`)
+- Use the `pgvector/pgvector:pg16-trixie` Docker image instead of `postgres:16` (drop-in replacement)
+- An embedding model served via an OpenAI-compatible `/v1/embeddings` endpoint (e.g. Ollama with `mxbai-embed-large`)
 - Run the migration with `VECTOR_STORE_PROVIDER=pgvector` to create the `vector_store_chunks` table
 
 ```bash
@@ -1168,22 +1605,55 @@ Use PostgreSQL's pgvector extension for fully local document search. All data st
 VECTOR_STORE_PROVIDER=pgvector
 
 # Embedding model configuration
-EMBEDDING_MODEL=nomic-embed-text          # Default: nomic-embed-text
+EMBEDDING_MODEL=mxbai-embed-large         # Default: mxbai-embed-large
 EMBEDDING_DIMENSIONS=1024                 # Default: 1024 (must match your model)
 EMBEDDING_URI_BASE=http://ollama:11434/v1 # Falls back to OPENAI_URI_BASE if not set
 EMBEDDING_ACCESS_TOKEN=                   # Falls back to OPENAI_ACCESS_TOKEN if not set
 ```
 
+Sure enables the `vector` extension when it first provisions the chunks table,
+provided the database user has permission. If the AI status page reports that
+the extension is available but not enabled and automatic provisioning cannot
+enable it, connect as the PostgreSQL superuser and run:
+
+```sql
+CREATE EXTENSION vector;
+```
+
+The LLM and embedding endpoints are independent. A common fully local setup is
+an OpenAI-compatible chat model through `OPENAI_URI_BASE`, pgvector for storage,
+and an embedding model through `EMBEDDING_URI_BASE`. Make sure
+`EMBEDDING_DIMENSIONS` matches the selected embedding model (for example,
+`mxbai-embed-large` uses 1024 dimensions).
+
 If you are using Ollama (as in `compose.example.ai.yml`), pull the embedding model:
 
 ```bash
-docker compose exec ollama ollama pull nomic-embed-text
+docker compose -f compose.example.ai.yml --profile local-ai up -d --wait ollama
+docker compose exec ollama ollama pull mxbai-embed-large
 ```
+
+> [!WARNING]
+> Do not change `EMBEDDING_MODEL` for an existing pgvector index without
+> rebuilding it. Vectors created by different models are not comparable, even
+> when they have the same dimensions. Back up the database and the source
+> documents, then remove the existing documents from Sure. If the new model has
+> different dimensions, drop the now-empty chunks table so Sure can recreate it
+> with the new vector size:
+>
+> ```bash
+> docker compose -f compose.example.ai.yml exec web bin/rails runner \
+>   'ActiveRecord::Base.connection_pool.with_connection { |connection| connection.drop_table(VectorStore::Pgvector::TABLE_NAME, if_exists: true) }'
+> ```
+>
+> Change the embedding settings and restart Sure. Confirm that **System health
+> → AI status** reports the new model and dimensions, then upload the source
+> documents again. This recreates every embedding with only the new model.
 
 ##### Qdrant (Self-Hosted)
 
 > [!CAUTION]
-> Only `OpenAI` has been implemented!
+> Qdrant is not implemented yet. Use OpenAI or pgvector for document search.
 
 Use a dedicated Qdrant vector database:
 
@@ -1219,7 +1689,139 @@ volumes:
 
 #### Verifying the Configuration
 
-You can check whether a vector store is properly configured from the Rails console:
+Super admins can open **System health → AI status** at
+`/admin/system_health?tab=ai`. Opening that URL runs bounded, non-destructive
+live checks against the effective configuration:
+
+- OpenAI-compatible and Anthropic providers must return the configured model
+  from their models API.
+- The configured model must complete one trivial function call, sent the way
+  the assistant sends its own tools. A model that serves plain chat but rejects
+  or ignores the `tools` parameter cannot answer questions about your data.
+- The hosted OpenAI vector-store adapter must answer a list request without
+  creating or changing a store.
+- The pgvector adapter must have its extension enabled, its chunks table
+  present, and successfully execute a query.
+- A pgvector embedding endpoint must create one short test embedding, and the
+  returned vector must match `EMBEDDING_DIMENSIONS`. The test vector is not
+  stored.
+
+When `OPENAI_URI_BASE` points outside OpenAI's hosted API, the page labels the
+selected provider **OpenAI-compatible** and identifies a known effective
+provider from the endpoint (for example Ollama, OpenRouter, Together, Kilo, or
+Cloudflare Workers AI/AI Gateway). Unrecognized services are shown as **Custom
+endpoint**.
+
+Results are cached for 60 seconds by default. **Run checks again** bypasses the
+cache. Set `AI_HEALTH_PROBE_TIMEOUT` to change the default five-second request
+timeout and `AI_HEALTH_PROBE_CACHE_TTL` to change the cache duration. Failed
+checks are written as system-wide entries in **Settings → Debug logs** and to
+`Rails.logger`; endpoints are redacted and credentials are never included.
+
+#### Verifying Worker Configuration
+
+The checks above all run from the `web` process. Most AI work — assistant
+responses, PDF processing, embeddings, auto-categorization, and merchant
+detection — actually executes in a Sidekiq `worker` process, which can differ
+from `web` in network access, DNS, proxy rules, or even which credentials it
+loaded, especially in Kubernetes deployments using workload-specific overrides
+or a Secret updated without a pod restart. A passing web check does not prove
+a worker can reach the same provider.
+
+Click **Verify worker configuration** on the AI status tab to queue an
+asynchronous check (`WorkerAiHealthCheckJob`). It runs the same live probes
+from inside whichever worker process dequeues it, and the tab lists the
+result: that worker's process identity, when it checked, whether its
+effective configuration matches what `web` resolved, and probe outcomes.
+
+A few things this does and doesn't prove:
+
+- **One check verifies one worker.** Sidekiq doesn't broadcast a job to every
+  process, so a passing result confirms the process named on it is healthy —
+  not your whole fleet. With multiple worker replicas, queue the check again
+  to sample another; only the 5 most recently checked-in distinct processes
+  are kept (`WorkerAiHealth::MAX_RESULTS`) — a 6th eviction can push out an
+  older entry before its own `WorkerAiHealth::RETENTION` (15 minutes) is up —
+  and a result older than `WorkerAiHealth::STALE_AFTER` displays as **Stale**
+  rather than pass/fail.
+- **Worker checks never reuse a web-cached result, or vice versa.** The web
+  page's probes are cached briefly (see above) so repeat page loads don't
+  re-hit providers; the worker job deliberately bypasses that shared cache so
+  its result always reflects a live call from its own network context, and
+  never leaves an entry a web request could read back as if it had checked
+  itself.
+- **In local development, the web and worker results won't show up together.**
+  `bin/dev` runs `web` and `worker` as separate OS processes, and
+  `config/environments/development.rb` uses a process-local `:memory_store` /
+  `:null_store` cache there (production uses a shared Redis store). A worker
+  check queued locally writes to the worker process's own in-memory cache, so
+  the web page's "Verify worker configuration" button can appear to do
+  nothing — it isn't a bug, there's just no result for it to read back.
+- **Which settings need a restart depends on how they're set.** Provider,
+  model, and API-key settings changed in **Settings → Self-Hosting** are
+  stored in the database and take effect automatically for the next request
+  or queued job on both `web` and `worker` — no restart needed. Embedding
+  configuration, and anything only set through an environment variable, is
+  fixed when each container starts; changing it requires restarting or
+  recreating **both** `web` and `worker`. The AI status tab labels this
+  distinction next to the worker results.
+
+#### Troubleshooting Pgvector and Embeddings
+
+The AI status page reports separate failures for the PostgreSQL storage check
+and the embedding endpoint check.
+
+If PostgreSQL reports that the `vector` extension is not enabled, make sure the
+database image includes pgvector, then enable the extension as a database owner
+or superuser:
+
+```bash
+sudo -u postgres psql -d sure_production -c "CREATE EXTENSION IF NOT EXISTS vector;"
+```
+
+If `vector_store_chunks` is missing, confirm the migration state and re-run the
+conditional vector-store migration with the pgvector provider selected:
+
+```bash
+RAILS_ENV=production bundle exec rails db:migrate:status
+VECTOR_STORE_PROVIDER=pgvector RAILS_ENV=production bundle exec rails db:migrate:redo VERSION=<migration_version>
+```
+
+If the embedding check reports a dimensions mismatch, align
+`EMBEDDING_MODEL` and `EMBEDDING_DIMENSIONS` with the embedding provider's
+documented vector size. For example, `gemini-embedding-2-preview` returns 3072
+dimensions by default, so a matching configuration is:
+
+```bash
+EMBEDDING_MODEL=gemini-embedding-2-preview
+EMBEDDING_DIMENSIONS=3072
+```
+
+Changing only `EMBEDDING_DIMENSIONS` does not reshape an existing pgvector
+column. If `vector_store_chunks` was already created with a different size,
+back up the database and source documents, remove the indexed documents from
+Sure, then alter or recreate the `embedding` column/table before uploading the
+documents again. Dropping the empty chunks table lets Sure recreate it with the
+new vector size:
+
+```bash
+docker compose -f compose.example.ai.yml exec web bin/rails runner \
+  'ActiveRecord::Base.connection_pool.with_connection { |connection| connection.drop_table(VectorStore::Pgvector::TABLE_NAME, if_exists: true) }'
+```
+
+Restart Sure after changing environment values so the new settings are present
+in both web and worker processes. If the embedding live check times out, raise
+the health-check probe timeout in the service environment:
+
+```bash
+AI_HEALTH_PROBE_TIMEOUT=180
+```
+
+If normal AI chat calls also time out, raise `OPENAI_REQUEST_TIMEOUT`
+separately; it controls OpenAI-compatible LLM requests, not the health-check
+probe budget.
+
+You can also check the adapter from the Rails console:
 
 ```ruby
 VectorStore.configured?          # => true / false
@@ -1236,7 +1838,8 @@ The following file extensions are supported for document upload and search:
 #### Privacy Notes
 
 - **OpenAI backend:** Document content is sent to OpenAI's API for indexing and search. The same privacy considerations as the AI chat apply.
-- **Pgvector / Qdrant backends:** All data stays on your infrastructure. No external API calls are made for document search.
+- **Pgvector backend:** Stored chunks stay in PostgreSQL. Text is still sent to the configured embedding endpoint, which may be local or remote.
+- **Qdrant backend:** The adapter is currently scaffolded and cannot upload or search documents.
 
 ### Multi-Model Setup
 
@@ -1261,6 +1864,29 @@ throttle('chats/create', limit: 10, period: 1.minute) do |req|
 end
 ```
 
+## External chat assistant
+
+The External assistant delegates chat to a remote OpenAI-compatible agent gateway. It is separate from the Builtin LLM provider described above.
+
+Configure it in **Settings → Self-Hosting → AI Assistant**, or with:
+
+```bash
+ASSISTANT_TYPE=external
+EXTERNAL_ASSISTANT_URL=https://your-agent-host/v1/chat/completions
+EXTERNAL_ASSISTANT_TOKEN=your-gateway-token # pipelock:ignore
+EXTERNAL_ASSISTANT_MODEL=openclaw/main
+```
+
+Configuration behavior:
+
+- `EXTERNAL_ASSISTANT_URL` is the full chat-completions endpoint. Sure sends requests to this URL verbatim; it does not append `/v1/chat/completions`.
+- The Settings form requires an agent selection. After the URL and token are saved, Sure requests the sibling `/v1/models` endpoint and shows the returned entries as agent choices. If you change the endpoint or token and the previously selected agent is not offered there, Sure saves the new connection and asks you to pick an agent again.
+- The selected value is sent as the OpenAI-compatible `model` routing value, such as `openclaw/main`. This selects an external agent. It does not select or change the LLM configured behind that agent.
+- The gateway must return standard streaming chat-completion events (`choices[0].delta.content`) followed by `data: [DONE]`.
+- An authentication, endpoint, or agent-selection failure comes from the external gateway. Check the gateway's response and logs when Sure reports an HTTP error.
+
+Upgrading: deployments that set only the URL and token keep working. When no agent is selected, Sure uses `openclaw/main`, which matches the previous implicit `main` agent. `EXTERNAL_ASSISTANT_AGENT_ID` is still read for existing deployments and maps to `openclaw/<id>` until an agent is selected. Once a model is selected in Settings or with `EXTERNAL_ASSISTANT_MODEL`, the agent routing header always follows that model. New configurations should use `EXTERNAL_ASSISTANT_MODEL`.
+
 ## Resources
 
 - [OpenAI Documentation](https://platform.openai.com/docs)
@@ -1282,4 +1908,4 @@ For issues with AI features:
 
 ---
 
-**Last Updated:** March 2026
+**Last Updated:** September 2026

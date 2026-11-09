@@ -103,11 +103,19 @@ class Balance::ForwardCalculator < Balance::BaseCalculator
     # that may have been missing (fallback_rate: 1) on a prior sync and later
     # imported — so we must do a full recalculation to pick them up.
     def multi_currency_account?
-      account.entries.where.not(currency: account.currency).exists? ||
+      account.entries.excluding_pending.where.not(currency: account.currency).exists? ||
         account.currency != account.family.currency
     end
 
     def opening_starting_balances
+      # When the window starts before the opening anchor (a reconciliation or
+      # other entry was backfilled with a date earlier than the anchor), we have
+      # no known balance for that earlier start date. Seed flat at zero — the
+      # earliest reconciliation and the opening anchor each reset the absolute
+      # balance on their own dates via the valuation-override path, so the seed
+      # only affects the pre-anchor opening day's adjustment, not later totals.
+      return [ 0, 0 ] if calculation_start_date < account.opening_anchor_date
+
       cash = derive_cash_balance_on_date_from_total(
         total_balance: account.opening_anchor_balance,
         date: account.opening_anchor_date
@@ -122,12 +130,20 @@ class Balance::ForwardCalculator < Balance::BaseCalculator
         .find_by(date: @window_start_date - 1)
     end
 
+    def sync_cache
+      @sync_cache ||= Balance::SyncCache.new(account, start_date: (@window_start_date if incremental?))
+    end
+
     def calc_start_date
-      incremental? ? @window_start_date : account.opening_anchor_date
+      incremental? ? @window_start_date : calculation_start_date
     end
 
     def calc_end_date
-      [ account.entries.order(:date).last&.date, account.holdings.order(:date).last&.date ].compact.max || Date.current
+      # Scheduled (future-dated) entries must not extend the calculation window --
+      # otherwise their flows would materialize a balance dated in the future,
+      # and Balance::Materializer#update_account_info would surface that as the
+      # account's *current* balance. See Entry#scheduled? and Balance::SyncCache.
+      [ account.entries.excluding_pending.where(date: ..Date.current).maximum(:date), account.holdings.maximum(:date) ].compact.max || Date.current
     end
 
     # Negative entries amount on an "asset" account means, "account value has increased"
@@ -147,9 +163,5 @@ class Balance::ForwardCalculator < Balance::BaseCalculator
     # Derives non-cash balance, starting from the start-of-day, applying entries in forward to get the end-of-day balance
     def derive_end_non_cash_balance(start_non_cash_balance:, date:)
       derive_non_cash_balance(start_non_cash_balance, date, direction: :forward)
-    end
-
-    def flows_factor
-      account.asset? ? 1 : -1
     end
 end

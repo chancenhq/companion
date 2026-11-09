@@ -3,6 +3,10 @@ class Rule::ActionExecutor::ExcludeTransaction < Rule::ActionExecutor
     "Exclude from budgeting and reports"
   end
 
+  def claimed_attributes
+    [ :excluded ]
+  end
+
   def execute(transaction_scope, value: nil, ignore_attribute_locks: false, rule_run: nil)
     scope = transaction_scope.with_entry
 
@@ -19,7 +23,8 @@ class Rule::ActionExecutor::ExcludeTransaction < Rule::ActionExecutor
       txn.entry.enrich_attribute(
         :excluded,
         true,
-        source: "rule"
+        source: "rule",
+        ignore_locks: ignore_attribute_locks
       )
     end
   end

@@ -10,12 +10,15 @@ pt-BR:
       date: Data
       description: Descrição
       description_placeholder: Descreva a transação
+      description_placeholder_optional: "Deixe em branco para usar o nome da categoria/comerciante, ou selecione um deles primeiro"
       expense: Despesa
       income: Receita
       none: (nenhum)
       note_label: Notas
       note_placeholder: Digite uma nota
+      create_tag: Criar
       submit: Adicionar transação
+      tag_search_placeholder: Pesquisar ou criar tag
       tags_label: Tags
       transfer: Transferência
     new:

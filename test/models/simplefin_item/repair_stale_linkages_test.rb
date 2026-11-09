@@ -1,0 +1,267 @@
+require "test_helper"
+
+class SimplefinItem::RepairStaleLinkagesTest < ActiveSupport::TestCase
+  setup do
+    @family = families(:dylan_family)
+    @item = SimplefinItem.create!(family: @family, name: "SF Conn", access_url: "https://example.com/access")
+    @sync = Sync.create!(syncable: @item)
+  end
+
+  test "does not hijack a linked account when an unlinked account merely shares its name (GH #2852)" do
+    linked_sfa = SimplefinAccount.create!(
+      simplefin_item: @item,
+      account_id: "ACT-linked",
+      name: "CHECKING (0001)",
+      currency: "USD",
+      current_balance: 100,
+      account_type: "checking"
+    )
+    account = Account.create!(
+      family: @family,
+      name: "Checking",
+      currency: "USD",
+      balance: 100,
+      accountable: Depository.create!(subtype: :checking)
+    )
+    AccountProvider.create!(account: account, provider: linked_sfa)
+
+    unlinked_sfa = SimplefinAccount.create!(
+      simplefin_item: @item,
+      account_id: "ACT-unlinked-twin",
+      name: "CHECKING (0001)",
+      currency: "USD",
+      current_balance: 999,
+      account_type: "checking",
+      raw_transactions_payload: [ { id: "txn-1", posted: 1_700_000_000, amount: "-10.00", description: "Coffee" } ]
+    )
+
+    # Both accounts are still present upstream (this is the reported failure mode:
+    # two genuinely distinct accounts that happen to share a display name).
+    @item.upstream_account_ids = [ linked_sfa.account_id, unlinked_sfa.account_id ]
+
+    @item.send(:repair_stale_linkages, [ linked_sfa, unlinked_sfa ])
+
+    linked_sfa.reload
+    unlinked_sfa.reload
+
+    assert_equal account, linked_sfa.current_account, "the correctly-linked account must keep its linkage"
+    assert_nil unlinked_sfa.current_account, "the distinct twin must remain unlinked"
+    assert_empty linked_sfa.raw_transactions_payload.to_a, "linked account's transactions must not be overwritten by its twin's"
+  end
+
+  test "still repairs a genuinely stale linkage when the old account_id is absent upstream" do
+    stale_sfa = SimplefinAccount.create!(
+      simplefin_item: @item,
+      account_id: "ACT-old-id",
+      name: "Business",
+      currency: "USD",
+      current_balance: 100,
+      account_type: "checking",
+      raw_transactions_payload: [ { id: "old-txn", posted: 1_699_000_000, amount: "-5.00", description: "Old" } ]
+    )
+    account = Account.create!(
+      family: @family,
+      name: "Business Checking",
+      currency: "USD",
+      balance: 100,
+      accountable: Depository.create!(subtype: :checking)
+    )
+    AccountProvider.create!(account: account, provider: stale_sfa)
+
+    new_sfa = SimplefinAccount.create!(
+      simplefin_item: @item,
+      account_id: "ACT-new-id",
+      name: "Business",
+      currency: "USD",
+      current_balance: 288.41,
+      account_type: "checking",
+      raw_transactions_payload: [ { id: "new-txn", posted: 1_700_000_000, amount: "-10.00", description: "New" } ]
+    )
+
+    # Only the new account_id comes back upstream; the old one is genuinely gone
+    # (e.g. the user deleted and re-added the institution in SimpleFIN).
+    @item.upstream_account_ids = [ new_sfa.account_id ]
+
+    @item.send(:repair_stale_linkages, [ stale_sfa, new_sfa ])
+
+    new_sfa.reload
+    stale_sfa.reload
+
+    assert_equal account, new_sfa.current_account, "linkage should transfer to the new SimplefinAccount"
+    assert_nil stale_sfa.current_account, "the old SimplefinAccount should be left orphaned"
+    assert_equal 2, new_sfa.raw_transactions_payload.to_a.size, "transactions from both should be merged"
+  end
+
+  test "skips repair when upstream_account_ids is unavailable" do
+    linked_sfa = SimplefinAccount.create!(
+      simplefin_item: @item,
+      account_id: "ACT-linked",
+      name: "Business",
+      currency: "USD",
+      current_balance: 100,
+      account_type: "checking"
+    )
+    account = Account.create!(
+      family: @family,
+      name: "Business Checking",
+      currency: "USD",
+      balance: 100,
+      accountable: Depository.create!(subtype: :checking)
+    )
+    AccountProvider.create!(account: account, provider: linked_sfa)
+
+    unlinked_sfa = SimplefinAccount.create!(
+      simplefin_item: @item,
+      account_id: "ACT-unlinked",
+      name: "Business",
+      currency: "USD",
+      current_balance: 999,
+      account_type: "checking",
+      raw_transactions_payload: [ { id: "txn-1", posted: 1_700_000_000, amount: "-10.00", description: "Coffee" } ]
+    )
+
+    assert_nil @item.upstream_account_ids
+
+    assert_difference "DebugLogEntry.count", 1 do
+      @item.send(:repair_stale_linkages, [ linked_sfa, unlinked_sfa ])
+    end
+
+    assert_equal account, linked_sfa.reload.current_account
+    assert_nil unlinked_sfa.reload.current_account
+
+    entry = DebugLogEntry.last
+    assert_equal "provider_sync_warning", entry.category
+    assert_equal "simplefin", entry.provider_key
+    assert_equal @family, entry.family
+  end
+
+  test "does not act on an ambiguous multi-way name match" do
+    linked_sfa = SimplefinAccount.create!(
+      simplefin_item: @item,
+      account_id: "ACT-linked",
+      name: "Checking",
+      currency: "USD",
+      current_balance: 100,
+      account_type: "checking"
+    )
+    account = Account.create!(
+      family: @family,
+      name: "Checking",
+      currency: "USD",
+      balance: 100,
+      accountable: Depository.create!(subtype: :checking)
+    )
+    AccountProvider.create!(account: account, provider: linked_sfa)
+
+    other_linked_sfa = SimplefinAccount.create!(
+      simplefin_item: @item,
+      account_id: "ACT-other-linked",
+      name: "Checking",
+      currency: "USD",
+      current_balance: 50,
+      account_type: "checking"
+    )
+    other_account = Account.create!(
+      family: @family,
+      name: "Other Checking",
+      currency: "USD",
+      balance: 50,
+      accountable: Depository.create!(subtype: :checking)
+    )
+    AccountProvider.create!(account: other_account, provider: other_linked_sfa)
+
+    unlinked_sfa = SimplefinAccount.create!(
+      simplefin_item: @item,
+      account_id: "ACT-unlinked",
+      name: "Checking",
+      currency: "USD",
+      current_balance: 999,
+      account_type: "checking",
+      raw_transactions_payload: [ { id: "txn-1", posted: 1_700_000_000, amount: "-10.00", description: "Coffee" } ]
+    )
+
+    # Neither linked account_id is present upstream, so both are candidates -> ambiguous.
+    @item.upstream_account_ids = [ unlinked_sfa.account_id ]
+
+    @item.send(:repair_stale_linkages, [ linked_sfa, other_linked_sfa, unlinked_sfa ])
+
+    assert_equal account, linked_sfa.reload.current_account
+    assert_equal other_account, other_linked_sfa.reload.current_account
+    assert_nil unlinked_sfa.reload.current_account
+  end
+
+  # A reconnect issues new account ids and new transaction ids for the same
+  # transactions (#3436). The stale account's rows must not survive beside their
+  # re-issued twins, or every transaction in the window is imported twice.
+  # `retain_old_row` adds a stale row the new account was not served, so it
+  # survives the merge and a merged payload differs from the new account's own.
+  def reconnect_fixture(retain_old_row: false)
+    posted = 5.days.ago.beginning_of_day.to_i
+    tx = ->(id) { { id: id, posted: posted, transacted_at: posted, amount: "-10.25", description: "Amazon", payee: "Amazon", memo: "" } }
+    stale_payload = [ tx.("T1") ]
+    stale_payload << tx.("OLD9").merge(posted: posted - 86_400, transacted_at: posted - 86_400) if retain_old_row
+
+    stale_sfa = SimplefinAccount.create!(
+      simplefin_item: @item, account_id: "ACT-old", name: "Card", currency: "USD",
+      current_balance: 0, account_type: "credit", raw_transactions_payload: stale_payload
+    )
+    account = Account.create!(
+      family: @family, name: "Card", currency: "USD", balance: 0,
+      accountable: Depository.create!(subtype: :checking)
+    )
+    AccountProvider.create!(account: account, provider: stale_sfa)
+    SimplefinAccount::Transactions::Processor.new(stale_sfa).process
+
+    new_sfa = SimplefinAccount.create!(
+      simplefin_item: @item, account_id: "ACT-new", name: "Card", currency: "USD",
+      current_balance: 0, account_type: "credit", raw_transactions_payload: [ tx.("T2") ]
+    )
+    @item.upstream_account_ids = [ new_sfa.account_id ]
+
+    [ stale_sfa, new_sfa, account, account.entries.find_by!(external_id: "simplefin_T1") ]
+  end
+
+  test "P2 reconnect re-keys entries carried over from the stale account" do
+    stale_sfa, new_sfa, account, entry = reconnect_fixture
+
+    @item.send(:repair_stale_linkages, [ stale_sfa, new_sfa ])
+
+    new_sfa.reload
+    assert_equal account, new_sfa.current_account
+    assert_equal [ "T2" ], new_sfa.raw_transactions_payload.map { |t| t["id"] }
+    assert_equal "simplefin_T2", entry.reload.external_id
+
+    assert_no_difference -> { Entry.count } do
+      SimplefinAccount::Transactions::Processor.new(new_sfa).process
+    end
+  end
+
+  test "a failed linkage transfer rolls back the re-key and the merged payload" do
+    stale_sfa, new_sfa, account, entry = reconnect_fixture(retain_old_row: true)
+    AccountProvider.any_instance.stubs(:update!).raises(ActiveRecord::RecordInvalid)
+
+    @item.send(:repair_stale_linkages, [ stale_sfa, new_sfa ])
+
+    # The linkage stays on the stale account, so its entry must keep the stale id
+    # or the stale payload's next pass re-creates simplefin_T1 beside it.
+    assert_equal account, stale_sfa.reload.current_account
+    assert_equal "simplefin_T1", entry.reload.external_id
+    assert_equal [ "T2" ], new_sfa.reload.raw_transactions_payload.map { |t| t["id"] }
+  end
+
+  # A repair reads both payloads as stored when its transaction starts, not as
+  # loaded: an overlapping sync may have changed them since.
+  test "a repair pairs against the payloads as stored, not as loaded" do
+    stale_sfa, new_sfa, account, entry = reconnect_fixture
+    # Since these were loaded, the new account was served T3 in place of T2.
+    posted = 5.days.ago.beginning_of_day.to_i
+    t3 = { id: "T3", posted: posted, transacted_at: posted, amount: "-10.25", description: "Amazon", payee: "Amazon", memo: "" }
+    SimplefinAccount.where(id: new_sfa.id).update_all(raw_transactions_payload: [ t3 ])
+
+    @item.send(:repair_stale_linkages, [ stale_sfa, new_sfa ])
+
+    assert_equal "simplefin_T3", entry.reload.external_id
+    assert_equal [ "T3" ], new_sfa.reload.raw_transactions_payload.map { |t| t["id"] }
+    assert_equal account, new_sfa.current_account
+  end
+end

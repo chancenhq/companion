@@ -41,7 +41,10 @@ ca:
     formats:
       default: "%d-%m-%Y"
       long: "%d de %B de %Y"
+      month_year: "%B de %Y"
       short: "%d de %b"
+      short_month_year: "%b de %Y"
+      short_with_year: '%d %b %Y'
     month_names:
     -
     - Gener
@@ -83,7 +86,7 @@ ca:
         other: menys de %{count} segons
       over_x_years:
         one: més d'%{count} any
-        other: més de %{count} anys
+        other: més d'%{count} anys
       x_days:
         one: "%{count} dia"
         other: "%{count} dies"
@@ -108,13 +111,15 @@ ca:
       year: any
   defaults:
     brand_name: "%{brand_name}"
+    common:
+      close: Tanca
     product_name: "%{product_name}"
   errors:
     format: "%{attribute} %{message}"
     messages:
       accepted: ha de ser acceptat
       blank: no pot estar en blanc
-      confirmation: no coincideix
+      confirmation: no coincideix amb %{attribute}
       empty: no pot estar buit
       equal_to: ha de ser igual a %{count}
       even: ha de ser parell
@@ -122,7 +127,7 @@ ca:
       greater_than: ha de ser més gran que %{count}
       greater_than_or_equal_to: ha de ser més gran o igual a %{count}
       in: ha d'estar entre %{count}
-      inclusion: no està inclós a la llista
+      inclusion: no està inclòs a la llista
       invalid: no és vàlid
       less_than: ha de ser menor que %{count}
       less_than_or_equal_to: ha de ser menor o igual a %{count}
@@ -148,13 +153,17 @@ ca:
       header:
         one: No s'ha pogut desar aquest/a %{model} perquè hi ha %{count} error
         other: No s'ha pogut desar aquest/a %{model} perquè hi ha hagut %{count} errors
+  global:
+    expand: Desplega
   helpers:
     select:
-      prompt: Si us plau tria
+      default_label: Selecciona...
+      prompt: Tria
+      search_placeholder: Cerca
     submit:
-      create: Crear %{model}
-      submit: Guardar %{model}
-      update: Actualitzar %{model}
+      create: Crea %{model}
+      submit: Desa %{model}
+      update: Actualitza %{model}
   number:
     currency:
       format:
@@ -221,3 +230,12 @@ ca:
       long: "%d de %B de %Y %H:%M"
       short: "%d de %b %H:%M"
     pm: pm
+  mcp:
+    errors:
+      invalid_session_id: ID de sessió MCP no vàlid
+      unsupported_protocol_version: 'Versió del protocol MCP no compatible: %{version}'
+  oauth:
+    registration:
+      invalid_redirect_uris: redirect_uris ha d'utilitzar https, http de loopback o un esquema d'URI d'aplicació nativa
+      invalid_client_name: client_name no pot contenir caràcters de control bidireccionals
+      reserved_client_name: client_name està reservat per a les aplicacions pròpies

@@ -10,22 +10,22 @@
       <section class="space-y-4">
         <div class="space-y-2">
           <h2 class="text-sm font-medium text-secondary">
-            <%= @entry.amount.positive? ? "From account: #{@entry.account.name}" : "From account" %>
+            <%= @entry.amount.positive? ? t(".from_account_named", name: @entry.account.name) : t(".from_account") %>
           </h2>
 
           <% if @entry.amount.positive? %>
-            <%= f.select(
-                  :entry_id,
-                  [[entry_name_detailed(@entry), @entry.id]],
-                  {
-                    label: "Outflow transaction",
-                    selected: @entry.id,
-                  },
-                  disabled: true
+            <%= render DS::Select.new(
+                  form: f,
+                  method: :entry_id,
+                  items: [ { value: @entry.id, label: entry_name_detailed(@entry), object: @entry.account } ],
+                  selected: @entry.id,
+                  variant: :logo,
+                  disabled: true,
+                  label: t(".outflow_transaction")
                 ) %>
           <% else %>
             <%= render "transfer_matches/matching_fields",
-                        form: f, entry: @entry, candidates: @transfer_match_candidates.map { |pm| pm.outflow_transaction.entry }, accounts: @accounts %>
+                        form: f, entry: @entry, candidates: @candidate_entries, accounts: @accounts %>
           <% end %>
         </div>
       </section>
@@ -37,27 +37,27 @@
       <section class="space-y-4">
         <div class="space-y-2">
           <h2 class="text-sm font-medium text-secondary">
-            <%= @entry.amount.negative? ? "To account: #{@entry.account.name}" : "To account" %>
+            <%= @entry.amount.negative? ? t(".to_account_named", name: @entry.account.name) : t(".to_account") %>
           </h2>
 
           <% if @entry.amount.negative? %>
-            <%= f.select(
-                  :entry_id,
-                  [[entry_name_detailed(@entry), @entry.id]],
-                  {
-                    label: "Inflow transaction",
-                    selected: @entry.id,
-                  },
-                  disabled: true
+            <%= render DS::Select.new(
+                  form: f,
+                  method: :entry_id,
+                  items: [ { value: @entry.id, label: entry_name_detailed(@entry), object: @entry.account } ],
+                  selected: @entry.id,
+                  variant: :logo,
+                  disabled: true,
+                  label: t(".inflow_transaction")
                 ) %>
           <% else %>
             <%= render "transfer_matches/matching_fields",
-                        form: f, entry: @entry, candidates: @transfer_match_candidates.map { |pm| pm.inflow_transaction.entry }, accounts: @accounts %>
+                        form: f, entry: @entry, candidates: @candidate_entries, accounts: @accounts %>
           <% end %>
         </div>
       </section>
 
-      <%= f.submit "Create transfer match" %>
+      <%= f.submit t(".create_transfer_match") %>
     <% end %>
   <% end %>
 <% end %>

@@ -30,31 +30,41 @@ module Enrichable
       none
     end
 
-    def clear_ai_cache(family)
+    # Clears AI-sourced enrichments for every record of this type in the family.
+    # Returns the number of cache entries actually removed, not the number of
+    # records visited, so callers can report a figure that means something.
+    #
+    # A single bad record would otherwise abort the sweep and throw away the
+    # tally of everything already cleared, so callers may pass a block to handle
+    # per-record failures and keep going.
+    def clear_ai_cache(family, &on_record_error)
       count = 0
       family_scope(family).find_each do |record|
-        record.clear_ai_cache
-        count += 1
+        count += record.clear_ai_cache
+      rescue => e
+        raise unless on_record_error
+
+        on_record_error.call(record, e)
       end
       count
     end
   end
 
   # Convenience method for a single attribute
-  def enrich_attribute(attr, value, source:, metadata: {})
-    enrich_attributes({ attr => value }, source:, metadata:)
+  def enrich_attribute(attr, value, source:, metadata: {}, ignore_locks: false)
+    enrich_attributes({ attr => value }, source:, metadata:, ignore_locks:)
   end
 
   # Enriches and logs all attributes that:
-  # - Are not locked
+  # - Are not locked (unless ignore_locks: true, e.g. an explicit rule re-apply)
   # - Are not ignored
   # - Have changed value from the last saved value
   # Returns true if any attributes were actually changed, false otherwise
-  def enrich_attributes(attrs, source:, metadata: {})
+  def enrich_attributes(attrs, source:, metadata: {}, ignore_locks: false)
     # Track current values before modification for virtual attributes (like tag_ids)
     current_values = {}
     enrichable_attrs = Array(attrs).reject do |attr_key, attr_value|
-      if locked?(attr_key) || ignored_enrichable_attributes.include?(attr_key)
+      if (locked?(attr_key) && !ignore_locks) || ignored_enrichable_attributes.include?(attr_key)
         true
       else
         # For virtual attributes (like tag_ids), use the getter method
@@ -78,18 +88,32 @@ module Enrichable
 
     return false if enrichable_attrs.empty?
 
+    # A new record's first save isn't technically an "enrichment", so it is
+    # not logged. Captured before saving, which clears new_record?.
+    was_new = new_record?
+
     was_modified = false
-    ActiveRecord::Base.transaction do
+    saved = false
+    # requires_new: callers such as Account::ProviderImportAdapter already hold
+    # a transaction, and without a savepoint the Rollback below would be
+    # swallowed by the outer block and undo nothing.
+    ActiveRecord::Base.transaction(requires_new: true) do
       enrichable_attrs.each do |attr, value|
         self.send("#{attr}=", value)
+      end
 
-        # If it's a new record, this isn't technically an "enrichment".  No logging necessary.
-        unless self.new_record?
+      # A refused save leaves nothing behind: no provenance rows, and no join
+      # rows a virtual setter (tag_ids=) wrote before save ran. The block
+      # swallows Rollback, so the method returns false and errors stay set.
+      raise ActiveRecord::Rollback unless save
+      saved = true
+
+      # Provenance is logged only once the save is known to have succeeded.
+      unless was_new
+        enrichable_attrs.each do |attr, value|
           log_enrichment(attribute_name: attr, attribute_value: value, source: source, metadata: metadata)
         end
       end
-
-      save
 
       # For virtual attributes (like tag_ids), previous_changes won't track them
       # So we need to check if the value actually changed by comparing before/after
@@ -115,6 +139,8 @@ module Enrichable
         end
       end
     end
+
+    reset_collection_caches(enrichable_attrs.map(&:first)) unless saved
 
     # Return whether any attributes were actually saved
     was_modified
@@ -142,7 +168,10 @@ module Enrichable
     end
   end
 
+  # Returns the number of AI cache entries removed from this record.
   def clear_ai_cache
+    removed_count = 0
+
     ActiveRecord::Base.transaction do
       ai_enrichments = data_enrichments.where(source: "ai")
 
@@ -161,11 +190,36 @@ module Enrichable
       end
 
       # Delete AI enrichment records
-      ai_enrichments.delete_all
+      removed_count = ai_enrichments.delete_all
+
+      # Views and totals filtered on provenance use Family#entries_cache_version.
+      # delete_all changes neither entries nor categories, so touch the record
+      # like a normal save would; `has_one :entry, touch: true` carries it to
+      # the entry. This stays inside the transaction so the cache invalidation
+      # commits or rolls back with the deletion.
+      touch if removed_count.positive?
     end
+
+    removed_count
   end
 
   private
+    # The rollback removes the join rows a collection setter such as tag_ids=
+    # inserted, but not the records it loaded into the association. Resetting
+    # makes the next read go to the database, so the instance stops reporting
+    # the refused ids as current. Errors and plain attributes are untouched.
+    def reset_collection_caches(attr_names)
+      attr_names.each do |attr_name|
+        reflection = self.class.reflect_on_all_associations.find do |r|
+          r.collection? && "#{r.name.to_s.singularize}_ids" == attr_name.to_s
+        end
+        next unless reflection
+
+        association(reflection.name).reset
+        association(reflection.through_reflection.name).reset if reflection.through_reflection?
+      end
+    end
+
     def log_enrichment(attribute_name:, attribute_value:, source:, metadata: {})
       de = DataEnrichment.find_or_create_by(
         enrichable: self,

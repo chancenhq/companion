@@ -20,6 +20,199 @@ class IncomeStatementTest < ActiveSupport::TestCase
     create_transaction(account: @credit_card_account, amount: 400, category: @groceries_category)
   end
 
+  test "a new statement invalidates daily series when the family currency changes" do
+    statement = IncomeStatement.new(@family)
+    period = Period.last_30_days
+
+    Rails.stubs(:cache).returns(ActiveSupport::Cache::MemoryStore.new)
+    IncomeStatement::DailyExpenseTotals.expects(:new).twice.returns(stub(call: []))
+
+    statement.daily_expense_series(period: period)
+    @family.update!(currency: "EUR")
+    IncomeStatement.new(@family).daily_expense_series(period: period)
+  end
+
+  test "a new statement invalidates family_stats when the family currency changes" do
+    statement = IncomeStatement.new(@family)
+
+    Rails.stubs(:cache).returns(ActiveSupport::Cache::MemoryStore.new)
+    IncomeStatement::FamilyStats.expects(:new).twice.returns(stub(call: []))
+
+    statement.send(:family_stats)
+    @family.update!(currency: "EUR")
+    IncomeStatement.new(@family).send(:family_stats)
+  end
+
+  test "a new statement invalidates category_stats when the family currency changes" do
+    statement = IncomeStatement.new(@family)
+
+    Rails.stubs(:cache).returns(ActiveSupport::Cache::MemoryStore.new)
+    IncomeStatement::CategoryStats.expects(:new).twice.returns(stub(call: []))
+
+    statement.send(:category_stats)
+    @family.update!(currency: "EUR")
+    IncomeStatement.new(@family).send(:category_stats)
+  end
+
+  test "family_stats and category_stats are served from cache when nothing has changed" do
+    Rails.stubs(:cache).returns(ActiveSupport::Cache::MemoryStore.new)
+    IncomeStatement::FamilyStats.expects(:new).once.returns(stub(call: []))
+    IncomeStatement::CategoryStats.expects(:new).once.returns(stub(call: []))
+
+    statement1 = IncomeStatement.new(@family)
+    statement1.send(:family_stats)
+    statement1.send(:category_stats)
+
+    statement2 = IncomeStatement.new(@family.reload)
+    statement2.send(:family_stats)
+    statement2.send(:category_stats)
+  end
+
+  test "cache freshness key changes through account deletion lifecycle and does not revert" do
+    empty_account = @family.accounts.create!(
+      name: "Empty Account",
+      currency: @family.currency,
+      balance: 0,
+      accountable: Depository.new
+    )
+
+    @checking_account.touch
+    k0 = IncomeStatement.new(@family.reload).send(:cache_freshness_key)
+
+    empty_account.mark_for_deletion!
+    k1 = IncomeStatement.new(@family.reload).send(:cache_freshness_key)
+
+    empty_account.destroy!
+    k2 = IncomeStatement.new(@family.reload).send(:cache_freshness_key)
+
+    assert_not_equal k0, k1
+    assert_not_equal k1, k2
+    # Regression assertion for #4200: ensure key does not revert to pre-deletion state (k0)
+    assert_not_equal k0, k2
+  end
+
+  test "family_stats and category_stats caches invalidate across empty account deletion lifecycle without reverting" do
+    Rails.stubs(:cache).returns(ActiveSupport::Cache::MemoryStore.new)
+
+    travel_to Time.current do
+      @family.accounts.update_all(updated_at: 2.days.ago)
+      empty_account = @family.accounts.create!(
+        name: "Empty Account",
+        balance: 0,
+        currency: @family.currency,
+        accountable: Depository.new
+      )
+      empty_account.update_columns(updated_at: 2.days.ago)
+
+      # K0 (Initial) -> K1 (Pending Deletion) -> K2 (Destroyed): all 3 states must miss cache and recompute
+      IncomeStatement::FamilyStats.expects(:new).times(3).returns(stub(call: []))
+      IncomeStatement::CategoryStats.expects(:new).times(3).returns(stub(call: []))
+
+      # 1. Initial state (K0)
+      IncomeStatement.new(@family.reload).send(:family_stats)
+      IncomeStatement.new(@family.reload).send(:category_stats)
+
+      # 2. Marked for deletion (K1)
+      empty_account.update!(status: "pending_deletion")
+      IncomeStatement.new(@family.reload).send(:family_stats)
+      IncomeStatement.new(@family.reload).send(:category_stats)
+
+      # 3. Destroyed (K2) - must not revert back to K0's cached value
+      empty_account.destroy!
+      IncomeStatement.new(@family.reload).send(:family_stats)
+      IncomeStatement.new(@family.reload).send(:category_stats)
+    end
+  end
+
+  test "a new statement invalidates daily series when exchange rates change" do
+    statement = IncomeStatement.new(@family)
+    period = Period.last_30_days
+
+    Rails.stubs(:cache).returns(ActiveSupport::Cache::MemoryStore.new)
+    IncomeStatement::DailyExpenseTotals.expects(:new).twice.returns(stub(call: []))
+
+    statement.daily_expense_series(period: period)
+
+    travel 1.second do
+      ExchangeRate.create!(from_currency: "USD", to_currency: "EUR", date: Date.current, rate: 0.9)
+      IncomeStatement.new(@family).daily_expense_series(period: period)
+    end
+  end
+
+  test "a new day invalidates cached daily series, family stats and category stats" do
+    period = Period.last_30_days
+
+    Rails.stubs(:cache).returns(ActiveSupport::Cache::MemoryStore.new)
+    IncomeStatement::DailyExpenseTotals.expects(:new).twice.returns(stub(call: []))
+    IncomeStatement::FamilyStats.expects(:new).twice.returns(stub(call: []))
+    IncomeStatement::CategoryStats.expects(:new).twice.returns(stub(call: []))
+
+    # Scheduled entries are excluded as of "today", so a result cached
+    # yesterday must not be served once one of them has arrived.
+    [ Date.current, Date.current + 1.day ].each do |day|
+      travel_to day do
+        statement = IncomeStatement.new(@family)
+        statement.daily_expense_series(period: period)
+        statement.median_income
+        statement.median_expense(category: @food_category)
+      end
+    end
+  end
+
+  test "daily series narrows to categories, a parent covering its subcategories" do
+    period = Period.last_30_days
+    rent = @family.categories.create! name: "Rent"
+    create_transaction(account: @checking_account, amount: 50, category: @food_category)
+    create_transaction(account: @checking_account, amount: 700, category: rent)
+    create_transaction(account: @checking_account, amount: 15)
+    statement = IncomeStatement.new(@family)
+
+    total = ->(category_ids) { statement.daily_expense_series(period: period, category_ids: category_ids).sum(&:total) }
+
+    assert_equal 50 + 200 + 300 + 400, total.call([ @food_category.id ])
+    assert_equal 200 + 300 + 400, total.call([ @groceries_category.id ])
+    assert_equal 15, total.call([ Category::UNCATEGORIZED_FILTER_VALUE ])
+    assert_equal 700 + 15, total.call([ rent.id, Category::UNCATEGORIZED_FILTER_VALUE ])
+    assert_equal statement.daily_expense_series(period: period).sum(&:total),
+      total.call([ @food_category.id, rent.id, Category::UNCATEGORIZED_FILTER_VALUE ])
+  end
+
+  test "daily expense category ids list the categories with spending, nil for uncategorized" do
+    create_transaction(account: @checking_account, amount: 15)
+
+    ids = IncomeStatement.new(@family).daily_expense_category_ids(period: Period.last_30_days)
+
+    # The income category's only transaction is income, and Food has spending
+    # only through its subcategory.
+    assert_equal [ @groceries_category.id, nil ].to_set, ids.to_set
+  end
+
+  test "category-filtered daily series share one cached query per period, whatever the selection" do
+    period = Period.last_30_days
+    Rails.stubs(:cache).returns(ActiveSupport::Cache::MemoryStore.new)
+
+    IncomeStatement::DailyExpenseTotals.expects(:new).with(@family, has_entry(by_category: true)).once.returns(
+      stub(call: [
+        IncomeStatement::DailyExpenseTotals::CategoryDailyTotal.new(date: Date.current, category_id: @groceries_category.id, total: 900),
+        IncomeStatement::DailyExpenseTotals::CategoryDailyTotal.new(date: Date.current, category_id: nil, total: 15)
+      ])
+    )
+
+    assert_equal [ 900 ], IncomeStatement.new(@family).daily_expense_series(period: period, category_ids: [ @food_category.id ]).map(&:total)
+    assert_equal [ 15 ], IncomeStatement.new(@family).daily_expense_series(period: period, category_ids: [ Category::UNCATEGORIZED_FILTER_VALUE ]).map(&:total)
+    assert_equal [ @groceries_category.id, nil ], IncomeStatement.new(@family).daily_expense_category_ids(period: period)
+  end
+
+  test "a new statement invalidates category-filtered daily series when entries change" do
+    period = Period.last_30_days
+    Rails.stubs(:cache).returns(ActiveSupport::Cache::MemoryStore.new)
+    IncomeStatement::DailyExpenseTotals.expects(:new).twice.returns(stub(call: []))
+
+    IncomeStatement.new(@family).daily_expense_series(period: period, category_ids: [ @food_category.id ])
+    create_transaction(account: @checking_account, amount: 10, category: @food_category)
+    IncomeStatement.new(@family).daily_expense_series(period: period, category_ids: [ @food_category.id ])
+  end
+
   test "calculates totals for transactions" do
     income_statement = IncomeStatement.new(@family)
     totals = income_statement.totals(date_range: Period.last_30_days.date_range)
@@ -39,6 +232,33 @@ class IncomeStatementTest < ActiveSupport::TestCase
     assert_equal expected_total_expense, expense_totals.category_totals.find { |ct| ct.category.id == @food_category.id }.total
   end
 
+  test "orphaned categories still count as root category totals" do
+    orphan_category = @family.categories.create! name: "Orphaned Category"
+    orphan_category.update_column(:parent_id, SecureRandom.uuid)
+    create_transaction(account: @checking_account, amount: 123, category: orphan_category)
+
+    expense_totals = IncomeStatement.new(@family).expense_totals(period: Period.last_30_days)
+
+    assert_equal 200 + 300 + 400 + 123, expense_totals.total
+    assert_equal 123, expense_totals.category_totals.find { |ct| ct.category.id == orphan_category.id }.total
+  end
+
+  test "memoizes expense and income period totals across repeated calculations" do
+    income_statement = IncomeStatement.new(@family)
+    period = Period.last_30_days
+
+    expense_period_total = IncomeStatement::PeriodTotal.new("expense", 900, @family.currency, [])
+    income_period_total = IncomeStatement::PeriodTotal.new("income", 1000, @family.currency, [])
+
+    income_statement.expects(:build_period_total).with(classification: "expense", period: period).once.returns(expense_period_total)
+    income_statement.expects(:build_period_total).with(classification: "income", period: period).once.returns(income_period_total)
+
+    income_statement.net_category_totals(period: period)
+    income_statement.expense_totals(period: period)
+    income_statement.income_totals(period: period)
+    income_statement.net_category_totals(period: period)
+  end
+
   test "calculates income for a period" do
     income_statement = IncomeStatement.new(@family)
     income_totals = income_statement.income_totals(period: Period.last_30_days)
@@ -47,6 +267,30 @@ class IncomeStatementTest < ActiveSupport::TestCase
 
     assert_equal expected_total_income, income_totals.total
     assert_equal expected_total_income, income_totals.category_totals.find { |ct| ct.category.id == @income_category.id }.total
+  end
+
+  test "totals_for scopes totals to a period and optional account ids" do
+    income_statement = IncomeStatement.new(@family)
+    period = Period.last_30_days
+
+    all_totals = income_statement.totals_for(period)
+    assert_equal Money.new(1000, @family.currency), all_totals.income_money
+    assert_equal Money.new(200 + 300 + 400, @family.currency), all_totals.expense_money
+
+    checking_only_totals = income_statement.totals_for(period, account_ids: [ @checking_account.id ])
+    assert_equal Money.new(1000, @family.currency), checking_only_totals.income_money
+    assert_equal Money.new(200, @family.currency), checking_only_totals.expense_money
+  end
+
+  test "eligible_accounts excludes accounts not reflected in totals" do
+    tax_advantaged_account = @family.accounts.create! name: "401k", currency: @family.currency, balance: 10000, accountable: Investment.new(subtype: "401k")
+    excluded_account = @family.accounts.create! name: "Excluded", currency: @family.currency, balance: 0, exclude_from_reports: true, accountable: Depository.new
+
+    eligible_ids = IncomeStatement.new(@family).eligible_accounts.pluck(:id)
+
+    assert_includes eligible_ids, @checking_account.id
+    assert_not_includes eligible_ids, tax_advantaged_account.id
+    assert_not_includes eligible_ids, excluded_account.id
   end
 
   test "calculates median expense" do
@@ -75,6 +319,25 @@ class IncomeStatementTest < ActiveSupport::TestCase
     # CORRECT BUSINESS LOGIC: Calculates median of time-period totals for budget planning
     # All transactions in same month = monthly total of 1500, so median = 1500.0
     assert_equal 1500.0, income_statement.median_expense(interval: "month")
+  end
+
+  test "median/avg expense ignore scheduled (future-dated) entries" do
+    Entry.joins(:account).where(accounts: { family_id: @family.id }).destroy_all
+
+    create_transaction(account: @checking_account, amount: 100, category: @groceries_category)
+    create_transaction(account: @checking_account, amount: 300, category: @groceries_category)
+
+    income_statement = IncomeStatement.new(@family)
+    baseline_median = income_statement.median_expense(interval: "month")
+    baseline_avg = income_statement.avg_expense(interval: "month")
+
+    # A scheduled bill dated next month would otherwise open a new,
+    # partial-month bucket that skews both stats (see #3262 review).
+    create_transaction(account: @checking_account, amount: 999_999, category: @groceries_category, date: 1.month.from_now.to_date)
+
+    income_statement_with_scheduled = IncomeStatement.new(@family)
+    assert_equal baseline_median, income_statement_with_scheduled.median_expense(interval: "month")
+    assert_equal baseline_avg, income_statement_with_scheduled.avg_expense(interval: "month")
   end
 
   test "calculates median income correctly with known dataset" do
@@ -154,8 +417,8 @@ class IncomeStatementTest < ActiveSupport::TestCase
   # NOTE: These tests now pass because kind filtering is working after the refactoring!
   test "excludes regular transfers from income statement calculations" do
     # Create a regular transfer between accounts
-    outflow_transaction = create_transaction(account: @checking_account, amount: 500, kind: "funds_movement")
-    inflow_transaction = create_transaction(account: @credit_card_account, amount: -500, kind: "funds_movement")
+    create_transaction(account: @checking_account, amount: 500, kind: "funds_movement")
+    create_transaction(account: @credit_card_account, amount: -500, kind: "funds_movement")
 
     income_statement = IncomeStatement.new(@family)
     totals = income_statement.totals(date_range: Period.last_30_days.date_range)
@@ -168,7 +431,7 @@ class IncomeStatementTest < ActiveSupport::TestCase
 
   test "includes loan payments as expenses in income statement" do
     # Create a loan payment transaction
-    loan_payment = create_transaction(account: @checking_account, amount: 1000, category: nil, kind: "loan_payment")
+    create_transaction(account: @checking_account, amount: 1000, category: nil, kind: "loan_payment")
 
     income_statement = IncomeStatement.new(@family)
     totals = income_statement.totals(date_range: Period.last_30_days.date_range)
@@ -181,7 +444,7 @@ class IncomeStatementTest < ActiveSupport::TestCase
 
   test "excludes one-time transactions from income statement calculations" do
     # Create a one-time transaction
-    one_time_transaction = create_transaction(account: @checking_account, amount: 250, category: @groceries_category, kind: "one_time")
+    create_transaction(account: @checking_account, amount: 250, category: @groceries_category, kind: "one_time")
 
     income_statement = IncomeStatement.new(@family)
     totals = income_statement.totals(date_range: Period.last_30_days.date_range)
@@ -194,7 +457,7 @@ class IncomeStatementTest < ActiveSupport::TestCase
 
   test "excludes payment transactions from income statement calculations" do
     # Create a payment transaction (credit card payment)
-    payment_transaction = create_transaction(account: @checking_account, amount: 300, category: nil, kind: "cc_payment")
+    create_transaction(account: @checking_account, amount: 300, category: nil, kind: "cc_payment")
 
     income_statement = IncomeStatement.new(@family)
     totals = income_statement.totals(date_range: Period.last_30_days.date_range)
@@ -217,6 +480,18 @@ class IncomeStatementTest < ActiveSupport::TestCase
     assert_equal 4, totals.transactions_count # Only original 4 transactions
     assert_equal Money.new(1000, @family.currency), totals.income_money
     assert_equal Money.new(900, @family.currency), totals.expense_money
+  end
+
+  # A flag PostgreSQL cannot cast to boolean used to raise
+  # PG::InvalidTextRepresentation and take the whole statement down.
+  test "a pending flag PostgreSQL cannot cast neither raises nor counts" do
+    assert_statement_leaves_out_flagged_expense("maybe")
+  end
+
+  # Transaction#pending? (and so the Pending badge) calls "no" pending;
+  # PostgreSQL's ::boolean called it posted and counted it.
+  test "a \"no\" pending flag is pending, as Transaction#pending? says" do
+    assert_statement_leaves_out_flagged_expense("no")
   end
 
   # NEW TESTS: Interval-Based Calculations
@@ -288,7 +563,7 @@ class IncomeStatementTest < ActiveSupport::TestCase
 
   test "includes investment_contribution transactions as expenses in income statement" do
     # Create a transfer to investment account (marked as investment_contribution)
-    investment_contribution = create_transaction(
+    create_transaction(
       account: @checking_account,
       amount: 1000,
       category: nil,
@@ -302,6 +577,37 @@ class IncomeStatementTest < ActiveSupport::TestCase
     assert_equal 5, totals.transactions_count # Original 4 + investment_contribution
     assert_equal Money.new(1000, @family.currency), totals.income_money
     assert_equal Money.new(1900, @family.currency), totals.expense_money # 900 + 1000 investment
+  end
+
+  test "reports investment contributions as invested when the family does not count them as spending" do
+    create_transaction(account: @checking_account, amount: 1000, category: nil, kind: "investment_contribution")
+    @family.update!(investment_contributions_as_spending: false)
+
+    income_statement = IncomeStatement.new(@family)
+    totals = income_statement.totals(date_range: Period.last_30_days.date_range)
+
+    assert_equal Money.new(1000, @family.currency), totals.income_money
+    assert_equal Money.new(900, @family.currency), totals.expense_money
+    assert_equal 900, income_statement.expense_totals(period: Period.last_30_days).total
+    assert_equal Money.new(1000, @family.currency), income_statement.invested_total(period: Period.last_30_days)
+  end
+
+  test "invested total is zero while investing counts as spending" do
+    create_transaction(account: @checking_account, amount: 1000, category: nil, kind: "investment_contribution")
+
+    income_statement = IncomeStatement.new(@family)
+
+    assert_equal Money.new(0, @family.currency), income_statement.invested_total(period: Period.last_30_days)
+    assert_equal 1900, income_statement.expense_totals(period: Period.last_30_days).total
+  end
+
+  test "loan payments still count as spending when investing does not" do
+    create_transaction(account: @checking_account, amount: 300, category: nil, kind: "loan_payment")
+    @family.update!(investment_contributions_as_spending: false)
+
+    totals = IncomeStatement.new(@family).totals(date_range: Period.last_30_days.date_range)
+
+    assert_equal Money.new(1200, @family.currency), totals.expense_money
   end
 
   test "includes provider-imported investment_contribution inflows as expenses" do
@@ -318,7 +624,7 @@ class IncomeStatementTest < ActiveSupport::TestCase
 
     # Provider-imported contribution shows as inflow (negative amount) to the investment account
     # kind is investment_contribution, which should be treated as expense regardless of sign
-    provider_contribution = create_transaction(
+    create_transaction(
       account: investment_account,
       amount: -500, # Negative = inflow to account
       category: nil,
@@ -497,6 +803,77 @@ class IncomeStatementTest < ActiveSupport::TestCase
     refute_includes tax_advantaged_ids, @credit_card_account.id
   end
 
+  test "family.tax_advantaged_account_ids includes HSA depository accounts and excludes non-HSA depositories" do
+    # Plaid routes `depository.hsa` to `Depository` (not Investment), so HSA
+    # cash accounts created from a Plaid sync end up as Depository(subtype:
+    # "hsa") rows. They are semantically tax-advantaged but were previously
+    # invisible to this filter because it only joined `investments` and
+    # `cryptos`.
+    hsa_depository = @family.accounts.create!(
+      name: "Fidelity HSA Cash",
+      currency: @family.currency,
+      balance: 3_000,
+      accountable: Depository.new(subtype: "hsa")
+    )
+
+    savings_depository = @family.accounts.create!(
+      name: "Emergency Savings",
+      currency: @family.currency,
+      balance: 8_000,
+      accountable: Depository.new(subtype: "savings")
+    )
+
+    # Clear the memoized value (the setup-block @checking_account is also
+    # a depository, so we exercise both inclusion and exclusion paths).
+    @family.instance_variable_set(:@tax_advantaged_account_ids, nil)
+
+    tax_advantaged_ids = @family.tax_advantaged_account_ids
+
+    assert_includes tax_advantaged_ids, hsa_depository.id
+    refute_includes tax_advantaged_ids, savings_depository.id
+    refute_includes tax_advantaged_ids, @checking_account.id
+  end
+
+  # Exclude-from-reports tests
+  test "excludes transactions from accounts with exclude_from_reports set" do
+    excluded_account = @family.accounts.create!(
+      name: "Excluded Checking",
+      currency: @family.currency,
+      balance: 3000,
+      accountable: Depository.new,
+      exclude_from_reports: true
+    )
+
+    create_transaction(account: excluded_account, amount: 500, category: @groceries_category)
+    create_transaction(account: excluded_account, amount: -300, category: @income_category)
+
+    income_statement = IncomeStatement.new(@family)
+    totals = income_statement.totals(date_range: Period.last_30_days.date_range)
+
+    assert_equal 4, totals.transactions_count
+    assert_equal Money.new(1000, @family.currency), totals.income_money
+    assert_equal Money.new(900, @family.currency), totals.expense_money
+  end
+
+  test "includes transactions from accounts without exclude_from_reports" do
+    included_account = @family.accounts.create!(
+      name: "Included Checking",
+      currency: @family.currency,
+      balance: 3000,
+      accountable: Depository.new,
+      exclude_from_reports: false
+    )
+
+    create_transaction(account: included_account, amount: 100, category: @groceries_category)
+
+    income_statement = IncomeStatement.new(@family)
+    totals = income_statement.totals(date_range: Period.last_30_days.date_range)
+
+    assert_equal 5, totals.transactions_count
+    assert_equal Money.new(1000, @family.currency), totals.income_money
+    assert_equal Money.new(1000, @family.currency), totals.expense_money
+  end
+
   # net_category_totals tests
   test "net_category_totals nets expense and refund in the same category" do
     Entry.joins(:account).where(accounts: { family_id: @family.id }).destroy_all
@@ -606,4 +983,42 @@ class IncomeStatementTest < ActiveSupport::TestCase
     assert_equal Money.new(0, "USD"), totals.income_money
     assert_equal Money.new(0, "USD"), totals.expense_money
   end
+
+  test "reuses totals_query for income and expense in the same period" do
+    income_statement = IncomeStatement.new(@family)
+    period = Period.last_30_days
+
+    totals_query_calls = 0
+    income_statement.singleton_class.prepend(Module.new do
+      define_method(:totals_query) do |**kwargs|
+        totals_query_calls += 1
+        super(**kwargs)
+      end
+    end)
+
+    income_statement.income_totals(period: period)
+    income_statement.expense_totals(period: period)
+
+    assert_equal 1, totals_query_calls
+  end
+
+  private
+    # Adds a 250 grocery expense whose pending flag is +flag+ and asserts every
+    # figure is the one without it: totals (Transaction.excluding_pending), the
+    # family median and average (FamilyStats) and the category median
+    # (CategoryStats), each of which reads the flag in its own SQL.
+    def assert_statement_leaves_out_flagged_expense(flag)
+      flagged = create_transaction(account: @checking_account, amount: 250, category: @groceries_category)
+      flagged.entryable.update!(extra: { "plaid" => { "pending" => flag } })
+      assert flagged.entryable.pending?, "pending? should call #{flag.inspect} pending"
+
+      income_statement = IncomeStatement.new(@family)
+      totals = income_statement.totals(date_range: Period.last_30_days.date_range)
+
+      assert_equal 4, totals.transactions_count
+      assert_equal Money.new(900, @family.currency), totals.expense_money
+      assert_equal 900.0, income_statement.median_expense(interval: "month")
+      assert_equal 900.0, income_statement.avg_expense(interval: "month")
+      assert_equal 900.0, income_statement.median_expense(interval: "month", category: @groceries_category)
+    end
 end

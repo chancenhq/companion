@@ -1,11 +1,17 @@
 class SimplefinItem < ApplicationRecord
-  include Syncable, Provided, Encryptable
+  include Syncable, Provided, Encryptable, DestroyableLater
   include SimplefinItem::Unlinking
 
   enum :status, { good: "good", requires_update: "requires_update" }, default: :good
 
   # Virtual attribute for the setup token form field
   attr_accessor :setup_token
+
+  # Transient, in-memory only. Set by SimplefinItem::Importer#perform_account_discovery
+  # to the set of account_ids returned by the current sync's unbounded discovery call.
+  # Used by #repair_stale_linkages to verify a "stale" linked account is actually absent
+  # upstream, rather than trusting a name match alone. Never persisted.
+  attr_accessor :upstream_account_ids
 
   # Encrypt sensitive credentials and raw payloads if ActiveRecord encryption is configured
   if encryption_ready?
@@ -32,17 +38,11 @@ class SimplefinItem < ApplicationRecord
 
   # Get accounts from both new and legacy systems
   def accounts
-    # Preload associations to avoid N+1 queries
-    simplefin_accounts
+    @accounts ||= simplefin_accounts
       .includes(:account, account_provider: :account)
       .map(&:current_account)
       .compact
       .uniq
-  end
-
-  def destroy_later
-    update!(scheduled_for_deletion: true)
-    DestroyJob.perform_later(self)
   end
 
   def import_latest_simplefin_data(sync: nil)
@@ -139,15 +139,38 @@ class SimplefinItem < ApplicationRecord
 
     return if unlinked_with_data.empty?
 
+    # Without a current picture of what the provider actually returned this sync, a
+    # name match alone cannot distinguish a genuinely stale account (re-added institution,
+    # new account_id) from two distinct upstream accounts that merely share a display name.
+    # Refuse to act rather than risk hijacking a live linkage. See GH issue #2852.
+    if upstream_account_ids.nil?
+      Rails.logger.warn "SimplefinItem#repair_stale_linkages - upstream_account_ids unavailable, skipping repair to avoid hijacking a live linkage"
+      DebugLogEntry.capture(
+        category: "provider_sync_warning",
+        level: "warn",
+        message: "Skipped stale-linkage repair: upstream_account_ids unavailable",
+        source: self.class.name,
+        provider_key: "simplefin",
+        family: family,
+        metadata: { simplefin_item_id: id, unlinked_with_data_count: unlinked_with_data.count }
+      )
+      return
+    end
+
     # For each unlinked account with data, try to find a matching linked account
     unlinked_with_data.each do |new_sfa|
-      # Find linked SimplefinAccount with same name (case-insensitive).
+      # Find linked SimplefinAccount with same name (case-insensitive) that is ALSO
+      # actually absent from the current upstream response. A name match alone is not
+      # enough: two distinct upstream accounts can legitimately share a display name.
       stale_matches = linked.select do |old_sfa|
-        old_sfa.name.to_s.downcase.strip == new_sfa.name.to_s.downcase.strip
+        old_sfa.name.to_s.downcase.strip == new_sfa.name.to_s.downcase.strip &&
+          old_sfa.account_id.present? &&
+          upstream_account_ids.exclude?(old_sfa.account_id.to_s)
       end
 
       if stale_matches.size > 1
-        Rails.logger.warn "SimplefinItem#repair_stale_linkages - Multiple linked accounts match '#{new_sfa.name}': #{stale_matches.map(&:id).join(', ')}. Using first match."
+        Rails.logger.warn "SimplefinItem#repair_stale_linkages - Multiple stale linked accounts match '#{new_sfa.name}': #{stale_matches.map(&:id).join(', ')}. Ambiguous, skipping repair."
+        next
       end
 
       stale_match = stale_matches.first
@@ -161,38 +184,50 @@ class SimplefinItem < ApplicationRecord
 
       # Transfer the linkage from old to new
       begin
-        # Merge transactions from old to new before transferring
-        old_transactions = stale_match.raw_transactions_payload.to_a
-        new_transactions = new_sfa.raw_transactions_payload.to_a
-        if old_transactions.any?
-          Rails.logger.info "SimplefinItem#repair_stale_linkages - Merging #{old_transactions.count} transactions from old SimplefinAccount"
-          merged = merge_transactions(old_transactions, new_transactions)
-          new_sfa.update!(raw_transactions_payload: merged)
+        # One transaction: re-keyed entries must not outlive a failed transfer, or
+        # the stale account's payload re-creates their old ids on the next pass.
+        SimplefinAccount.transaction do
+          # Merge transactions from old to new before transferring. Both payloads
+          # are read as stored, under a row lock: an overlapping sync may have
+          # saved either since they were loaded, and pairing the loaded copies
+          # would re-key entries against ids the stored payload no longer holds.
+          stored = SimplefinAccount.where(id: [ stale_match.id, new_sfa.id ]).lock.order(:id).pluck(:id, :raw_transactions_payload).to_h
+          old_transactions = stored.fetch(stale_match.id, stale_match.raw_transactions_payload).to_a
+          new_transactions = stored.fetch(new_sfa.id, new_sfa.raw_transactions_payload).to_a
+          if old_transactions.any?
+            Rails.logger.info "SimplefinItem#repair_stale_linkages - Merging #{old_transactions.count} transactions from old SimplefinAccount"
+            # A reconnect re-issues transaction ids too. Rows that came back under a
+            # new id give way to the new row, and their entries move to the new id.
+            id_rotation = SimplefinAccount::TransactionIdRotation.new(old_transactions, new_transactions)
+            id_rotation.rekey_entries!(account)
+            merged = merge_transactions(id_rotation.retained_rows, new_transactions)
+            new_sfa.update!(raw_transactions_payload: merged)
+          end
+
+          # Check if linked via legacy FK (use to_s for UUID comparison safety)
+          if account.simplefin_account_id.to_s == stale_match.id.to_s
+            account.simplefin_account_id = new_sfa.id
+            account.save!
+          end
+
+          # Check if linked via AccountProvider
+          if stale_match.account_provider.present?
+            Rails.logger.info "SimplefinItem#repair_stale_linkages - Transferring AccountProvider linkage from SimplefinAccount #{stale_match.id} to #{new_sfa.id}"
+            stale_match.account_provider.update!(provider: new_sfa)
+          end
+
+          # If the new one doesn't have an AccountProvider yet, create one
+          new_sfa.ensure_account_provider!
+
+          Rails.logger.info "SimplefinItem#repair_stale_linkages - Successfully transferred linkage for Account '#{account.name}' to SimplefinAccount id=#{new_sfa.id}"
+
+          # Clear transactions from stale SimplefinAccount and leave it orphaned
+          # We don't destroy it because has_one :account, dependent: :nullify would nullify the FK we just set
+          # IMPORTANT: Use update_all to bypass AR associations - stale_match.update! would
+          # trigger autosave on the preloaded account association, reverting the FK we just set!
+          SimplefinAccount.where(id: stale_match.id).update_all(raw_transactions_payload: [], raw_holdings_payload: [])
+          Rails.logger.info "SimplefinItem#repair_stale_linkages - Cleared data from stale SimplefinAccount id=#{stale_match.id} (leaving orphaned)"
         end
-
-        # Check if linked via legacy FK (use to_s for UUID comparison safety)
-        if account.simplefin_account_id.to_s == stale_match.id.to_s
-          account.simplefin_account_id = new_sfa.id
-          account.save!
-        end
-
-        # Check if linked via AccountProvider
-        if stale_match.account_provider.present?
-          Rails.logger.info "SimplefinItem#repair_stale_linkages - Transferring AccountProvider linkage from SimplefinAccount #{stale_match.id} to #{new_sfa.id}"
-          stale_match.account_provider.update!(provider: new_sfa)
-        end
-
-        # If the new one doesn't have an AccountProvider yet, create one
-        new_sfa.ensure_account_provider!
-
-        Rails.logger.info "SimplefinItem#repair_stale_linkages - Successfully transferred linkage for Account '#{account.name}' to SimplefinAccount id=#{new_sfa.id}"
-
-        # Clear transactions from stale SimplefinAccount and leave it orphaned
-        # We don't destroy it because has_one :account, dependent: :nullify would nullify the FK we just set
-        # IMPORTANT: Use update_all to bypass AR associations - stale_match.update! would
-        # trigger autosave on the preloaded account association, reverting the FK we just set!
-        SimplefinAccount.where(id: stale_match.id).update_all(raw_transactions_payload: [], raw_holdings_payload: [])
-        Rails.logger.info "SimplefinItem#repair_stale_linkages - Cleared data from stale SimplefinAccount id=#{stale_match.id} (leaving orphaned)"
       rescue => e
         Rails.logger.error "SimplefinItem#repair_stale_linkages - Failed to transfer linkage: #{e.class} - #{e.message}"
         Rails.logger.error e.backtrace.first(5).join("\n") if e.backtrace
@@ -290,27 +325,19 @@ class SimplefinItem < ApplicationRecord
       total = stats["total_accounts"] || 0
       linked = stats["linked_accounts"] || 0
       unlinked = stats["unlinked_accounts"] || 0
-
-      if total == 0
-        "No accounts found"
-      elsif unlinked == 0
-        "#{linked} #{'account'.pluralize(linked)} synced"
-      else
-        "#{linked} synced, #{unlinked} need setup"
-      end
     else
       # Fallback to current account counts
-      total_accounts = simplefin_accounts.count
-      linked_count = accounts.count
-      unlinked_count = total_accounts - linked_count
+      total = simplefin_accounts.count
+      linked = accounts.count
+      unlinked = total - linked
+    end
 
-      if total_accounts == 0
-        "No accounts found"
-      elsif unlinked_count == 0
-        "#{linked_count} #{'account'.pluralize(linked_count)} synced"
-      else
-        "#{linked_count} synced, #{unlinked_count} need setup"
-      end
+    if total == 0
+      I18n.t("simplefin_items.sync_status.no_accounts")
+    elsif unlinked == 0
+      I18n.t("simplefin_items.sync_status.synced", count: linked)
+    else
+      I18n.t("simplefin_items.sync_status.partial_setup", count: unlinked, linked: linked, unlinked: unlinked)
     end
   end
 
@@ -331,11 +358,11 @@ class SimplefinItem < ApplicationRecord
     institutions = connected_institutions
     case institutions.count
     when 0
-      "No institutions connected"
+      I18n.t("simplefin_items.institution_summary.none")
     when 1
-      institutions.first["name"] || institutions.first["domain"] || "1 institution"
+      institutions.first["name"] || institutions.first["domain"] || I18n.t("simplefin_items.institution_summary.count", count: 1)
     else
-      "#{institutions.count} institutions"
+      I18n.t("simplefin_items.institution_summary.count", count: institutions.count)
     end
   end
 
@@ -355,7 +382,7 @@ class SimplefinItem < ApplicationRecord
 
     down = msg.downcase
     if down.include?("make fewer requests") || down.include?("only refreshed once every 24 hours") || down.include?("rate limit")
-      "You've hit SimpleFin's daily refresh limit. Please try again after the bridge refreshes (up to 24 hours)."
+      I18n.t("simplefin_items.rate_limited.daily_refresh")
     else
       nil
     end
@@ -372,7 +399,7 @@ class SimplefinItem < ApplicationRecord
       return {
         stale: true,
         days_since_sync: days_since_sync,
-        message: "Last successful sync was #{days_since_sync} days ago. Your SimpleFin connection may need attention."
+        message: I18n.t("simplefin_items.stale_sync.last_successful", count: days_since_sync)
       }
     end
 
@@ -391,7 +418,7 @@ class SimplefinItem < ApplicationRecord
         return {
           stale: true,
           days_since_transaction: days_since_transaction,
-          message: "No new transactions in #{days_since_transaction} days. Check your SimpleFin dashboard to ensure your bank connections are active."
+          message: I18n.t("simplefin_items.stale_sync.no_transactions", count: days_since_transaction)
         }
       end
     end
@@ -401,16 +428,34 @@ class SimplefinItem < ApplicationRecord
 
   # Check if the SimpleFin connection needs user attention
   def needs_attention?
-    requires_update? || stale_sync_status[:stale] || pending_account_setup?
+    setup_token_update_required? || stale_sync_status[:stale] || pending_account_setup?
   end
 
   # Get a summary of issues requiring attention
   def attention_summary
     issues = []
-    issues << "Connection needs update" if requires_update?
+    issues << "Connection needs update" if setup_token_update_required?
     issues << stale_sync_status[:message] if stale_sync_status[:stale]
     issues << "Accounts need setup" if pending_account_setup?
     issues
+  end
+
+  # A SimpleFIN setup token is only needed when the bridge access URL appears
+  # unusable. If the latest sync returned accounts, the access URL still works;
+  # any auth warning in that response belongs to an individual institution.
+  def setup_token_update_required?(latest_sync: nil)
+    return false unless requires_update?
+
+    latest = latest_sync || syncs.ordered.first
+    return true unless latest
+    return false if latest.in_progress?
+
+    stats = parse_sync_stats(latest.sync_stats).to_h.stringify_keys
+    stats["total_accounts"].to_i.zero?
+  end
+
+  def effective_status(latest_sync: nil)
+    setup_token_update_required?(latest_sync: latest_sync) ? status : "good"
   end
 
   # Get reconciled duplicates count from the last sync

@@ -23,29 +23,80 @@ class EnableBankingAccount::Transactions::Processor
       Account::ProviderImportAdapter.new(enable_banking_account.current_account)
     end
 
-    # Pre-fetch external_ids that were manually merged and must not be re-imported.
-    # One query per sync; O(1) Set lookup per transaction — avoids N+1.
-    # Uses a lateral jsonb_array_elements join to extract only the ID strings in SQL,
-    # avoiding loading full extra blobs into Ruby. Handles both Array (current) and
-    # Hash (legacy) formats via jsonb_typeof.
+    # Fetch once per sync batch rather than once per transaction (each row gets its
+    # own Processor instance below) -- avoids repeating the same family-scoped
+    # merchant queries for every imported row.
+    shared_known_merchant_names = enable_banking_account.current_account&.family&.known_merchant_names || []
+
+    # Same reasoning: read once per sync batch. Scoped to the rows stored under a
+    # synthesised content hash, which are the only ones a later identifier can
+    # claim, so this does not grow with the account's history.
+    shared_identifierless_external_ids =
+      EnableBankingEntry::Processor.identifierless_external_ids_for(enable_banking_account.current_account)
+
+    # Pre-fetch external_ids that must not be re-imported.
+    # One query per category per sync; O(1) Set lookup per transaction — avoids N+1.
     excluded_ids = if enable_banking_account.current_account
-      Transaction.joins(:entry)
-                 .where(entries: { account_id: enable_banking_account.current_account.id })
-                 .where("transactions.extra ? 'manual_merge'")
-                 .joins(
-                   Arel.sql(<<~SQL.squish)
-                     CROSS JOIN LATERAL jsonb_array_elements(
-                       CASE jsonb_typeof(transactions.extra->'manual_merge')
-                       WHEN 'array'  THEN transactions.extra->'manual_merge'
-                       WHEN 'object' THEN jsonb_build_array(transactions.extra->'manual_merge')
-                       ELSE '[]'::jsonb
-                       END
-                     ) AS merge_elem
-                   SQL
-                 )
-                 .pluck(Arel.sql("merge_elem->>'merged_from_external_id'"))
-                 .compact
-                 .to_set
+      account_id = enable_banking_account.current_account.id
+
+      # 1. Manually merged: pending entries the user explicitly merged into a posted transaction.
+      #    Uses a lateral join to extract merged_from_external_id from the manual_merge JSON
+      #    (handles both Array current format and legacy Hash format via jsonb_typeof).
+      manually_merged_ids = Transaction.joins(:entry)
+                                       .where(entries: { account_id: account_id })
+                                       .where("transactions.extra ? 'manual_merge'")
+                                       .joins(
+                                         Arel.sql(<<~SQL.squish)
+                                           CROSS JOIN LATERAL jsonb_array_elements(
+                                             CASE jsonb_typeof(transactions.extra->'manual_merge')
+                                             WHEN 'array'  THEN transactions.extra->'manual_merge'
+                                             WHEN 'object' THEN jsonb_build_array(transactions.extra->'manual_merge')
+                                             ELSE '[]'::jsonb
+                                             END
+                                           ) AS merge_elem
+                                         SQL
+                                       )
+                                       .pluck(Arel.sql("merge_elem->>'merged_from_external_id'"))
+                                       .compact
+                                       .to_set
+
+      # 2. Auto-claimed: pending entries that were automatically matched to a booked transaction
+      #    by the amount/date heuristic. Their old external_ids are stored in
+      #    extra["auto_claimed_pending_ids"] so they are not re-imported as new pending entries
+      #    on subsequent syncs (the stored raw payload still contains the old pending data).
+      auto_claimed_ids = Transaction.joins(:entry)
+                                    .where(entries: { account_id: account_id })
+                                    .where("transactions.extra ? 'auto_claimed_pending_ids'")
+                                    .joins(
+                                      Arel.sql(<<~SQL.squish)
+                                        CROSS JOIN LATERAL jsonb_array_elements_text(
+                                          transactions.extra->'auto_claimed_pending_ids'
+                                        ) AS claimed_id
+                                      SQL
+                                    )
+                                    .pluck(Arel.sql("claimed_id"))
+                                    .compact
+                                    .to_set
+
+      # 3. Superseded: rows whose synthesised external_id was claimed by the same
+      #    movement arriving later with an identifier the ASPSP had not yet
+      #    assigned. The stored raw payload still holds the identifierless row, so
+      #    without this it would be reimported as a separate transaction.
+      superseded_ids = Transaction.joins(:entry)
+                                  .where(entries: { account_id: account_id })
+                                  .where("transactions.extra ? 'superseded_external_ids'")
+                                  .joins(
+                                    Arel.sql(<<~SQL.squish)
+                                      CROSS JOIN LATERAL jsonb_array_elements_text(
+                                        transactions.extra->'superseded_external_ids'
+                                      ) AS superseded_id
+                                    SQL
+                                  )
+                                  .pluck(Arel.sql("superseded_id"))
+                                  .compact
+                                  .to_set
+
+      manually_merged_ids | auto_claimed_ids | superseded_ids
     else
       Set.new
     end
@@ -63,7 +114,10 @@ class EnableBankingAccount::Transactions::Processor
         result = EnableBankingEntry::Processor.new(
           transaction_data,
           enable_banking_account: enable_banking_account,
-          import_adapter: shared_adapter
+          import_adapter: shared_adapter,
+          known_merchant_names: shared_known_merchant_names,
+          identifierless_external_ids: shared_identifierless_external_ids,
+          excluded_external_ids: excluded_ids
         ).process
 
         if result.nil?
@@ -71,6 +125,16 @@ class EnableBankingAccount::Transactions::Processor
           errors << { index: index, transaction_id: transaction_data[:transaction_id], error: "No linked account" }
         else
           imported_count += 1
+
+          # An identifierless row just stored under its content hash becomes
+          # claimable by the same movement appearing later in this very batch
+          # carrying the identifier the ASPSP has since assigned. Pending rows stay
+          # out, as they do in identifierless_external_ids_for: their settlement
+          # belongs to ProviderImportAdapter's pending->booked reconciliation.
+          if ext_id && EnableBankingEntry::Processor.identifierless?(transaction_data) &&
+             !EnableBankingEntry::Processor.pending_payload?(transaction_data)
+            shared_identifierless_external_ids.add(ext_id)
+          end
         end
       rescue ArgumentError => e
         failed_count += 1

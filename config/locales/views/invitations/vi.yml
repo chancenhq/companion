@@ -1,0 +1,26 @@
+---
+vi:
+  invitations:
+    accept_choice:
+      create_account: Tạo tài khoản mới
+      existing_account_hint: "Bạn đã có tài khoản? Tài khoản hiện có không thể tham gia hộ gia đình khác qua lời mời."
+      joined_household: Bạn đã tham gia hộ gia đình.
+      message: "%{inviter} đã mời bạn tham gia với tư cách %{role}."
+      title: Tham gia %{family}
+    create:
+      failure: Không thể gửi lời mời
+      success: Lời mời đã được gửi thành công
+    destroy:
+      failure: Đã xảy ra sự cố khi xóa lời mời.
+      not_authorized: Bạn không được phép quản lý lời mời.
+      success: Lời mời đã được xóa thành công.
+    new:
+      email_label: Địa chỉ email
+      email_placeholder: Nhập địa chỉ email
+      role_admin: Quản trị viên
+      role_guest: Khách
+      role_label: Vai trò
+      role_member: Thành viên
+      submit: Gửi lời mời
+      subtitle: Gửi lời mời để tham gia tài khoản %{moniker} của bạn trên %{product_name}
+      title: Mời ai đó

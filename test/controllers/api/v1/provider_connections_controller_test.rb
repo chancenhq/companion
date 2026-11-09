@@ -144,7 +144,7 @@ class Api::V1::ProviderConnectionsControllerTest < ActionDispatch::IntegrationTe
   end
 
   test "excludes another family's provider connections" do
-    other_item = snaptrade_items(:pending_registration_item)
+    other_item = snaptrade_items(:unauthorized_item)
 
     get api_v1_provider_connections_url, headers: api_headers(@api_key)
     assert_response :success
@@ -156,6 +156,38 @@ class Api::V1::ProviderConnectionsControllerTest < ActionDispatch::IntegrationTe
   test "read_write key can list provider connection status" do
     get api_v1_provider_connections_url, headers: api_headers(@read_write_key)
     assert_response :success
+  end
+
+  test "lists Brex provider connection status" do
+    brex_item = brex_items(:one)
+
+    get api_v1_provider_connections_url, headers: api_headers(@api_key)
+    assert_response :success
+
+    brex_connection = JSON.parse(response.body)["data"].detect do |connection|
+      connection["id"] == brex_item.id && connection["provider"] == "brex"
+    end
+
+    assert_not_nil brex_connection
+    assert_equal "BrexItem", brex_connection["provider_type"]
+    assert_equal brex_item.name, brex_connection["name"]
+    assert_equal brex_item.brex_accounts.count, brex_connection["accounts"]["total_count"]
+    assert_equal brex_item.linked_accounts_count, brex_connection["accounts"]["linked_count"]
+    assert_equal brex_item.unlinked_accounts_count, brex_connection["accounts"]["unlinked_count"]
+  end
+
+  test "reports credentials_configured true for an authorized SnapTrade item" do
+    snaptrade_item = snaptrade_items(:configured_item)
+
+    get api_v1_provider_connections_url, headers: api_headers(@api_key)
+    assert_response :success
+
+    snaptrade_connection = JSON.parse(response.body)["data"].detect do |connection|
+      connection["id"] == snaptrade_item.id && connection["provider"] == "snaptrade"
+    end
+
+    assert_not_nil snaptrade_connection
+    assert_equal true, snaptrade_connection["credentials_configured"]
   end
 
   test "returns an empty list when no provider connections exist" do

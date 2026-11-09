@@ -1,4 +1,5 @@
 import { Controller } from "@hotwired/stimulus";
+import replaceUrl from "utils/replace_url";
 
 export default class extends Controller {
   static targets = ["onTrack", "overBudget", "tab"];
@@ -32,11 +33,13 @@ export default class extends Controller {
 
     this.tabTargets.forEach((tab) => {
       const isActive = tab.dataset.budgetFilterFilterParam === filter;
-      tab.classList.toggle("bg-white", isActive);
-      tab.classList.toggle("theme-dark:bg-gray-700", isActive);
-      tab.classList.toggle("text-primary", isActive);
-      tab.classList.toggle("shadow-sm", isActive);
-      tab.classList.toggle("text-secondary", !isActive);
+      // Selected styling is encapsulated in the DS::SegmentedControl active
+      // class; the base `.segmented-control__segment` already carries the
+      // inactive (text-secondary) state.
+      tab.classList.toggle("segmented-control__segment--active", isActive);
+      // Keep assistive tech in sync with the visual selection (these are
+      // button segments, so aria-pressed).
+      tab.setAttribute("aria-pressed", String(isActive));
     });
   }
 
@@ -53,6 +56,6 @@ export default class extends Controller {
       url.searchParams.set("filter", this.filterValue);
     }
 
-    window.history.replaceState({}, "", url);
+    replaceUrl(url);
   }
 }

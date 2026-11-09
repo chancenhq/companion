@@ -555,6 +555,23 @@ rails:
 
 Note: In self-hosted mode, if these env vars are not provided, they will be automatically generated from `SECRET_KEY_BASE`. In managed mode, these env vars must be explicitly provided via environment variables or Rails credentials.
 
+## Email delivery
+
+Configure SMTP delivery with the top-level `email` values. Non-secret values are rendered into the Rails workloads as the `EMAIL_SENDER`, `APP_DOMAIN`, and `SMTP_*` environment variables that Action Mailer reads.
+
+```yaml
+email:
+  sender: do-not-reply@example.com
+  appDomain: app.example.com
+  smtpAddress: smtp.example.com
+  smtpPort: 465
+  smtpUsername: smtp-user
+  smtpTlsEnabled: true
+  smtpTlsSkipVerify: false
+```
+
+If the chart creates the app Secret, a non-empty `rails.secret.values.SMTP_PASSWORD` is injected automatically. When you manage the Secret yourself, provide `SMTP_PASSWORD` through `rails.extraEnvVars` with a `secretKeyRef`. Values set in `rails.settings` or `rails.extraEnv` take precedence over the generated email env vars.
+
 ## Advanced environment variable injection
 
 For simple string key/value envs, continue to use `rails.extraEnv` and the per-workload `web.extraEnv` / `worker.extraEnv` maps.
@@ -642,10 +659,10 @@ hpa:
 
 [Pipelock](https://github.com/luckyPipewrench/pipelock) is an optional security proxy that scans AI agent traffic for secret exfiltration, prompt injection, tool poisoning, and SSRF. It runs as a separate Deployment with two listeners:
 
-- **Forward proxy** (port 8888): Scans outbound HTTPS from Faraday-based AI clients. Auto-injected via `HTTPS_PROXY` env vars when enabled.
+- **Forward proxy** (port 8888): Applies destination, SSRF, rate, budget, CONNECT-header DLP, and receipt controls to HTTPS tunnels from clients that honor the proxy variables. The chart doesn't configure TLS interception, so encrypted bodies stay opaque.
 - **MCP reverse proxy** (port 8889): Scans inbound MCP traffic from external AI assistants.
 
-Recent pipelock releases add enhanced tool poisoning detection (full JSON schema scanning), per-read kill switch preemption, trusted domain allowlisting, MCP tool redirect profiles, signed action receipts, per-pattern DLP warn mode, and the `pipelock posture verify` / `pipelock session` CLIs. Process sandboxing and attack simulation are also available via `extraConfig` and CLI. See the [pipelock changelog](https://github.com/luckyPipewrench/pipelock/releases) for details.
+The chart pins Pipelock 3.4.0 by tag and multi-architecture image digest. Read the [Pipelock release notes](https://github.com/luckyPipewrench/pipelock/releases/tag/v3.4.0) before overriding that pin.
 
 ### Enabling Pipelock
 
@@ -653,7 +670,7 @@ Recent pipelock releases add enhanced tool poisoning detection (full JSON schema
 pipelock:
   enabled: true
   image:
-    tag: "2.2.0"
+    tag: "3.4.0@sha256:2e6caa43967a5ef19cacbce00188d829c1b5de1eb0ad304a51d2085f32c5694c"
   mode: balanced   # strict, balanced, or audit
 ```
 
@@ -677,22 +694,111 @@ pipelock:
   mcpToolPolicy:
     enabled: true
     action: redirect      # or use per-rule action overrides
+    rules:
+      - name: redirect-fetch
+        toolPattern: "^(fetch|web_fetch)$"
+        action: redirect
+        redirectProfile: safe-fetch
     redirectProfiles:
       safe-fetch:
         exec: ["/pipelock", "internal-redirect", "fetch-proxy"]
         reason: "Route fetch calls through audited proxy"
 ```
 
-### Validating your config
+### Request body scanning
 
-Pipelock includes CLI tools for config validation:
+Request body scanning covers cleartext HTTP, reverse-proxy, and WebSocket bodies. It can't inspect encrypted HTTPS tunnel bodies unless you configure TLS interception and install Pipelock's CA in the client container.
+
+```yaml
+pipelock:
+  requestBodyScanning:
+    enabled: true
+    action: warn          # warn or block
+    maxBodyBytes: 5242880 # 5 MB; fail-closed above this
+    scanHeaders: true
+    headerMode: sensitive # "sensitive" or "all"
+```
+
+Enabled by default with `action: warn`, matching Pipelock's balanced preset. Review findings in logs before flipping to `action: block`.
+
+### Health watchdog
+
+The wedge-detection watchdog returns 503 on `/health` when a subsystem heartbeat (proxy hot path, MCP listener, rules-engine reload watcher) goes stale. Enabled by default in pipelock; the chart exposes the controls so operators can opt into per-subsystem detail in the health payload:
+
+```yaml
+pipelock:
+  healthWatchdog:
+    enabled: true
+    intervalSeconds: 2
+    exposeSubsystems: true  # adds per-subsystem boolean map to /health
+```
+
+### Signed action receipts
+
+The flight recorder writes hash-chained, Ed25519-signed action receipts. The chart renders the `flight_recorder` config, but recording is inert until you mount a writable evidence directory and the signing key named by `signingKeyPath`.
+
+Generate the receipt key once:
 
 ```bash
-# Run 24 synthetic attack scenarios against your config
-pipelock simulate --config pipelock.yaml
+# --out must be an absolute path; "$PWD/..." writes the key into the current directory.
+pipelock signing key generate --purpose receipt-signing --out "$PWD/flight-recorder-signing.key" --id sure-k8s
+kubectl create secret generic sure-pipelock-receipts \
+  --namespace sure \
+  --from-file=flight-recorder-signing.key=./flight-recorder-signing.key
+```
+
+If you don't have the `pipelock` binary installed, generate the key with the pinned image instead: `docker run --rm -v "$PWD:/out" ghcr.io/luckypipewrench/pipelock:3.4.0@sha256:2e6caa43967a5ef19cacbce00188d829c1b5de1eb0ad304a51d2085f32c5694c signing key generate --purpose receipt-signing --out /out/flight-recorder-signing.key --id sure-k8s`.
+
+Then mount persistent evidence storage and the key:
+
+```yaml
+pipelock:
+  flightRecorder:
+    enabled: true
+    dir: /var/lib/pipelock/evidence
+    signingKeyPath: /run/secrets/pipelock/flight-recorder-signing.key
+    requireReceipts: false
+    redact: true
+  extraVolumes:
+    - name: pipelock-evidence
+      persistentVolumeClaim:
+        claimName: sure-pipelock-evidence
+    - name: pipelock-receipt-key
+      secret:
+        secretName: sure-pipelock-receipts
+        # 0440 (group-read), not 0400: the chart runs Pipelock as uid 1000 with
+        # fsGroup 1000, so the secret file is owned root:1000. A 0400 file would
+        # be unreadable by the non-root process and Pipelock would crash on
+        # startup with a key-load error. 0440 lets the fsGroup read it.
+        defaultMode: 0440
+  extraVolumeMounts:
+    - name: pipelock-evidence
+      mountPath: /var/lib/pipelock/evidence
+    - name: pipelock-receipt-key
+      # Do not mount this under /etc/pipelock; the chart already mounts the
+      # Pipelock ConfigMap there.
+      mountPath: /run/secrets/pipelock
+      readOnly: true
+```
+
+Only set `requireReceipts: true` after confirming receipts are being written. With it enabled, allow-path traffic fails closed if Pipelock cannot sign or persist the receipt.
+
+### Validating your config
+
+Pipelock includes CLI tools for config validation and deployment diagnostics:
+
+```bash
+# Create and run a broader assessment workspace
+pipelock assess init --config pipelock.yaml
 
 # Score your config's security posture (0-100)
 pipelock audit score --config pipelock.yaml
+
+# Report whether configured protections are actually enforceable
+pipelock doctor
+
+# Explain a block and the exact config knob that scanner reads
+pipelock explain --config pipelock.yaml "https://example.com/path"
 ```
 
 ### Exposing MCP to external AI assistants
@@ -759,7 +865,7 @@ pipelock:
 
 ### Extra config (escape hatch)
 
-For Pipelock config sections not covered by structured values (session profiling, data budgets, kill switch, sandbox, reverse proxy, adaptive enforcement, etc.), use `extraConfig`:
+For Pipelock config sections not covered by structured values (session profiling, data budgets, kill switch, sandbox, reverse proxy, adaptive enforcement, request policy, redaction, etc.), use `extraConfig`:
 
 ```yaml
 pipelock:
@@ -777,16 +883,16 @@ pipelock:
 
 These are appended verbatim to `pipelock.yaml`. Do not duplicate keys already rendered by the chart.
 
-### Requiring Pipelock for external assistants
+### Pipelock requirement for external assistants
 
-To enforce that Pipelock is enabled whenever the external AI assistant feature is active:
+The chart rejects an external AI assistant deployment without Pipelock by default:
 
 ```yaml
 pipelock:
   requireForExternalAssistant: true
 ```
 
-This causes `helm template` / `helm install` to fail if `rails.externalAssistant.enabled=true` and `pipelock.enabled=false`. Note: this only guards the `externalAssistant` path. Direct MCP access via `MCP_API_TOKEN` is configured through env vars and not detectable from Helm values.
+`helm template` and `helm install` fail when `rails.externalAssistant.enabled=true` and `pipelock.enabled=false`. Set `requireForExternalAssistant: false` only when you accept direct external-assistant traffic. This guard can't detect direct MCP access configured through `MCP_API_TOKEN`.
 
 ## Security Notes
 
@@ -803,6 +909,7 @@ See `values.yaml` for the complete configuration surface, including:
 - `image.*`: repository, tag, pullPolicy, imagePullSecrets
 - `rails.*`: environment, extraEnv, existingSecret or secret.values, settings
   - Also: `rails.extraEnvVars[]` (full EnvVar), `rails.extraEnvFrom[]` (EnvFromSource), and `rails.encryptionEnv.enabled` toggle
+- `email.*`: Action Mailer sender, app domain, and SMTP host/port/user/TLS env values
 - `cnpg.*`: enable operator subchart and a Cluster resource, set instances, storage
 - `redis-ha.*`: enable dandydev/redis-ha subchart and configure replicas/auth (Sentinel/HA); supports `existingSecret` and `existingSecretPasswordKey`
 - `redisOperator.*`: optionally install OT redis-operator (`redisOperator.enabled`) and/or render a `RedisSentinel` CR (`redisOperator.managed.enabled`); configure `name`, `replicas`, `auth.existingSecret/passwordKey`, `persistence.className/size`, scheduling knobs, and `operator.resources` (controller) / `workloadResources` (Redis pods)
@@ -811,7 +918,7 @@ See `values.yaml` for the complete configuration surface, including:
 - `migrations.*`: strategy job or initContainer
 - `simplefin.encryption.*`: enable + backfill options
 - `cronjobs.*`: custom CronJobs
-- `pipelock.*`: AI agent security proxy (forward proxy, MCP reverse proxy, DLP, injection scanning, trusted domains, tool redirect profiles, logging, serviceMonitor, ingress, PDB, extraConfig)
+- `pipelock.*`: AI agent security proxy (forward proxy, MCP reverse proxy, DLP, injection scanning, request-body scanning, health watchdog, signed receipts, trusted domains, tool redirect profiles, logging, serviceMonitor, ingress, PDB, extraVolumes, extraVolumeMounts, extraConfig)
 - `service.*`, `ingress.*`, `serviceMonitor.*`, `hpa.*`
 
 ## Helm tests

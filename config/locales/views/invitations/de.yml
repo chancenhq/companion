@@ -3,13 +3,13 @@ de:
   invitations:
     accept_choice:
       create_account: Neues Konto erstellen
-      joined_household: Sie sind dem Haushalt beigetreten.
-      message: "%{inviter} hat Sie eingeladen, als %{role} beizutreten."
-      sign_in_existing: Ich habe bereits ein Konto
+      existing_account_hint: Du hast bereits ein Konto? Bestehende Konten können über eine Einladung keinem anderen Haushalt beitreten.
+      joined_household: Du bist dem Haushalt beigetreten.
+      message: "%{inviter} hat dich eingeladen, als %{role} beizutreten."
       title: "%{family} beitreten"
     create:
-      existing_user_added: Der Benutzer wurde Ihrem Haushalt hinzugefügt.
       failure: Einladung konnte nicht gesendet werden.
+      own_email: "Du kannst dich nicht selbst einladen."
       success: Einladung erfolgreich gesendet.
     destroy:
       failure: Beim Entfernen der Einladung ist ein Problem aufgetreten.
@@ -23,5 +23,5 @@ de:
       role_label: Rolle
       role_member: Mitglied
       submit: Einladung senden
-      subtitle: Sende eine Einladung, um deinem Familienkonto auf %{product_name} beizutreten.
+      subtitle: Lad jemanden in dein %{moniker}-Konto auf %{product_name} ein
       title: Jemanden einladen

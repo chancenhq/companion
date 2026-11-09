@@ -21,6 +21,12 @@ class Series
   )
 
   class << self
+    # Formats a chart date using the current family's configured date format.
+    def format_date(date)
+      I18n.l(date, format: Current.family&.date_format.presence || :long)
+    end
+
+    # Builds a series and its per-point trends from unordered raw values.
     def from_raw_values(values, interval: "1 day")
       raise ArgumentError, "Must be an array of at least 2 values" unless values.size >= 2
       raise ArgumentError, "Must have date and value properties" unless values.all? { |value| value.has_key?(:date) && value.has_key?(:value) }
@@ -36,7 +42,7 @@ class Series
         values: [ nil, *ordered ].each_cons(2).map do |prev_value, curr_value|
           Value.new(
             date: curr_value[:date],
-            date_formatted: I18n.l(curr_value[:date], format: :long),
+            date_formatted: format_date(curr_value[:date]),
             value: curr_value[:value],
             trend: Trend.new(
               current: curr_value[:value],
@@ -56,11 +62,14 @@ class Series
     @favorable_direction = favorable_direction
   end
 
+  # Rounded like the serialized values: this trend is only ever rendered next to
+  # them, so a change between two amounts that print identically has to read as
+  # no change here too.
   def trend
     return nil if values.blank?
     @trend ||= Trend.new(
-      current: values.last&.value,
-      previous: values.first&.value,
+      current: display_amount(values.last&.value),
+      previous: display_amount(values.first&.value),
       favorable_direction: favorable_direction
     )
   end
@@ -71,7 +80,27 @@ class Series
       end_date: end_date,
       interval: interval,
       trend: trend,
-      values: values.map { |v| { date: v.date, date_formatted: v.date_formatted, value: v.value, trend: v.trend } }
+      values: values.map do |v|
+        { date: v.date, date_formatted: v.date_formatted, value: display_amount(v.value), trend: display_trend(v.trend) }
+      end
     }
   end
+
+  private
+    # A chart is drawn from these amounts, not from the formatted strings, so a
+    # sub-unit residue would plot as a visible move between two points that both
+    # print as the same value, and a change between them would read as non-zero.
+    def display_trend(trend)
+      return trend unless trend.is_a?(Trend)
+
+      Trend.new(
+        current: display_amount(trend.current),
+        previous: display_amount(trend.previous),
+        favorable_direction: trend.favorable_direction
+      )
+    end
+
+    def display_amount(amount)
+      amount.is_a?(Money) ? amount.for_display : amount
+    end
 end

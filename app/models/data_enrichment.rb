@@ -1,5 +1,32 @@
 class DataEnrichment < ApplicationRecord
   belongs_to :enrichable, polymorphic: true
 
-  enum :source, { rule: "rule", plaid: "plaid", simplefin: "simplefin", lunchflow: "lunchflow", synth: "synth", ai: "ai", enable_banking: "enable_banking", coinstats: "coinstats", mercury: "mercury", indexa_capital: "indexa_capital", sophtron: "sophtron" }
+  # sorted
+  enum :source, {
+    ai: "ai",
+    akahu: "akahu",
+    bayes: "bayes",
+    brex: "brex",
+    coinstats: "coinstats",
+    enable_banking: "enable_banking",
+    fio: "fio",
+    ibkr: "ibkr",
+    indexa_capital: "indexa_capital",
+    lunchflow: "lunchflow",
+    mercury: "mercury",
+    monobank: "monobank",
+    plaid: "plaid",
+    questrade: "questrade",
+    redbark: "redbark",
+    rule: "rule",
+    sharesight: "sharesight",
+    similar: "similar",
+    simplefin: "simplefin",
+    sophtron: "sophtron",
+    synth: "synth",
+    trade_republic: "trade_republic",
+    truelayer: "truelayer",
+    up: "up",
+    wise: "wise"
+  }
 end

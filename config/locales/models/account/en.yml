@@ -1,5 +1,21 @@
 ---
 en:
+  account_order:
+    balance_asc:
+      label: Balance (Low to High)
+      label_short: Balance ↑
+    balance_desc:
+      label: Balance (High to Low)
+      label_short: Balance ↓
+    manual:
+      label: Manual (drag to reorder)
+      label_short: Manual
+    name_asc:
+      label: Name (A-Z)
+      label_short: Name ↑
+    name_desc:
+      label: Name (Z-A)
+      label_short: Name ↓
   activerecord:
     attributes:
       account:
@@ -7,8 +23,16 @@ en:
         currency: Currency
         family: "%{moniker}"
         family_id: "%{moniker}"
+        logo: Logo
         name: Name
         subtype: Subtype
+    errors:
+      models:
+        account:
+          attributes:
+            logo:
+              invalid_content_type: must be a PNG, JPEG, GIF, WebP or ICO image
+              too_large: must be smaller than %{max_size} MB
     models:
       account: Account
       account/credit: Credit Card

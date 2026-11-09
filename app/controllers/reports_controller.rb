@@ -12,7 +12,7 @@ class ReportsController < ApplicationController
     # Build reports sections for collapsible/reorderable UI
     @reports_sections = build_reports_sections
 
-    @breadcrumbs = [ [ "Home", root_path ], [ "Reports", nil ] ]
+    @breadcrumbs = [ [ t("breadcrumbs.home"), root_path ], [ t("breadcrumbs.reports"), nil ] ]
   end
 
   def print
@@ -80,12 +80,20 @@ class ReportsController < ApplicationController
       sort_direction: params[:sort_direction]
     }.compact
 
-    # Build the full URL with the API key, if present
+    # The CSV URL the instructions tell people to add their API key to
     @csv_url = export_transactions_reports_url(base_params.merge(format: :csv))
-    @api_key_present = @csv_url.include?("api_key=")
 
     # This action will render `app/views/reports/google_sheets_instructions.html.erb`
     # It will render *inside* the modal frame.
+  end
+
+  def picker
+    @period_type = params[:period_type]&.to_sym || :monthly
+    @start_date = parse_date_param(:start_date) || Date.current.beginning_of_month
+    render partial: "reports/period_picker", locals: {
+      period_type: @period_type,
+      start_date: @start_date
+    }
   end
 
   private
@@ -102,17 +110,18 @@ class ReportsController < ApplicationController
       @previous_period = build_previous_period
 
       # Get aggregated data
-      @current_income_totals = Current.family.income_statement.income_totals(period: @period)
-      @current_expense_totals = Current.family.income_statement.expense_totals(period: @period)
+      @income_statement = Current.family.income_statement(user: Current.user)
+      @current_income_totals = @income_statement.income_totals(period: @period)
+      @current_expense_totals = @income_statement.expense_totals(period: @period)
 
-      @previous_income_totals = Current.family.income_statement.income_totals(period: @previous_period)
-      @previous_expense_totals = Current.family.income_statement.expense_totals(period: @previous_period)
+      @previous_income_totals = @income_statement.income_totals(period: @previous_period)
+      @previous_expense_totals = @income_statement.expense_totals(period: @previous_period)
 
       # Calculate summary metrics
       @summary_metrics = build_summary_metrics
 
       # Build trend data (last 6 months)
-      @trends_data = build_trends_data
+      @trends_data = build_trends_data(income_statement: @income_statement)
 
       # Net worth metrics
       @net_worth_metrics = build_net_worth_metrics
@@ -123,11 +132,17 @@ class ReportsController < ApplicationController
       # Investment metrics
       @investment_metrics = build_investment_metrics
 
+      # Spending vs normal (preview): this period against the year before it
+      @spending_comparison = build_spending_comparison
+
       # Investment flows (contributions/withdrawals)
       @investment_flows = InvestmentFlowStatement.new(Current.family, user: Current.user).period_totals(period: @period)
 
       # Flags for view rendering
       @has_accounts = accessible_accounts.any?
+
+      # Build navigation links for period switching
+      @nav = build_period_navigation
     end
 
     def preferences_params
@@ -155,6 +170,15 @@ class ReportsController < ApplicationController
           locals: { trends_data: @trends_data },
           visible: @has_accounts,
           collapsible: true
+        },
+        {
+          key: "spending_vs_normal",
+          title: "reports.spending_vs_normal.title",
+          partial: "reports/spending_vs_normal",
+          locals: { comparison: @spending_comparison, start_date: @start_date, end_date: @end_date },
+          visible: @has_accounts && @spending_comparison.present?,
+          collapsible: true,
+          preview: true
         },
         {
           key: "investment_performance",
@@ -233,7 +257,7 @@ class ReportsController < ApplicationController
       when :ytd
         Date.current.beginning_of_year.to_date
       when :last_6_months
-        6.months.ago.beginning_of_month.to_date
+        (Date.current.end_of_month + 1.day - 6.months).beginning_of_month.to_date
       when :custom
         1.month.ago.to_date
       else
@@ -308,7 +332,17 @@ class ReportsController < ApplicationController
       nil
     end
 
-    def build_trends_data
+    def build_spending_comparison
+      return nil unless preview_features_enabled?
+
+      IncomeStatement::SpendingComparison.new(
+        @income_statement,
+        period: @period,
+        history_start: IncomeStatement::SpendingComparison.history_start(@income_statement)
+      )
+    end
+
+    def build_trends_data(income_statement:)
       # Generate month-by-month data based on the current period filter
       trends = []
 
@@ -325,8 +359,8 @@ class ReportsController < ApplicationController
 
         period = Period.custom(start_date: month_start, end_date: month_end)
 
-        income = Current.family.income_statement.income_totals(period: period).total
-        expenses = Current.family.income_statement.expense_totals(period: period).total
+        income = income_statement.income_totals(period: period).total
+        expenses = income_statement.expense_totals(period: period).total
 
         trends << {
           month: month_start.strftime("%b %Y"),
@@ -349,9 +383,11 @@ class ReportsController < ApplicationController
         .joins(:entry)
         .joins(entry: :account)
         .where(accounts: { family_id: Current.family.id, status: [ "draft", "active" ] })
+        .merge(Account.included_in_reports)
         .where(entries: { entryable_type: "Transaction", excluded: false, date: @period.date_range })
-        .where.not(kind: Transaction::BUDGET_EXCLUDED_KINDS)
+        .where.not(kind: Current.family.analytics_excluded_kinds)
         .includes(entry: :account, category: :parent)
+      transactions = exclude_tax_advantaged_accounts(transactions)
 
       # Apply filters (includes finance account scoping)
       transactions = apply_transaction_filters(transactions)
@@ -361,14 +397,20 @@ class ReportsController < ApplicationController
         .joins(:entry)
         .joins(entry: :account)
         .where(accounts: { family_id: Current.family.id, status: [ "draft", "active" ] })
+        .merge(Account.included_in_reports)
         .where(entries: { entryable_type: "Trade", excluded: false, date: @period.date_range })
         .includes(entry: :account, category: :parent)
+      trades = exclude_tax_advantaged_accounts(trades)
 
       trades = apply_entry_filters(trades)
 
       # Get sort parameters
-      sort_by = params[:sort_by] || "amount"
-      sort_direction = params[:sort_direction] || "desc"
+      sort_by = %w[amount count].include?(params[:sort_by]) ? params[:sort_by] : "amount"
+      sort_direction = %w[asc desc].include?(params[:sort_direction]) ? params[:sort_direction] : "desc"
+      sort_logic = ->(item) do
+        value = (sort_by == "count") ? item[:count] : item[:total]
+        sort_direction == "asc" ? (value || 0) : -(value || 0)
+      end
 
       # Group by category (tracking parent relationship) and type
       # Structure: { [parent_category_id, type] => { parent_data, subcategories: { subcategory_id => data } } }
@@ -376,13 +418,33 @@ class ReportsController < ApplicationController
       family_currency = Current.family.currency
 
       # Helper to initialize a category group hash
-      init_category_group = ->(id, name, color, icon, type) do
-        { category_id: id, category_name: name, category_color: color, category_icon: icon, type: type, total: 0, count: 0, subcategories: {} }
+      init_category_group = ->(id, name, color, icon, type, filter_value) do
+        {
+          category_id: id,
+          category_name: name,
+          category_filter_value: filter_value,
+          category_color: color,
+          category_icon: icon,
+          type: type,
+          total: 0,
+          count: 0,
+          has_transactions: false,
+          subcategories: {}
+        }
       end
 
       # Helper to initialize a subcategory hash
       init_subcategory = ->(category) do
-        { category_id: category.id, category_name: category.name, category_color: category.color, category_icon: category.lucide_icon, total: 0, count: 0 }
+        {
+          category_id: category.id,
+          category_name: category.name,
+          category_filter_value: category.filter_value,
+          category_color: category.color,
+          category_icon: category.lucide_icon,
+          total: 0,
+          count: 0,
+          has_transactions: false
+        }
       end
 
       # Helper to process an entry (transaction or trade)
@@ -398,29 +460,31 @@ class ReportsController < ApplicationController
           # Uncategorized or Other Investments (for trades)
           if is_trade
             parent_key = [ :other_investments, type ]
-            grouped_data[parent_key] ||= init_category_group.call(:other_investments, Category.other_investments.name, Category.other_investments.color, Category.other_investments.lucide_icon, type)
+            grouped_data[parent_key] ||= init_category_group.call(:other_investments, Category.other_investments.name, Category.other_investments.color, Category.other_investments.lucide_icon, type, Category.other_investments.name)
           else
             parent_key = [ :uncategorized, type ]
-            grouped_data[parent_key] ||= init_category_group.call(:uncategorized, Category.uncategorized.name, Category.uncategorized.color, Category.uncategorized.lucide_icon, type)
+            grouped_data[parent_key] ||= init_category_group.call(:uncategorized, Category.uncategorized.name, Category.uncategorized.color, Category.uncategorized.lucide_icon, type, Category.uncategorized.filter_value)
           end
         elsif category.parent_id.present?
           # This is a subcategory - group under parent
           parent = category.parent
           parent_key = [ parent.id, type ]
-          grouped_data[parent_key] ||= init_category_group.call(parent.id, parent.name, parent.color || Category::UNCATEGORIZED_COLOR, parent.lucide_icon, type)
+          grouped_data[parent_key] ||= init_category_group.call(parent.id, parent.name, parent.color || Category::UNCATEGORIZED_COLOR, parent.lucide_icon, type, parent.filter_value)
 
           # Add to subcategory
           grouped_data[parent_key][:subcategories][category.id] ||= init_subcategory.call(category)
           grouped_data[parent_key][:subcategories][category.id][:count] += 1
           grouped_data[parent_key][:subcategories][category.id][:total] += converted_amount
+          grouped_data[parent_key][:subcategories][category.id][:has_transactions] = true unless is_trade
         else
           # This is a root category (no parent)
           parent_key = [ category.id, type ]
-          grouped_data[parent_key] ||= init_category_group.call(category.id, category.name, category.color || Category::UNCATEGORIZED_COLOR, category.lucide_icon, type)
+          grouped_data[parent_key] ||= init_category_group.call(category.id, category.name, category.color || Category::UNCATEGORIZED_COLOR, category.lucide_icon, type, category.filter_value)
         end
 
         grouped_data[parent_key][:count] += 1
         grouped_data[parent_key][:total] += converted_amount
+        grouped_data[parent_key][:has_transactions] = true unless is_trade
       end
 
       # Process transactions
@@ -435,30 +499,31 @@ class ReportsController < ApplicationController
 
       # Convert to array and sort subcategories
       result = grouped_data.values.map do |parent_data|
-        subcategories = parent_data[:subcategories].values.sort_by { |s| sort_direction == "asc" ? s[:total] : -s[:total] }
+        subcategories = parent_data[:subcategories].values.sort_by(&sort_logic)
         parent_data.merge(subcategories: subcategories)
       end
 
-      # Sort by amount (total) with the specified direction
-      if sort_direction == "asc"
-        result.sort_by { |g| g[:total] }
-      else
-        result.sort_by { |g| -g[:total] }
-      end
+      # Sort by the chosen key with the specified direction
+      result.sort_by(&sort_logic)
     end
 
     def build_investment_metrics
       investment_statement = Current.family.investment_statement
       investment_accounts = investment_statement.investment_accounts
 
-      return { has_investments: false } unless investment_accounts.any?
+      # Shown when there is something to show: an investment account in scope,
+      # or a disposal in the period for the realised-gains half. That half reads
+      # every account included in reports, disabled ones too, while
+      # `investment_accounts` is visible accounts only -- so a family whose only
+      # brokerage account is closed used to get no card at all.
+      return { has_investments: false } unless investment_accounts.any? || period_sell_trades.exists?
 
       period_totals = investment_statement.totals(period: @period)
-
       {
         has_investments: true,
         portfolio_value: investment_statement.portfolio_value_money,
         unrealized_trend: investment_statement.unrealized_gains_trend,
+        period_return_trend: investment_statement.period_return_trend(period: @period),
         period_contributions: period_totals.contributions,
         period_withdrawals: period_totals.withdrawals,
         top_holdings: investment_statement.top_holdings(limit: 5),
@@ -479,10 +544,7 @@ class ReportsController < ApplicationController
 
       # Get sell trades in period with realized gains
       # Eager-load security, account, and accountable to avoid N+1
-      sell_trades = Current.family.trades
-        .joins(:entry)
-        .where(entries: { date: @period.date_range })
-        .where("trades.qty < 0")
+      sell_trades = period_sell_trades
         .includes(:security, entry: { account: :accountable })
         .to_a
 
@@ -498,6 +560,10 @@ class ReportsController < ApplicationController
       sell_trades.each do |trade|
         trade.instance_variable_set(:@preloaded_holdings, holdings_by_account[trade.entry.account_id] || [])
       end
+
+      # The rates the proceeds conversion needs, in one query rather than one
+      # per foreign disposal.
+      Trade.preload_exchange_rates(sell_trades)
 
       trades_by_treatment = sell_trades.group_by { |t| t.entry.account.tax_treatment || :taxable }
 
@@ -518,7 +584,17 @@ class ReportsController < ApplicationController
       # Realized gains are locked at trade time, so convert each at its own
       # entry-date FX. Mirrors InvestmentStatement::Totals, which also uses
       # entry-date rates for contributions/withdrawals on this same card.
-      foreign_trade_currencies = sell_trades.map(&:currency).compact.uniq.reject { |c| c == currency }
+      # A realised figure arrives in the currency the POSITION is held in, not
+      # the one the disposal was priced in: Trade#realized_gain_loss converts
+      # the proceeds into the basis's currency before subtracting, so that the
+      # two sides are comparable. All three sets are needed -- the accounts',
+      # which is what a gain usually carries, the trades' own, and the
+      # holdings', for a position carried in a third currency.
+      foreign_trade_currencies = (
+        sell_trades.map(&:currency) +
+        sell_trades.map { |t| t.entry.account.currency } +
+        holdings_by_account.values.flatten.map(&:currency)
+      ).compact.uniq.reject { |c| c == currency }
       rates_by_trade_date = sell_trades.map { |t| t.entry.date }.uniq.each_with_object({}) do |date, memo|
         memo[date] = ExchangeRate.rates_for(foreign_trade_currencies, to: currency, date: date)
       end
@@ -538,11 +614,17 @@ class ReportsController < ApplicationController
           trend ? convert_current.call(trend.value, h.currency) : 0
         end
 
-        # Sum realized gains from sell trades
-        realized = trades.sum do |t|
+        # Sum realized gains from sell trades, each converted from the currency
+        # its own figure carries.
+        realized_by_trade = trades.each_with_object({}) do |t, memo|
           gain = t.realized_gain_loss
-          gain ? convert_trade.call(gain.value, t.currency, t.entry.date) : 0
+          next if gain.nil?
+
+          converted = convert_trade.call(gain.value, gain.value.currency.iso_code, t.entry.date)
+          memo[t.id] = Money.new(converted, currency)
         end
+
+        realized = realized_by_trade.values.sum(Money.new(0, currency)).amount
 
         # Only include treatment groups that have some activity
         next if holdings.empty? && trades.empty?
@@ -552,9 +634,36 @@ class ReportsController < ApplicationController
           sell_trades: trades,
           unrealized_gain: Money.new(unrealized, currency),
           realized_gain: Money.new(realized, currency),
+          # Per-trade figures in family currency, so the lines under the card
+          # and the card's own total are the same arithmetic. The partial used
+          # to re-label `gain.value` as family currency without converting it.
+          realized_gain_by_trade: realized_by_trade,
           total_gain: Money.new(unrealized + realized, currency)
         }
       end
+    end
+
+    # The period's disposals, as the realised-gains half of the investment
+    # card lists them. The card's gate asks the same relation, so the two
+    # cannot disagree about what counts as a disposal. Scoped to the accounts
+    # this user includes in their finances -- the per-user scope
+    # `investment_accounts` applies -- so another member's unshared account
+    # is neither listed nor opens the card.
+    def period_sell_trades
+      Current.family.trades
+        .joins(entry: :account)
+        # An excluded trade is left out of reports, as InvestmentStatement::Totals
+        # leaves it out of the same card's contributions and withdrawals.
+        .where(entries: { date: @period.date_range, excluded: false })
+        .where(entries: { account_id: Current.user.finance_accounts.select(:id) })
+        .merge(Account.included_in_reports)
+        .where("trades.qty < 0")
+        # A transfer out has the same negative quantity as a sale and would be
+        # counted and listed as one. Nothing was sold, so it belongs in neither.
+        .where(
+          "trades.investment_activity_label IS NULL OR trades.investment_activity_label NOT IN (?)",
+          Trade::INTERNAL_MOVEMENT_LABELS
+        )
     end
 
     def build_net_worth_metrics
@@ -580,13 +689,19 @@ class ReportsController < ApplicationController
         { name: group.name, total: Money.new(group.total, currency) }
       end.reject { |g| g[:total].zero? }
 
+      # Monthly net worth series with per-account-group breakdown for the chart
+      breakdown_series = BalanceSheet::NetWorthBreakdownSeriesBuilder
+        .new(Current.family, user: Current.user)
+        .breakdown_series(period: @period)
+
       {
         current_net_worth: Money.new(current_net_worth, currency),
         total_assets: Money.new(total_assets, currency),
         total_liabilities: Money.new(total_liabilities, currency),
         trend: trend,
         asset_groups: asset_groups,
-        liability_groups: liability_groups
+        liability_groups: liability_groups,
+        breakdown_series: breakdown_series
       }
     end
 
@@ -599,6 +714,13 @@ class ReportsController < ApplicationController
       end
 
       scope
+    end
+
+    def exclude_tax_advantaged_accounts(scope)
+      tax_advantaged_account_ids = Current.family.tax_advantaged_account_ids
+      return scope if tax_advantaged_account_ids.blank?
+
+      scope.where.not(accounts: { id: tax_advantaged_account_ids })
     end
 
     # Filters applicable to both transactions and trades (entry-level + category)
@@ -653,9 +775,11 @@ class ReportsController < ApplicationController
         .joins(:entry)
         .joins(entry: :account)
         .where(accounts: { family_id: Current.family.id, status: [ "draft", "active" ] })
+        .merge(Account.included_in_reports)
         .where(entries: { entryable_type: "Transaction", excluded: false, date: @period.date_range })
-        .where.not(kind: Transaction::BUDGET_EXCLUDED_KINDS)
+        .where.not(kind: Current.family.analytics_excluded_kinds)
         .includes(entry: :account, category: [])
+      transactions = exclude_tax_advantaged_accounts(transactions)
 
       transactions = apply_transaction_filters(transactions)
 
@@ -690,9 +814,11 @@ class ReportsController < ApplicationController
         .joins(:entry)
         .joins(entry: :account)
         .where(accounts: { family_id: Current.family.id, status: [ "draft", "active" ] })
+        .merge(Account.included_in_reports)
         .where(entries: { entryable_type: "Transaction", excluded: false, date: @period.date_range })
-        .where.not(kind: Transaction::BUDGET_EXCLUDED_KINDS)
+        .where.not(kind: Current.family.analytics_excluded_kinds)
         .includes(entry: :account, category: [])
+      transactions = exclude_tax_advantaged_accounts(transactions)
 
       transactions = apply_transaction_filters(transactions)
 
@@ -1047,14 +1173,18 @@ class ReportsController < ApplicationController
         return false
       end
 
-      # Find or create a session for this API request
-      # We need to find or create a persisted session so that Current.user delegation works properly
-      session = @current_user.sessions.first_or_create!(
+      unless @current_user.active?
+        render plain: "Invalid or expired API key", status: :unauthorized
+        return false
+      end
+
+      # Build a fresh unsaved session so API key exports never reuse an existing
+      # web session that may already carry impersonation state.
+      Current.session = @current_user.sessions.build(
         user_agent: request.user_agent,
         ip_address: request.ip
       )
-
-      Current.session = session
+      Current.session.active_impersonator_session = nil
 
       # Verify the delegation chain works
       unless Current.user
@@ -1069,5 +1199,66 @@ class ReportsController < ApplicationController
       end
 
       true
+    end
+
+    def build_period_navigation
+      # Called at the end of setup_report_data, so @start_date and @end_date are guaranteed to be set.
+      case @period_type
+      when :monthly
+        prev_start = @start_date.beginning_of_month - 1.month
+        prev_end   = prev_start.end_of_month
+        next_start = @start_date.beginning_of_month + 1.month
+        next_end   = next_start.end_of_month
+        at_latest  = @start_date.beginning_of_month >= Date.current.beginning_of_month
+      when :quarterly
+        prev_start = (@start_date.beginning_of_quarter - 1.day).beginning_of_quarter
+        prev_end   = prev_start.end_of_quarter
+        next_start = @end_date.end_of_quarter + 1.day
+        next_end   = next_start.end_of_quarter
+        at_latest  = @start_date.beginning_of_quarter >= Date.current.beginning_of_quarter
+      when :ytd
+        prev_year  = @start_date.year - 1
+        prev_start = Date.new(prev_year, 1, 1)
+        prev_end   = Date.new(prev_year, 12, 31)
+        next_year  = @start_date.year + 1
+        next_start = Date.new(next_year, 1, 1)
+        next_end   = next_year == Date.current.year ? Date.current : Date.new(next_year, 12, 31)
+        at_latest  = @start_date.year >= Date.current.year
+      when :last_6_months
+        prev_start = @start_date.beginning_of_month - 6.months
+        prev_end   = prev_start + 6.months - 1.day
+        candidate_start = @start_date.beginning_of_month + 6.months
+        if candidate_start + 6.months >= Date.current.beginning_of_month
+          next_end   = Date.current.end_of_month
+          next_start = (next_end + 1.day - 6.months).beginning_of_month
+        else
+          next_start = candidate_start
+          next_end   = next_start + 6.months - 1.day
+        end
+        at_latest  = @end_date >= Date.current.end_of_month
+      else
+        return nil
+      end
+
+      { prev_start: prev_start, prev_end: prev_end, next_start: next_start, next_end: next_end, at_latest: at_latest, label: period_label }
+    end
+
+    def period_label
+      case @period_type
+      when :monthly
+        I18n.l(@start_date, format: :month_year)
+      when :quarterly
+        t("reports.index.period_label.quarterly", quarter: @start_date.quarter, year: @start_date.year)
+      when :ytd
+        if @start_date.year == Date.current.year
+          t("reports.index.period_label.ytd", year: @start_date.year)
+        else
+          t("reports.index.period_label.past_year", year: @start_date.year)
+        end
+      when :last_6_months
+        t("reports.index.period_label.last_6_months",
+          start: I18n.l(@start_date, format: :short_month_year),
+          end: I18n.l(@end_date, format: :short_month_year))
+      end
     end
 end

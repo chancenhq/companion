@@ -3,28 +3,18 @@ import 'package:flutter/gestures.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import '../models/sso_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_config.dart';
+import '../widgets/sure_button.dart';
+import '../widgets/sure_logo.dart';
 import 'backend_config_screen.dart';
+import '../l10n/app_localizations.dart';
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback? onGoToSettings;
 
   const LoginScreen({super.key, this.onGoToSettings});
-
-  void _openSettings(BuildContext context) {
-    if (onGoToSettings != null) {
-      onGoToSettings!();
-      return;
-    }
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (routeContext) => BackendConfigScreen(
-          onConfigSaved: () => Navigator.of(routeContext).pop(),
-        ),
-      ),
-    );
-  }
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -41,6 +31,11 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordFocus = FocusNode();
   bool _obscurePassword = true;
   late final TapGestureRecognizer _signUpTapRecognizer;
+  static const _legacyProviders = [
+    SsoProvider(name: 'google_oauth2', strategy: 'google_oauth2', label: ''),
+  ];
+  Future<List<SsoProvider>?>? _ssoProvidersFuture;
+  String? _ssoProvidersBaseUrl;
 
   @override
   void initState() {
@@ -50,6 +45,41 @@ class _LoginScreenState extends State<LoginScreen> {
           _emailFocus, _emailController, _emailPlaceholder));
     _passwordFocus.addListener(() => _clearPlaceholderOnFocus(
           _passwordFocus, _passwordController, _passwordPlaceholder));
+  }
+
+  Future<void> _openSettings() async {
+    if (widget.onGoToSettings != null) {
+      widget.onGoToSettings!();
+      return;
+    }
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (routeContext) => BackendConfigScreen(
+          onConfigSaved: () => Navigator.of(routeContext).pop(),
+        ),
+      ),
+    );
+    // Rebuild so the backend URL card and SSO providers reflect the new server.
+    if (mounted) setState(() {});
+  }
+
+  /// Refetches when the backend URL changes (e.g. after editing settings).
+  Future<List<SsoProvider>?> _ssoProviders(AuthProvider authProvider) {
+    if (_ssoProvidersFuture == null ||
+        _ssoProvidersBaseUrl != ApiConfig.baseUrl) {
+      _ssoProvidersBaseUrl = ApiConfig.baseUrl;
+      // A failed fetch isn't cached, so the next rebuild (e.g. returning from
+      // settings) retries instead of keeping the Google fallback.
+      late final Future<List<SsoProvider>?> future;
+      future = authProvider.fetchSsoProviders().then((providers) {
+        if (providers == null && identical(_ssoProvidersFuture, future)) {
+          _ssoProvidersFuture = null;
+        }
+        return providers;
+      });
+      _ssoProvidersFuture = future;
+    }
+    return _ssoProvidersFuture!;
   }
 
   void _clearPlaceholderOnFocus(
@@ -71,6 +101,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _openSignUpPage() async {
+    final l = AppLocalizations.of(context);
     final signUpUrl = Uri.parse('${ApiConfig.defaultBaseUrl}/registration/new');
     final launched = await launchUrl(
       signUpUrl,
@@ -79,109 +110,34 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (!launched && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to open sign up page')),
+        SnackBar(content: Text(l.loginSignUpOpenError)),
       );
     }
   }
 
-  void _showApiKeyDialog() {
-    final apiKeyController = TextEditingController();
-    final outerContext = context;
-    bool isLoading = false;
-
-    showDialog(
+  Future<void> _showApiKeyDialog() async {
+    // The dialog owns its TextEditingController and disposes it in its own
+    // State.dispose(), so the controller's lifecycle is tied to the dialog's
+    // widget tree: no leak on barrier/back dismissal, and it is never disposed
+    // out from under a still-mounted TextField during the exit transition.
+    final result = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (_, setDialogState) {
-            return AlertDialog(
-              title: const Text('API Key Login'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Enter your API key to sign in.',
-                    style:
-                        Theme.of(outerContext).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(outerContext)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                            ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: apiKeyController,
-                    decoration: const InputDecoration(
-                      labelText: 'API Key',
-                      prefixIcon: Icon(Icons.vpn_key_outlined),
-                    ),
-                    obscureText: true,
-                    maxLines: 1,
-                    enabled: !isLoading,
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: isLoading
-                      ? null
-                      : () {
-                          apiKeyController.dispose();
-                          Navigator.of(dialogContext).pop();
-                        },
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: isLoading
-                      ? null
-                      : () async {
-                          final apiKey = apiKeyController.text.trim();
-                          if (apiKey.isEmpty) return;
-
-                          setDialogState(() {
-                            isLoading = true;
-                          });
-
-                          final authProvider = Provider.of<AuthProvider>(
-                            outerContext,
-                            listen: false,
-                          );
-                          final success = await authProvider.loginWithApiKey(
-                            apiKey: apiKey,
-                          );
-
-                          if (!dialogContext.mounted) return;
-
-                          final errorMsg = authProvider.errorMessage;
-                          apiKeyController.dispose();
-                          Navigator.of(dialogContext).pop();
-
-                          if (!success && mounted) {
-                            ScaffoldMessenger.of(outerContext).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  errorMsg ?? 'Invalid API key',
-                                ),
-                                backgroundColor:
-                                    Theme.of(outerContext).colorScheme.error,
-                              ),
-                            );
-                          }
-                        },
-                  child: isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Sign In'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+      builder: (_) => const ApiKeyLoginDialog(),
     );
+
+    // result: true = signed in, false = login attempt failed, null = dismissed.
+    if (result == false && mounted) {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            authProvider.errorMessage ??
+                AppLocalizations.of(context).loginApiKeyInvalid,
+          ),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    }
   }
 
   Future<void> _handleLogin() async {
@@ -210,6 +166,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final l = AppLocalizations.of(context);
 
     return Scaffold(
       body: SafeArea(
@@ -224,11 +181,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   children: [
                     const SizedBox(height: 48),
                     // Logo/Title
-                    SvgPicture.asset(
-                      'assets/images/logomark.svg',
-                      width: 80,
-                      height: 80,
-                    ),
+                    const SureLogo(size: 80),
                     const SizedBox(height: 24),
                     Text.rich(
                       TextSpan(
@@ -236,16 +189,16 @@ class _LoginScreenState extends State<LoginScreen> {
                               color: colorScheme.onSurfaceVariant,
                             ),
                         children: [
-                          const TextSpan(text: 'Demo account or '),
+                          TextSpan(text: l.loginDemoOrSignUpPrefix),
                           TextSpan(
-                            text: 'Sign Up',
+                            text: l.loginSignUpLink,
                             style: TextStyle(
                               color: colorScheme.primary,
                               fontWeight: FontWeight.w600,
                             ),
                             recognizer: _signUpTapRecognizer,
                           ),
-                          const TextSpan(text: '!'),
+                          TextSpan(text: l.loginSignUpSuffix),
                         ],
                       ),
                       textAlign: TextAlign.center,
@@ -297,16 +250,16 @@ class _LoginScreenState extends State<LoginScreen> {
                       keyboardType: TextInputType.emailAddress,
                       autocorrect: false,
                       textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        prefixIcon: Icon(Icons.email_outlined),
+                      decoration: InputDecoration(
+                        labelText: l.loginEmailLabel,
+                        prefixIcon: const Icon(Icons.email_outlined),
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Please enter your email';
+                          return l.loginEmailRequired;
                         }
                         if (!value.contains('@')) {
-                          return 'Please enter a valid email';
+                          return l.loginEmailInvalid;
                         }
                         return null;
                       },
@@ -330,7 +283,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ? TextInputAction.next
                                   : TextInputAction.done,
                               decoration: InputDecoration(
-                                labelText: 'Password',
+                                labelText: l.loginPasswordLabel,
                                 prefixIcon: const Icon(Icons.lock_outlined),
                                 suffixIcon: IconButton(
                                   icon: Icon(
@@ -347,7 +300,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
-                                  return 'Please enter your password';
+                                  return l.loginPasswordRequired;
                                 }
                                 return null;
                               },
@@ -374,7 +327,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Text(
-                                        'Two-factor authentication is enabled. Enter your code.',
+                                        l.loginMfaInfo,
                                         style: TextStyle(
                                             color: colorScheme.onSurface),
                                       ),
@@ -387,14 +340,14 @@ class _LoginScreenState extends State<LoginScreen> {
                                 controller: _otpController,
                                 keyboardType: TextInputType.number,
                                 textInputAction: TextInputAction.done,
-                                decoration: const InputDecoration(
-                                  labelText: 'Authentication Code',
-                                  prefixIcon: Icon(Icons.pin_outlined),
+                                decoration: InputDecoration(
+                                  labelText: l.loginMfaLabel,
+                                  prefixIcon: const Icon(Icons.pin_outlined),
                                 ),
                                 validator: (value) {
                                   if (showOtp &&
                                       (value == null || value.isEmpty)) {
-                                    return 'Please enter your authentication code';
+                                    return l.loginMfaCodeRequired;
                                   }
                                   return null;
                                 },
@@ -411,63 +364,56 @@ class _LoginScreenState extends State<LoginScreen> {
                     // Login Button
                     Consumer<AuthProvider>(
                       builder: (context, authProvider, _) {
-                        return ElevatedButton(
-                          onPressed:
-                              authProvider.isLoading ? null : _handleLogin,
-                          child: authProvider.isLoading
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Text('Sign In'),
+                        return SureButton(
+                          label: l.loginSignIn,
+                          size: SureButtonSize.lg,
+                          fullWidth: true,
+                          loading: authProvider.isLoading,
+                          onPressed: _handleLogin,
                         );
                       },
                     ),
 
-                    const SizedBox(height: 16),
+                    FutureBuilder<List<SsoProvider>?>(
+                      future: _ssoProviders(
+                          Provider.of<AuthProvider>(context, listen: false)),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState != ConnectionState.done) {
+                          return const SizedBox.shrink();
+                        }
+                        // Servers without the providers endpoint only
+                        // supported Google on mobile.
+                        final providers = snapshot.data ?? _legacyProviders;
+                        if (providers.isEmpty) return const SizedBox.shrink();
 
-                    // Divider with "or"
-                    Row(
-                      children: [
-                        Expanded(
-                            child: Divider(color: colorScheme.outlineVariant)),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Text(
-                            'or',
-                            style:
-                                TextStyle(color: colorScheme.onSurfaceVariant),
-                          ),
-                        ),
-                        Expanded(
-                            child: Divider(color: colorScheme.outlineVariant)),
-                      ],
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // Google Sign-In button
-                    Consumer<AuthProvider>(
-                      builder: (context, authProvider, _) {
-                        return OutlinedButton.icon(
-                          onPressed: authProvider.isLoading
-                              ? null
-                              : () =>
-                                  authProvider.startSsoLogin('google_oauth2'),
-                          icon: SvgPicture.asset(
-                            'assets/images/google_g_logo.svg',
-                            width: 18,
-                            height: 18,
-                          ),
-                          label: const Text('Sign in with Google'),
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size(double.infinity, 50),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                        return Column(
+                          children: [
+                            const SizedBox(height: 16),
+                            // Divider with "or"
+                            Row(
+                              children: [
+                                Expanded(
+                                    child: Divider(
+                                        color: colorScheme.outlineVariant)),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16),
+                                  child: Text(
+                                    l.loginOrDivider,
+                                    style: TextStyle(
+                                        color: colorScheme.onSurfaceVariant),
+                                  ),
+                                ),
+                                Expanded(
+                                    child: Divider(
+                                        color: colorScheme.outlineVariant)),
+                              ],
                             ),
-                          ),
+                            for (final provider in providers) ...[
+                              const SizedBox(height: 16),
+                              _SsoButton(provider: provider),
+                            ],
+                          ],
                         );
                       },
                     ),
@@ -476,7 +422,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     // Backend URL info
                     InkWell(
-                      onTap: () => widget._openSettings(context),
+                      onTap: () => _openSettings(),
                       borderRadius: BorderRadius.circular(8),
                       child: Container(
                         padding: const EdgeInsets.all(12),
@@ -488,7 +434,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: Column(
                           children: [
                             Text(
-                              'Sure server URL:',
+                              l.loginServerUrlHeading,
                               style:
                                   Theme.of(context).textTheme.bodySmall?.copyWith(
                                         color: colorScheme.onSurfaceVariant,
@@ -513,10 +459,17 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 12),
 
                     // API Key Login Button
-                    TextButton.icon(
-                      onPressed: _showApiKeyDialog,
-                      icon: const Icon(Icons.vpn_key_outlined, size: 18),
-                      label: const Text('API-Key Login'),
+                    Consumer<AuthProvider>(
+                      builder: (context, authProvider, _) {
+                        return SureButton(
+                          label: l.loginApiKeyLoginButton,
+                          variant: SureButtonVariant.ghost,
+                          onPressed:
+                              authProvider.isLoading ? null : _showApiKeyDialog,
+                          leading:
+                              const Icon(Icons.vpn_key_outlined, size: 18),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -527,13 +480,142 @@ class _LoginScreenState extends State<LoginScreen> {
               top: 8,
               child: IconButton(
                 icon: const Icon(Icons.settings_outlined),
-                tooltip: 'Backend Settings',
-                onPressed: () => widget._openSettings(context),
+                tooltip: l.loginBackendSettingsTooltip,
+                onPressed: () => _openSettings(),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// API-key login dialog. Owns its [TextEditingController] so it is disposed
+/// with the dialog's State — never leaked (barrier/back dismissal) and never
+/// disposed while the field is still mounted. Pops `true` on a successful
+/// sign-in, `false` on a failed attempt, and `null` when dismissed.
+@visibleForTesting
+class ApiKeyLoginDialog extends StatefulWidget {
+  const ApiKeyLoginDialog({super.key, this.controller});
+
+  /// Test seam: a controller the dialog will adopt and dispose, so a test can
+  /// assert disposal. Production passes none and the dialog creates its own.
+  @visibleForTesting
+  final TextEditingController? controller;
+
+  @override
+  State<ApiKeyLoginDialog> createState() => _ApiKeyLoginDialogState();
+}
+
+class _ApiKeyLoginDialogState extends State<ApiKeyLoginDialog> {
+  late final TextEditingController _apiKeyController =
+      widget.controller ?? TextEditingController();
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _apiKeyController.addListener(_onTextChanged);
+  }
+
+  void _onTextChanged() => setState(() {});
+
+  @override
+  void dispose() {
+    _apiKeyController.removeListener(_onTextChanged);
+    _apiKeyController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final apiKey = _apiKeyController.text.trim();
+    if (apiKey.isEmpty) return;
+
+    setState(() => _isLoading = true);
+
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final success = await authProvider.loginWithApiKey(apiKey: apiKey);
+
+    if (!mounted) return;
+    Navigator.of(context).pop(success);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    return AlertDialog(
+      title: Text(l.loginApiKeyDialogTitle),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            l.loginApiKeyDialogBody,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _apiKeyController,
+            decoration: InputDecoration(
+              labelText: l.loginApiKeyLabel,
+              prefixIcon: const Icon(Icons.vpn_key_outlined),
+            ),
+            obscureText: true,
+            maxLines: 1,
+            enabled: !_isLoading,
+            onSubmitted: (_) => _submit(),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
+          child: Text(l.commonCancel),
+        ),
+        ElevatedButton(
+          onPressed: _isLoading || _apiKeyController.text.trim().isEmpty ? null : _submit,
+          child: _isLoading
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Text(l.loginApiKeySignIn),
+        ),
+      ],
+    );
+  }
+}
+
+class _SsoButton extends StatelessWidget {
+  final SsoProvider provider;
+
+  const _SsoButton({required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    return Consumer<AuthProvider>(
+      builder: (context, authProvider, _) {
+        return SureButton(
+          label: provider.isGoogle ? l.loginSignInWithGoogle : provider.label,
+          variant: SureButtonVariant.outline,
+          size: SureButtonSize.lg,
+          fullWidth: true,
+          leading: provider.isGoogle
+              ? SvgPicture.asset(
+                  'assets/images/google_g_logo.svg',
+                  width: 18,
+                  height: 18,
+                )
+              : const Icon(Icons.login, size: 18),
+          onPressed: authProvider.isLoading
+              ? null
+              : () => authProvider.startSsoLogin(provider.name),
+        );
+      },
     );
   }
 }

@@ -1,9 +1,14 @@
 require "sidekiq/web"
+require Rails.root.join("lib/job_usage_tracking")
 
-if Rails.env.production?
+# Optional second authentication layer for /sidekiq. The route itself only
+# exists for signed-in super admins (see SuperAdminConstraint in routes.rb);
+# basic auth is layered on top ONLY when both variables are explicitly set.
+# There are deliberately no default credentials.
+if ENV["SIDEKIQ_WEB_USERNAME"].present? && ENV["SIDEKIQ_WEB_PASSWORD"].present?
   Sidekiq::Web.use(Rack::Auth::Basic) do |username, password|
-    configured_username = ::Digest::SHA256.hexdigest(ENV.fetch("SIDEKIQ_WEB_USERNAME", "sure"))
-    configured_password = ::Digest::SHA256.hexdigest(ENV.fetch("SIDEKIQ_WEB_PASSWORD", "sure"))
+    configured_username = ::Digest::SHA256.hexdigest(ENV["SIDEKIQ_WEB_USERNAME"])
+    configured_password = ::Digest::SHA256.hexdigest(ENV["SIDEKIQ_WEB_PASSWORD"])
 
     ActiveSupport::SecurityUtils.secure_compare(::Digest::SHA256.hexdigest(username), configured_username) &
       ActiveSupport::SecurityUtils.secure_compare(::Digest::SHA256.hexdigest(password), configured_password)
@@ -58,6 +63,15 @@ end
 
 Sidekiq.configure_server do |config|
   config.redis = redis_config
+  config.server_middleware do |chain|
+    chain.add JobUsageTracking
+  end
+
+  # At startup: app classes aren't loadable yet when this file runs.
+  config.on(:startup) do
+    config[:fetch_class] = ChatReservation::Fetch
+    config[:labels] << BackgroundJobHealth::ONE_AI_THREAD_LABEL if BackgroundJobHealth.one_ai_thread_worker?(config)
+  end
 
   # Initialize auto-sync scheduler when Sidekiq server starts
   config.on(:startup) do
@@ -65,6 +79,15 @@ Sidekiq.configure_server do |config|
     Rails.logger.info("[AutoSyncScheduler] Initialized sync_all_accounts cron job")
   rescue => e
     Rails.logger.error("[AutoSyncScheduler] Failed to initialize: #{e.message}")
+  end
+
+  # Initialize market data (security price) import scheduler when Sidekiq server starts
+  config.on(:startup) do
+    MarketDataScheduler.sync!
+    Rails.logger.info("[MarketDataScheduler] Initialized import_market_data cron job")
+  rescue => e
+    Rails.logger.error("[MarketDataScheduler] Failed to initialize: #{e.message}")
+    MarketDataScheduler.capture_sync_failure(e, source: "Sidekiq startup")
   end
 end
 

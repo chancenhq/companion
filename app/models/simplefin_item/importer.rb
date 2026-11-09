@@ -46,9 +46,10 @@ class SimplefinItem::Importer
         import_regular_sync
       end
 
-      # Reset status to good if no auth errors occurred in this sync.
-      # This allows the item to recover automatically when a bank's auth issue is resolved
-      # in SimpleFIN Bridge, without requiring the user to manually reconnect.
+      # A successful import proves the SimpleFIN access URL still works, so clear
+      # any lingering item-level requires_update. Per-institution auth errors are
+      # recorded in sync stats but do not mean the access URL itself is dead; a
+      # dead access URL fails the fetch earlier and never reaches this line.
       maybe_clear_requires_update_status
 
       # Detect likely card-replacement scenarios (e.g., fraud replacement).
@@ -107,7 +108,7 @@ class SimplefinItem::Importer
         currency: (account_data[:currency].presence || account_data["currency"].presence || sfa.currency.presence || sfa.current_account&.currency.presence || simplefin_item.family&.currency.presence || "USD"),
         current_balance: account_data[:balance],
         available_balance: account_data[:"available-balance"],
-        balance_date: (account_data["balance-date"] || account_data[:"balance-date"]),
+        balance_date: normalize_balance_date(account_data["balance-date"] || account_data[:"balance-date"]),
         raw_payload: account_data,
         org_data: account_data[:org]
       )
@@ -132,7 +133,7 @@ class SimplefinItem::Importer
         # Normalize balances for SimpleFIN liabilities so immediate UI is correct after discovery
         bal   = to_decimal(account_data[:balance])
         avail = to_decimal(account_data[:"available-balance"])
-        observed = bal.nonzero? ? bal : avail
+        observed = account_data[:balance].nil? ? avail : bal
 
         is_linked_liability = [ "CreditCard", "Loan" ].include?(acct.accountable_type)
         inferred = begin
@@ -148,10 +149,21 @@ class SimplefinItem::Importer
           nil
         end
         is_mapper_liability = inferred && [ "CreditCard", "Loan" ].include?(inferred.accountable_type)
-        is_liability = is_linked_liability || is_mapper_liability
+        is_liability =
+          if acct.accountable_type.present?
+            is_linked_liability
+          else
+            is_mapper_liability
+          end
 
         normalized = observed
-        if is_liability
+        if acct.accountable_type == "Loan"
+          normalized = observed.abs
+        elsif is_liability && sfa.balance_sign_override == "credit"
+          normalized = -observed.abs
+        elsif is_liability && sfa.balance_sign_override == "debt"
+          normalized = observed.abs
+        elsif is_liability
           # Try the overpayment analyzer first (feature-flagged)
           begin
             result = SimplefinAccount::Liabilities::OverpaymentAnalyzer
@@ -211,8 +223,8 @@ class SimplefinItem::Importer
         end
 
         adapter.update_balance(
-          balance: account_data[:balance],
-          cash_balance: account_data[:"available-balance"],
+          balance: normalized,
+          cash_balance: is_liability ? normalized : account_data[:"available-balance"],
           source: "simplefin"
         )
       end
@@ -353,19 +365,17 @@ class SimplefinItem::Importer
       )
     end
 
-    # Reset status to good if no auth errors occurred in this sync.
-    # This allows automatic recovery when a bank's auth issue is resolved in SimpleFIN Bridge.
+    # Reset status to good after a successful import. Per-institution auth
+    # errors are recorded in sync stats, but they do not mean the SimpleFIN
+    # access URL itself is dead.
     def maybe_clear_requires_update_status
       return unless simplefin_item.requires_update?
 
-      auth_errors = stats.dig("error_buckets", "auth").to_i
-      if auth_errors.zero?
-        simplefin_item.update!(status: :good)
-        Rails.logger.info(
-          "SimpleFIN: cleared requires_update status for item ##{simplefin_item.id} " \
-          "(no auth errors in this sync)"
-        )
-      end
+      simplefin_item.update!(status: :good)
+      Rails.logger.info(
+        "SimpleFIN: cleared requires_update status for item ##{simplefin_item.id} " \
+        "after successful import"
+      )
     end
 
     def import_with_chunked_history
@@ -566,6 +576,11 @@ class SimplefinItem::Importer
     #
     # Returns nothing; side-effects are snapshot + account upserts.
     def perform_account_discovery
+      # Clear any upstream_account_ids left over from a prior discovery on this same
+      # SimplefinItem instance (e.g. reused across import runs). If this discovery finds
+      # zero accounts, we must not let repair_stale_linkages act on stale IDs from before.
+      simplefin_item.upstream_account_ids = nil
+
       Rails.logger.info "SimplefinItem::Importer - perform_account_discovery START (no date params - transactions may be empty)"
       discovery_data = fetch_accounts_data(start_date: nil)
       discovered_count = discovery_data&.dig(:accounts)&.size.to_i
@@ -598,12 +613,25 @@ class SimplefinItem::Importer
           end
         end
 
+        # A response with provider errors is not a complete upstream inventory.
+        # Keep the accounts that were returned, but do not prune or repair
+        # linkages from a list that may omit a failed connection or account.
+        if partial_provider_response?(discovery_data)
+          Rails.logger.info("SimpleFin discovery: skipping inventory reconciliation because the response was partial")
+          return
+        end
+
         # Clean up orphaned SimplefinAccount records whose account_id no longer exists upstream.
         # This handles the case where a user deletes and re-adds an institution in SimpleFIN,
         # which generates new account IDs. Without this cleanup, both old (stale) and new
         # SimplefinAccount records would appear in the setup UI as duplicates.
         upstream_account_ids = discovery_data[:accounts].map { |a| a[:id].to_s }.compact
         prune_orphaned_simplefin_accounts(upstream_account_ids)
+
+        # Expose to SimplefinItem#repair_stale_linkages, which runs later in the same sync
+        # (via SimplefinItem::Syncer -> #process_accounts) and needs to know which linked
+        # accounts are actually absent upstream before treating them as stale. See GH #2852.
+        simplefin_item.upstream_account_ids = upstream_account_ids
       end
     end
 
@@ -687,6 +715,20 @@ class SimplefinItem::Importer
         if e.error_type == :access_forbidden
           simplefin_item.update!(status: :requires_update)
           raise e
+        elsif e.error_type == :invalid_url
+          # The stored access URL fails the address check; only a new setup
+          # token can fix it, so ask the user to reconnect.
+          simplefin_item.update!(status: :requires_update)
+          DebugLogEntry.capture(
+            category: "provider_sync",
+            level: "warn",
+            message: "SimpleFIN access URL rejected: #{e.message}",
+            source: self.class.name,
+            family: simplefin_item.family,
+            provider_key: "simplefin",
+            metadata: { simplefin_item_id: simplefin_item.id, error_type: e.error_type }
+          )
+          raise e
         else
           raise e
         end
@@ -697,14 +739,21 @@ class SimplefinItem::Importer
         Rails.logger.debug("SimpleFIN raw: #{accounts_data.inspect}")
       end
 
-      # Handle errors if present in response
-      if accounts_data[:errors] && accounts_data[:errors].any?
-        if accounts_data[:accounts].to_a.any?
+      # Protocol v2 uses `errlist`; retain legacy `errors` compatibility.
+      # Prefer the structured v2 list if a transitional server returns both.
+      structured_errors = accounts_data[:errlist].presence
+      provider_errors = structured_errors || accounts_data[:errors]
+      if provider_errors.present?
+        # `gen.*` errors apply to the response as a whole. Any accounts returned
+        # alongside them may be stale or incomplete, so they cannot be imported
+        # as a successful partial response. Only `gen.auth` invalidates the item.
+        general_v2_error = structured_errors&.any? { |error| general_provider_error?(error) }
+        if accounts_data[:accounts].to_a.any? && !general_v2_error
           # Partial failure: record errors for visibility but continue processing accounts
-          record_errors(accounts_data[:errors])
+          record_errors(provider_errors, connections: accounts_data[:connections])
         else
           # Global failure: no accounts were returned; treat as fatal
-          handle_errors(accounts_data[:errors])
+          handle_errors(provider_errors)
           return nil
         end
       end
@@ -712,7 +761,7 @@ class SimplefinItem::Importer
       # Some servers return a top-level message/string rather than an errors array
       if accounts_data[:error].present?
         if accounts_data[:accounts].to_a.any?
-          record_errors([ accounts_data[:error] ])
+          record_errors([ accounts_data[:error] ], connections: accounts_data[:connections])
         else
           handle_errors([ accounts_data[:error] ])
           return nil
@@ -732,6 +781,87 @@ class SimplefinItem::Importer
       # For subsequent syncs, fetch from last sync date with a buffer
       # Use buffer to ensure we don't miss any late-posting transactions
       simplefin_item.last_synced_at - sync_buffer_period.days
+    end
+
+    def normalize_balance_date(value)
+      return nil if value.nil?
+
+      parsed = Simplefin::DateUtils.parse_provider_time(value)
+      return parsed if parsed.present?
+
+      Rails.logger.warn("Invalid balance date for SimpleFin importer: #{value.inspect}")
+      nil
+    end
+
+    # The rotation for `stored` against `transactions`, and the payload they merge
+    # into (see import_account). A method so the save can run it again against
+    # the payload as stored.
+    def merged_transaction_payload(stored, transactions, account_id)
+      # Stored rows the bridge re-issued under a new id give way to the new row,
+      # or the id-keyed merge below keeps both and each becomes an entry.
+      id_rotation = SimplefinAccount::TransactionIdRotation.new(stored, transactions)
+      existing_transactions = id_rotation.retained_rows
+
+      Rails.logger.info "SimplefinItem::Importer#import_account - Merging transactions for account_id=#{account_id}: #{existing_transactions.count} existing + #{transactions.count} new"
+
+      # Build a map of key => best_tx
+      best_by_key = {}
+
+      comparator = lambda do |a, b|
+        ax = a.with_indifferent_access
+        bx = b.with_indifferent_access
+
+        # Key dates
+        a_posted = ax[:posted].to_i
+        b_posted = bx[:posted].to_i
+        a_trans  = ax[:transacted_at].to_i
+        b_trans  = bx[:transacted_at].to_i
+
+        a_pending = !!ax[:pending]
+        b_pending = !!bx[:pending]
+
+        # 1) Prefer real posted date over 0/blank
+        a_has_posted = a_posted > 0
+        b_has_posted = b_posted > 0
+        return a if a_has_posted && !b_has_posted
+        return b if b_has_posted && !a_has_posted
+
+        # 2) Prefer later posted date
+        if a_posted != b_posted
+          return a_posted > b_posted ? a : b
+        end
+
+        # 3) Prefer non-pending over pending
+        if a_pending != b_pending
+          return a_pending ? b : a
+        end
+
+        # 4) Prefer later transacted_at
+        if a_trans != b_trans
+          return a_trans > b_trans ? a : b
+        end
+
+        # 5) Stable: keep 'a'
+        a
+      end
+
+      build_key = lambda do |tx|
+        t = tx.with_indifferent_access
+        t[:id] || t[:fitid] || [ t[:posted], t[:amount], t[:description] ]
+      end
+
+      (existing_transactions + transactions).each do |tx|
+        key = build_key.call(tx)
+        if (cur = best_by_key[key])
+          best_by_key[key] = comparator.call(cur, tx)
+        else
+          best_by_key[key] = tx
+        end
+      end
+
+      merged_transactions = best_by_key.values
+
+      [ id_rotation, merged_transactions ]
     end
 
     def import_account(account_data)
@@ -781,7 +911,7 @@ class SimplefinItem::Importer
         currency: (account_data[:currency].presence || account_data["currency"].presence || simplefin_account.currency.presence || simplefin_account.current_account&.currency.presence || simplefin_item.family&.currency.presence || "USD"),
         current_balance: account_data[:balance],
         available_balance: account_data[:"available-balance"],
-        balance_date: (account_data["balance-date"] || account_data[:"balance-date"]),
+        balance_date: normalize_balance_date(account_data["balance-date"] || account_data[:"balance-date"]),
         raw_payload: account_data,
         org_data: account_data[:org]
       }
@@ -789,67 +919,10 @@ class SimplefinItem::Importer
       # Merge transactions from chunked/regular imports (accumulate history).
       # Prefer non-pending records with a real posted timestamp over earlier
       # pending placeholders that sometimes come back with posted: 0.
+      id_rotation = nil
       if transactions.is_a?(Array) && transactions.any?
-        existing_transactions = simplefin_account.raw_transactions_payload.to_a
-
-        Rails.logger.info "SimplefinItem::Importer#import_account - Merging transactions for account_id=#{account_id}: #{existing_transactions.count} existing + #{transactions.count} new"
-
-        # Build a map of key => best_tx
-        best_by_key = {}
-
-        comparator = lambda do |a, b|
-          ax = a.with_indifferent_access
-          bx = b.with_indifferent_access
-
-          # Key dates
-          a_posted = ax[:posted].to_i
-          b_posted = bx[:posted].to_i
-          a_trans  = ax[:transacted_at].to_i
-          b_trans  = bx[:transacted_at].to_i
-
-          a_pending = !!ax[:pending]
-          b_pending = !!bx[:pending]
-
-          # 1) Prefer real posted date over 0/blank
-          a_has_posted = a_posted > 0
-          b_has_posted = b_posted > 0
-          return a if a_has_posted && !b_has_posted
-          return b if b_has_posted && !a_has_posted
-
-          # 2) Prefer later posted date
-          if a_posted != b_posted
-            return a_posted > b_posted ? a : b
-          end
-
-          # 3) Prefer non-pending over pending
-          if a_pending != b_pending
-            return a_pending ? b : a
-          end
-
-          # 4) Prefer later transacted_at
-          if a_trans != b_trans
-            return a_trans > b_trans ? a : b
-          end
-
-          # 5) Stable: keep 'a'
-          a
-        end
-
-        build_key = lambda do |tx|
-          t = tx.with_indifferent_access
-          t[:id] || t[:fitid] || [ t[:posted], t[:amount], t[:description] ]
-        end
-
-        (existing_transactions + transactions).each do |tx|
-          key = build_key.call(tx)
-          if (cur = best_by_key[key])
-            best_by_key[key] = comparator.call(cur, tx)
-          else
-            best_by_key[key] = tx
-          end
-        end
-
-        merged_transactions = best_by_key.values
+        stored_snapshot = simplefin_account.raw_transactions_payload.to_a
+        id_rotation, merged_transactions = merged_transaction_payload(stored_snapshot, transactions, account_id)
         attrs[:raw_transactions_payload] = merged_transactions
 
         Rails.logger.info "SimplefinItem::Importer#import_account - Merged result for account_id=#{account_id}: #{merged_transactions.count} total transactions"
@@ -897,7 +970,29 @@ class SimplefinItem::Importer
       end
 
       begin
-        simplefin_account.save!
+        # Entries move to their new ids only if the payload naming those ids saves.
+        SimplefinAccount.transaction do
+          # Another sync of this account may have saved since the payload was read
+          # (syncs can overlap once the first is over five minutes old). The row
+          # lock serialises the two; pairing again against what is stored keeps
+          # the re-keys and the payload on one snapshot, or the stale payload
+          # would put an id back beside the entry the other sync re-keyed.
+          if id_rotation && simplefin_account.persisted?
+            stored_now = SimplefinAccount.where(id: simplefin_account.id).lock.pick(:raw_transactions_payload).to_a
+            if stored_now != stored_snapshot
+              id_rotation, simplefin_account.raw_transactions_payload = merged_transaction_payload(stored_now, transactions, account_id)
+            end
+
+            # That sync's repair_stale_linkages may also have moved the linkage to
+            # this account. The associations were loaded before the lock, so they
+            # are read again: re-keying through a stale (empty) linkage would skip
+            # the entry and save the new id beside it.
+            %i[account account_provider linked_account].each { |name| simplefin_account.association(name).reset }
+          end
+
+          id_rotation&.rekey_entries!(simplefin_account.current_account)
+          simplefin_account.save!
+        end
 
         # Log final state after save for debugging
         if is_investment
@@ -912,8 +1007,7 @@ class SimplefinItem::Importer
           unless @reconciled_account_ids.include?(acct.id)
             @reconciled_account_ids << acct.id
             reconcile_and_track_pending_duplicates(acct)
-            exclude_and_track_stale_pending(acct)
-            track_stale_unmatched_pending(acct)
+            review_and_exclude_stale_pending(acct)
           end
 
           # Refresh credit attributes when available-balance present
@@ -971,7 +1065,7 @@ class SimplefinItem::Importer
     # requires_update - that would block sync for every other institution on
     # the same connection. The top-level handle_errors path is the correct
     # place to flag the item when the SimpleFIN token itself is dead.
-    def record_errors(errors)
+    def record_errors(errors, connections: nil)
       arr = Array(errors)
       return if arr.empty?
 
@@ -983,37 +1077,21 @@ class SimplefinItem::Importer
       )
 
       arr.each do |error|
-        msg = if error.is_a?(String)
-          error
-        else
-          error[:description] || error[:message] || error[:error] || error.to_s
-        end
-        down = msg.to_s.downcase
-        category = if down.include?("timeout") || down.include?("timed out")
-          "network"
-        elsif down.include?("auth") || down.include?("reauth") || down.include?("forbidden") || down.include?("unauthorized") || down.include?("2fa") || down.include?("two-factor")
-          "auth"
-        elsif down.include?("429") || down.include?("rate limit")
-          "api"
-        else
-          "other"
-        end
-        register_error(message: msg, category: category)
+        context = provider_error_context(error, connections)
+        register_error(
+          message: provider_error_message(error),
+          category: provider_error_category(error),
+          account_id: context[:account_id],
+          name: context[:name]
+        )
       end
     end
 
     def handle_errors(errors)
-      error_messages = errors.map { |error| error.is_a?(String) ? error : (error[:description] || error[:message]) }.join(", ")
+      error_messages = errors.map { |error| provider_error_message(error) }.join(", ")
 
       # Mark item as requiring update for authentication-related errors
-      needs_update = errors.any? do |error|
-        if error.is_a?(String)
-          error.downcase.include?("reauthenticate") || error.downcase.include?("authentication")
-        else
-          error[:code] == "auth_failure" || error[:code] == "token_expired" ||
-          error[:type] == "authentication_error"
-        end
-      end
+      needs_update = errors.any? { |error| item_auth_error?(error) }
 
       if needs_update
         Rails.logger.warn("SimpleFin: marking item ##{simplefin_item.id} requires_update due to fatal auth error(s): #{error_messages}")
@@ -1045,6 +1123,63 @@ class SimplefinItem::Importer
         "SimpleFin API errors: #{error_messages}",
         :api_error
       )
+    end
+
+    def provider_error_message(error)
+      return error if error.is_a?(String)
+
+      error[:msg].presence || error[:description].presence || error[:message].presence || error[:error].presence || error.to_s
+    end
+
+    def provider_error_category(error)
+      code = error.is_a?(String) ? "" : error[:code].to_s
+      return "auth" if code.end_with?(".auth") || [ "auth_failure", "token_expired" ].include?(code)
+      return "api" if code == "gen.api"
+
+      message = provider_error_message(error).to_s.downcase
+      if message.include?("timeout") || message.include?("timed out")
+        "network"
+      elsif message.include?("auth") || message.include?("reauth") || message.include?("forbidden") || message.include?("unauthorized") || message.include?("2fa") || message.include?("two-factor")
+        "auth"
+      elsif message.include?("429") || message.include?("rate limit")
+        "api"
+      else
+        "other"
+      end
+    end
+
+    def general_provider_error?(error)
+      !error.is_a?(String) && error[:code].to_s.start_with?("gen.")
+    end
+
+    def partial_provider_response?(accounts_data)
+      accounts_data[:errlist].present? || accounts_data[:errors].present? || accounts_data[:error].present?
+    end
+
+    def provider_error_context(error, connections)
+      return {} if error.is_a?(String)
+
+      code = error[:code].to_s
+      if code.start_with?("act.")
+        { account_id: error[:account_id] }
+      elsif code.start_with?("con.")
+        connection_id = error[:conn_id]
+        connection = Array(connections).find { |candidate| candidate[:conn_id].to_s == connection_id.to_s }
+        { name: connection&.dig(:name).presence || connection_id }
+      else
+        {}
+      end
+    end
+
+    def item_auth_error?(error)
+      if error.is_a?(String)
+        message = error.downcase
+        return message.include?("reauthenticate") || message.include?("authentication")
+      end
+
+      code = error[:code].to_s
+      code == "gen.auth" || code == "auth_failure" || code == "token_expired" ||
+        error[:type] == "authentication_error"
     end
 
     # Classify exceptions into simple buckets for UI stats
@@ -1278,6 +1413,19 @@ class SimplefinItem::Importer
       record_reconciliation_error("pending_reconciliation", account, e)
     end
 
+    # Stale pending entries are reported for review first, then excluded.
+    #
+    # The order matters and is the reason these two steps have one caller:
+    # both steps decide "pending" with Transaction.pending_sql, and the
+    # tracker counts only entries that are still `excluded: false`. Exclude
+    # first and the tracker can never see anything -- the exclusion has just
+    # marked every row it would have counted. Sync stats reported 0 under
+    # "needs manual review" for that reason, whatever the account held.
+    def review_and_exclude_stale_pending(account)
+      track_stale_unmatched_pending(account)
+      exclude_and_track_stale_pending(account)
+    end
+
     # Auto-exclude stale pending transactions (>8 days old with no matching posted version)
     # Prevents orphaned pending transactions from affecting budgets indefinitely
     def exclude_and_track_stale_pending(account)
@@ -1298,16 +1446,16 @@ class SimplefinItem::Importer
     end
 
     # Track stale pending transactions that couldn't be matched (for user awareness)
-    # These are >8 days old, still pending, and have no duplicate suggestion
+    # These are >8 days old, still pending, and have no duplicate suggestion.
+    # Pending under any provider, as exclude_and_track_stale_pending decides it,
+    # which is why it must run before that exclusion (see
+    # review_and_exclude_stale_pending).
     def track_stale_unmatched_pending(account)
       stale_unmatched = account.entries
         .joins("INNER JOIN transactions ON transactions.id = entries.entryable_id AND entries.entryable_type = 'Transaction'")
         .where(excluded: false)
         .where("entries.date < ?", 8.days.ago.to_date)
-        .where(<<~SQL.squish)
-          (transactions.extra -> 'simplefin' ->> 'pending')::boolean = true
-          OR (transactions.extra -> 'plaid' ->> 'pending')::boolean = true
-        SQL
+        .where(Transaction.pending_sql)
         .where(<<~SQL.squish)
           transactions.extra -> 'potential_posted_match' IS NULL
         SQL
