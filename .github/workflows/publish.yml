@@ -644,7 +644,6 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           RELEASE_TAG: ${{ github.ref_name }}
-          ALIAS_NOTE: ${{ needs.prepare.outputs.alias_note }}
         with:
           script: |
             const fs = require('node:fs');
@@ -682,9 +681,6 @@ jobs:
                 body = body.split(matchingNotice + lineEnding + lineEnding).join('').split(matchingNotice).join('');
               }
             }
-            const alias = process.env.ALIAS_NOTE || '';
-            const additions = alias && !body.split(/\r?\n/).includes(alias)
-              ? alias + '\n\n' + mobile : mobile;
             // Track fenced examples without rewriting any authored line endings.
             let fence = null;
             let index = body.length;
@@ -706,7 +702,7 @@ jobs:
             }
             const before = body.slice(0, index);
             const separator = !before || /(?:\r?\n){2}$/.test(before) ? '' : before.endsWith('\n') ? '\n' : '\n\n';
-            body = before + separator + additions + '\n\n' + body.slice(index);
+            body = before + separator + mobile + '\n\n' + body.slice(index);
             fs.writeFileSync(path.join(process.env.RUNNER_TEMP, 'release-notes.md'), body);
 
       - name: Create GitHub Release
