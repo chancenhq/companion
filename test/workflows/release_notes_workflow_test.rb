@@ -74,8 +74,8 @@ class ReleaseNotesWorkflowTest < ActiveSupport::TestCase
   test "ignores legacy alias input while preserving existing release text" do
     alias_note = "Compatibility alias: v0.7.7 (same commit and image)."
     result = compose("Intro\n\n## What's Changed\n* Change", alias_note: alias_note)
-    assert_equal 1, result.scan(alias_note).size
     assert_not_includes result, alias_note
+    assert_equal result, compose(result, alias_note: alias_note)
     existing = "#{alias_note}\n\nIntro\n\n## What's Changed\n"
     assert compose(existing, alias_note: alias_note).start_with?("#{alias_note}\n\nIntro\n\n")
   end
