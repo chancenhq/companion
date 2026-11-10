@@ -16,6 +16,52 @@ class UserTest < ActiveSupport::TestCase
     clear_performed_jobs
   end
 
+  test "transfer_to_family! adopts the destination family's country and clears consent" do
+    user = users(:family_member)
+    user.record_country!("KE", consent_version: "1")
+    destination = Family.create!(name: "RW Family", chancen_country_code: "RW")
+
+    user.transfer_to_family!(destination)
+
+    user.reload
+    assert_equal destination.id, user.family_id
+    assert_equal "RW", user.country_code
+    assert_nil user.consent_version
+    assert_nil user.consent_country_code
+    assert_nil user.consent_accepted_at
+    assert user.requires_consent?
+  end
+
+  test "transfer_to_family! leaves country unchanged when the destination has no country" do
+    user = users(:family_member)
+    user.record_country!("KE")
+    destination = Family.create!(name: "Countryless")
+
+    user.transfer_to_family!(destination)
+
+    assert_equal "KE", user.reload.country_code
+  end
+
+  test "country_code must match the family's country when both are set" do
+    user = users(:family_member) # dylan_family is KE
+    user.country_code = "RW"
+    assert_not user.valid?
+    assert_includes user.errors.attribute_names, :country_code
+  end
+
+  test "country invariant is skipped when the family has no country" do
+    user = users(:family_member)
+    user.family.update_column(:chancen_country_code, nil)
+    user.country_code = "RW"
+    assert user.valid?
+  end
+
+  test "requires_consent? is true when a country is set without matching consent" do
+    user = users(:family_member)
+    user.update_columns(country_code: "KE", consent_country_code: nil, consent_version: nil, consent_accepted_at: nil)
+    assert user.requires_consent?
+  end
+
   test "should be valid" do
     assert @user.valid?, @user.errors.full_messages.to_sentence
   end

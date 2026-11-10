@@ -36,6 +36,10 @@ en:
           new_family_name: "New family/group name"
           new_family_name_placeholder: "Enter a name to create a new family/group"
           new_family_moniker: "New family/group type"
+          new_family_country: "New family/group country"
+          family_country: "Country"
+          country_prompt: "No country"
+          set_country: "Set country"
           set_password: "Set new password"
           password_placeholder: "Leave blank to keep current"
           actions: "Actions"
@@ -112,6 +116,8 @@ en:
         cancel: "Cancel"
         submit: "Permanently remove user"
     families:
+      update:
+        success: "Family/group country updated and members re-synced."
       destroy:
         family_has_active_subscription: "Family/group has an active subscription and cannot be deleted until the subscription is cancelled."
         family_has_users: "Family/group still has users and cannot be deleted."

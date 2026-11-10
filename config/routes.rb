@@ -1094,7 +1094,7 @@ Rails.application.routes.draw do
     end
     resources :sso_identity_blocks, only: [ :destroy ]
     resources :invitations, only: [ :destroy ]
-    resources :families, only: [ :destroy ] do
+    resources :families, only: [ :update, :destroy ] do
       member do
         delete :invitations, to: "invitations#destroy_all"
       end

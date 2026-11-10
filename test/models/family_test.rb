@@ -8,6 +8,31 @@ class FamilyTest < ActiveSupport::TestCase
     @syncable = families(:dylan_family)
   end
 
+  test "chancen_country_code must be a known ChancenCountry code" do
+    family = families(:dylan_family)
+    family.chancen_country_code = "ZZ"
+    assert_not family.valid?
+    assert_includes family.errors.attribute_names, :chancen_country_code
+  end
+
+  test "chancen_country_code may be blank" do
+    family = families(:dylan_family)
+    family.chancen_country_code = nil
+    assert family.valid?
+  end
+
+  test "chancen_country_code is normalized to upcase" do
+    family = families(:dylan_family)
+    family.update!(chancen_country_code: "rw")
+    assert_equal "RW", family.reload.chancen_country_code
+  end
+
+  test "chancen_country returns the matching ChancenCountry" do
+    family = families(:dylan_family)
+    family.update!(chancen_country_code: "KE")
+    assert_equal "KE", family.chancen_country&.code
+  end
+
   test "local_date is the date in the family's zone" do
     family = families(:dylan_family)
     evening_utc = Time.utc(2026, 1, 15, 19, 0, 0)

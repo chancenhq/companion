@@ -78,6 +78,18 @@
             <% end %>
 
             <div class="border-t border-primary">
+              <div class="px-4 py-3 border-b border-primary bg-surface">
+                <%= form_with url: admin_family_path(family), method: :patch, scope: :family, class: "flex items-end gap-2 flex-wrap" do |ff| %>
+                  <div>
+                    <%= ff.label :chancen_country_code, t(".table.family_country"), class: "block text-xs font-medium text-secondary mb-1" %>
+                    <%= ff.select :chancen_country_code,
+                        options_for_select(ChancenCountry.live.map { |country| [country.name, country.code] }, family.chancen_country_code),
+                        { include_blank: t(".table.country_prompt") },
+                        class: "text-sm rounded-lg border border-primary bg-container text-primary px-2 py-1.5" %>
+                  </div>
+                  <%= ff.submit t(".table.set_country"), class: "text-sm rounded-lg bg-inverse text-inverse px-3 py-1.5 cursor-pointer" %>
+                <% end %>
+              </div>
               <table class="w-full">
                 <thead class="bg-surface border-b border-primary">
                   <tr>
@@ -190,6 +202,14 @@
                                       <%= form.select :new_family_moniker,
                                           options_for_select([[t(".family_monikers.family"), "Family"], [t(".family_monikers.group"), "Group"]], "Family"),
                                           {},
+                                          class: "w-full text-sm rounded-lg border border-primary bg-container text-primary px-2 py-1.5" %>
+                                    </div>
+
+                                    <div>
+                                      <%= form.label :new_family_country_code, t(".table.new_family_country"), class: "block text-xs font-medium text-secondary mb-1" %>
+                                      <%= form.select :new_family_country_code,
+                                          options_for_select(ChancenCountry.live.map { |country| [country.name, country.code] }),
+                                          { include_blank: t(".table.country_prompt") },
                                           class: "w-full text-sm rounded-lg border border-primary bg-container text-primary px-2 py-1.5" %>
                                     </div>
                                   </div>
