@@ -69,12 +69,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Seconds since 2020-01-01 UTC: newer than the legacy 20260402 code,
-          # with room below Google Play's limit until 2086. Allocate once per
-          # build attempt, not from the tag date or workflow-specific run number.
-          build_number=$(( $(date -u +%s) - 1577836800 ))
-          if (( build_number <= 20260402 || build_number > 2100000000 )); then
-            echo "::error::Android build number outside the supported range: $build_number"
+          # Android versionCode must strictly increase and stay at or below
+          # Google Play's hard ceiling of 2,100,000,000. The live Play releases
+          # use the UTC YYYYMMDDHH form (e.g. 2026102312 for 2026-10-23 12:00),
+          # which rises with the wall clock and has headroom until the year 2100.
+          # Deriving it here and passing it explicitly keeps the build code in
+          # that range regardless of the pubspec "+N" value, so new builds
+          # supersede the existing Play releases.
+          build_number=$(date -u +%Y%m%d%H)
+          if (( build_number < 2026010100 || build_number > 2100000000 )); then
+            echo "::error::Android build number $build_number outside the publishable range (must be >= 2026010100 and <= 2100000000)"
             exit 1
           fi
           echo "SURE_BUILD_NUMBER=$build_number" >> "$GITHUB_ENV"
