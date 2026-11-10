@@ -47,6 +47,32 @@ class Invitation < ApplicationRecord
     pending.where(email_sent_at: nil).find_by(email: email.to_s.strip.downcase)
   end
 
+  def accept_for(user)
+    return false if user.blank?
+    return false unless pending?
+    return false unless emails_match?(user)
+    return false if would_orphan_owned_accounts?(user)
+
+    transaction do
+      release_provider_item_ownership(user)
+      user.update!(family_id: family_id, role: role.to_s)
+      user.record_country!(country_code) if country_code.present?
+      update!(accepted_at: Time.current)
+      family.auto_share_existing_accounts_with(user)
+    end
+    true
+  end
+
+  # A seat reserved for this email that was never emailed (e.g. bulk
+  # invite), so an email sign-up can claim it without a token.
+  # An emailed invitation needs its token: its address may belong to an
+  # existing household's invitee, and the email alone proves nothing.
+  def self.seat_for(email)
+    return if email.blank?
+
+    pending.where(email_sent_at: nil).find_by(email: email.to_s.strip.downcase)
+  end
+
   # Marks the invitation used by a newly created account and gives that
   # account the invitation's country.
   def accept_signup!(user)
@@ -54,6 +80,18 @@ class Invitation < ApplicationRecord
     user.record_country!(country_code) if country_code.present?
     # A new account joining via invitation must honor the family's default
     # sharing policy. The method
+    # is guarded by a same-family membership check, so it no-ops safely when the
+    # user is not (yet) a member of this invitation's family.
+    family.auto_share_existing_accounts_with(user)
+  end
+
+  # Marks the invitation used by a newly created account and gives that
+  # account the invitation's country.
+  def accept_signup!(user)
+    update!(accepted_at: Time.current)
+    user.record_country!(country_code) if country_code.present?
+    # A new account joining via invitation must honor the family's default
+    # sharing policy, exactly as accept_for does for existing users. The method
     # is guarded by a same-family membership check, so it no-ops safely when the
     # user is not (yet) a member of this invitation's family.
     family.auto_share_existing_accounts_with(user)
