@@ -7,6 +7,21 @@ class Admin::UsersControllerTest < ActionDispatch::IntegrationTest
     sign_in users(:sure_support_staff)
   end
 
+  test "creating a new family via the user form sets its country and binds the member" do
+    user = users(:family_member)
+
+    assert_difference("Family.count", 1) do
+      patch admin_user_url(user), params: {
+        user: { role: "member", new_family_name: "Rwanda Co", new_family_country_code: "RW" }
+      }
+    end
+
+    new_family = Family.order(:created_at).last
+    assert_equal "RW", new_family.chancen_country_code
+    assert_equal new_family.id, user.reload.family_id
+    assert_equal "RW", user.country_code
+  end
+
   test "index leaves the expiring trial summary to hosted system health" do
     get admin_users_url
 

@@ -14,6 +14,8 @@ en:
       models:
         user:
           attributes:
+            country_code:
+              must_match_family: must match the family's country
             base:
               cannot_deactivate_admin_with_other_users: Admin cannot delete account
                 while other users are present. Please delete all members first.

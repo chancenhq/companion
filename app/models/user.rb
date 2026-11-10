@@ -51,6 +51,11 @@ class User < ApplicationRecord
   validates :locale, inclusion: { in: I18n.available_locales.map(&:to_s) }, allow_nil: true
   # The member's own country, from config/chancen_countries.yml.
   validates :country_code, :consent_country_code, inclusion: { in: ->(_) { ChancenCountry.codes } }, allow_nil: true
+  # A member can only belong to their family's country. Enforced only when both
+  # are set, so country-less families (signup bootstrap, self-hosted) and the
+  # pre-confirmation state are unaffected. Kept aligned by invitation accept,
+  # transfer_to_family!, and Admin::FamiliesController#update.
+  validate :country_matches_family
 
   # Password is required on create unless the user is being created via SSO JIT.
   # SSO JIT users have password_digest = nil and authenticate via OIDC only.
@@ -194,6 +199,25 @@ class User < ApplicationRecord
     ChancenCountry.find(country_code)
   end
 
+  # True when the member still needs to accept privacy/terms for their current
+  # country. Distinct from requires_country_confirmation? (which only covers a
+  # missing country): an admin moving a member to a different-country family
+  # clears consent, so they must re-accept even though a country is set.
+  def requires_consent?
+    country_code.present? && consent_country_code != country_code
+  end
+
+  # Invariant backing the "a member belongs to their family's country" rule.
+  # Only fires when both sides are set; the sanctioned writers (invitation
+  # accept, transfer_to_family!, admin family update) keep them aligned.
+  def country_matches_family
+    return if country_code.blank? || family&.chancen_country_code.blank?
+
+    if country_code != family.chancen_country_code
+      errors.add(:country_code, :must_match_family)
+    end
+  end
+
   # Saves the member's country and, when given, which privacy/terms version
   # they accepted for it (Story 1.1, D4).
   def record_country!(code, consent_version: nil)
@@ -216,6 +240,9 @@ class User < ApplicationRecord
       email_verified: email_verified?,
       country_code: country_code,
       requires_country_confirmation: requires_country_confirmation?,
+      requires_consent: requires_consent?,
+      privacy_url: chancen_country&.privacy_url,
+      terms_url: chancen_country&.terms_url,
       consent_version: consent_version,
       consent_country_code: consent_country_code,
       has_password: password_digest.present?
@@ -497,7 +524,18 @@ class User < ApplicationRecord
 
       account_shares.delete_all
 
-      update!(family: new_family, role: role, default_account: moving_default_account ? default_account : nil)
+      # Country follows the family: a member can only belong to their family's
+      # country. When the destination has a (different) country, adopt it and
+      # clear consent so the member re-accepts that country's privacy/terms.
+      target_country = new_family.chancen_country_code
+      country_attrs =
+        if target_country.present? && target_country != country_code
+          { country_code: target_country, consent_version: nil, consent_country_code: nil, consent_accepted_at: nil }
+        else
+          {}
+        end
+
+      update!(family: new_family, role: role, default_account: moving_default_account ? default_account : nil, **country_attrs)
 
       accounts_to_move.each do |account|
         account.update!(family: new_family)

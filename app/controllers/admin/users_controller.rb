@@ -205,7 +205,7 @@ module Admin
       end
 
       def user_params
-        params.require(:user).permit(:role, :family_id, :new_family_name, :new_family_moniker, :password)
+        params.require(:user).permit(:role, :family_id, :new_family_name, :new_family_moniker, :new_family_country_code, :password)
       end
 
       def user_update_attributes
@@ -249,7 +249,8 @@ module Admin
         if new_family_name.present?
           Family.create!(
             name: new_family_name,
-            moniker: user_params[:new_family_moniker].presence || "Family"
+            moniker: user_params[:new_family_moniker].presence || "Family",
+            chancen_country_code: user_params[:new_family_country_code].presence
           )
         elsif user_params[:family_id].present? && user_params[:family_id] != "new"
           Family.find(user_params[:family_id])
