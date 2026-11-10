@@ -60,6 +60,25 @@ jobs:
           printf '%s\n' "$version" > .sure-version
           echo "SURE_BUILD_NAME=$version" >> "$GITHUB_ENV"
 
+      - name: Resolve Android build number
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Android versionCode must strictly increase and stay at or below
+          # Google Play's hard ceiling of 2,100,000,000. The live Play releases
+          # use the UTC YYYYMMDDHH form (e.g. 2026102312 for 2026-10-23 12:00),
+          # which rises with the wall clock and has headroom until the year 2100.
+          # Deriving it here and passing it explicitly keeps the build code in
+          # that range regardless of the pubspec "+N" value, so new builds
+          # supersede the existing Play releases.
+          build_number=$(date -u +%Y%m%d%H)
+          if (( build_number < 2026010100 || build_number > 2100000000 )); then
+            echo "::error::Android build number $build_number outside the publishable range (must be >= 2026010100 and <= 2100000000)"
+            exit 1
+          fi
+          echo "SURE_BUILD_NUMBER=$build_number" >> "$GITHUB_ENV"
+          echo "Android version code: $build_number"
+
       - name: Get dependencies
         working-directory: mobile
         run: flutter pub get
@@ -110,10 +129,10 @@ jobs:
         run: |
           if [ "${{ steps.check_secrets.outputs.has_keystore }}" == "true" ]; then
             echo "Building signed release APK..."
-            flutter build apk --release --build-name="$SURE_BUILD_NAME"
+            flutter build apk --release --build-name="$SURE_BUILD_NAME" --build-number="$SURE_BUILD_NUMBER"
           else
             echo "Building debug-signed APK..."
-            flutter build apk --debug --build-name="$SURE_BUILD_NAME"
+            flutter build apk --debug --build-name="$SURE_BUILD_NAME" --build-number="$SURE_BUILD_NUMBER"
           fi
 
       - name: Upload APK artifact
@@ -129,7 +148,7 @@ jobs:
       - name: Build App Bundle (Release)
         if: steps.check_secrets.outputs.has_keystore == 'true'
         working-directory: mobile
-        run: flutter build appbundle --release --build-name="$SURE_BUILD_NAME"
+        run: flutter build appbundle --release --build-name="$SURE_BUILD_NAME" --build-number="$SURE_BUILD_NUMBER"
 
       - name: Upload AAB artifact
         if: steps.check_secrets.outputs.has_keystore == 'true'
