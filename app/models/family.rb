@@ -170,6 +170,11 @@ class Family < ApplicationRecord
             numericality: { greater_than_or_equal_to: 0, less_than_or_equal_to: 1 }
   validates :categorization_shadow_rate,
             numericality: { greater_than_or_equal_to: 0, less_than_or_equal_to: 1 }
+  # The Chancen country a household belongs to. Nullable: self-hosted single
+  # tenants and the signup bootstrap family can be country-less. Requiredness is
+  # enforced where it matters, by Invitation#family_has_country.
+  validates :chancen_country_code, inclusion: { in: ->(_) { ChancenCountry.codes } }, allow_nil: true
+  normalizes :chancen_country_code, with: ->(code) { code.to_s.strip.upcase.presence }
 
   # Single definition of the ENV-over-column precedence, so the resolver and the
   # settings UI can never disagree about which provider is actually in force.
@@ -276,6 +281,11 @@ class Family < ApplicationRecord
 
   def primary_currency_code
     self.class.normalize_currency_code(currency) || "USD"
+  end
+
+  # The ChancenCountry this household is bound to, or nil when unset.
+  def chancen_country
+    ChancenCountry.find(chancen_country_code)
   end
 
   def default_currency_for_country

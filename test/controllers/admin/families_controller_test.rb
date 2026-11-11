@@ -5,6 +5,26 @@ class Admin::FamiliesControllerTest < ActionDispatch::IntegrationTest
     sign_in users(:sure_support_staff)
   end
 
+  test "update sets the family country and re-syncs members" do
+    family = families(:dylan_family)
+
+    patch admin_family_url(family), params: { family: { chancen_country_code: "RW" } }
+
+    assert_redirected_to admin_users_url
+    assert_equal "RW", family.reload.chancen_country_code
+    family.users.each { |u| assert_equal "RW", u.reload.country_code }
+  end
+
+  test "update is forbidden for non-super-admins" do
+    sign_in users(:family_admin)
+    family = families(:dylan_family)
+
+    patch admin_family_url(family), params: { family: { chancen_country_code: "RW" } }
+
+    assert_redirected_to root_url
+    assert_equal "KE", family.reload.chancen_country_code
+  end
+
   test "destroy deletes an unused family" do
     family = Family.create!(name: "Unused Family")
 

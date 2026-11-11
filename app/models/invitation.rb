@@ -55,8 +55,9 @@ class Invitation < ApplicationRecord
 
     transaction do
       release_provider_item_ownership(user)
+      sync_family_country_with_invitation!
       user.update!(family_id: family_id, role: role.to_s)
-      user.record_country!(country_code) if country_code.present?
+      user.record_country!(country_code, validate: false) if country_code.present?
       update!(accepted_at: Time.current)
       family.auto_share_existing_accounts_with(user)
     end
@@ -88,8 +89,9 @@ class Invitation < ApplicationRecord
   # Marks the invitation used by a newly created account and gives that
   # account the invitation's country.
   def accept_signup!(user)
+    sync_family_country_with_invitation!
     update!(accepted_at: Time.current)
-    user.record_country!(country_code) if country_code.present?
+    user.record_country!(country_code, validate: false) if country_code.present?
     # A new account joining via invitation must honor the family's default
     # sharing policy, exactly as accept_for does for existing users. The method
     # is guarded by a same-family membership check, so it no-ops safely when the
@@ -98,6 +100,19 @@ class Invitation < ApplicationRecord
   end
 
   private
+
+    def sync_family_country_with_invitation!
+      return if family.blank? || country_code.blank?
+      return if family.chancen_country_code.to_s == country_code.to_s
+
+      family.update!(chancen_country_code: country_code)
+    end
+
+    def emails_match?(user)
+      inv_email = email.to_s.strip.downcase
+      usr_email = user.email.to_s.strip.downcase
+      inv_email.present? && usr_email.present? && inv_email == usr_email
+    end
 
     def generate_token
       loop do

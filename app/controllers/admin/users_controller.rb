@@ -86,7 +86,7 @@ module Admin
             raise ActiveRecord::Rollback
           end
 
-          @user.transfer_to_family!(target_family, role: user_params[:role])
+          @user.transfer_to_family!(target_family, role: user_role_param)
         end
 
         if target_family.nil?
@@ -205,12 +205,21 @@ module Admin
       end
 
       def user_params
-        params.require(:user).permit(:role, :family_id, :new_family_name, :new_family_moniker, :password)
+        params.require(:user).permit(:family_id, :new_family_name, :new_family_moniker, :new_family_country_code, :password)
+      end
+
+      def user_role_param
+        role = params.dig(:user, :role).to_s
+        return if role.blank?
+        return unless User.roles.key?(role) || User.roles.value?(role)
+
+        role
       end
 
       def user_update_attributes
         attrs = {}
-        attrs[:role] = user_params[:role] if user_params[:role].present?
+        role = user_role_param
+        attrs[:role] = role if role.present?
         if user_params[:password].present? && @user.has_local_password?
           attrs[:password] = user_params[:password]
         end
@@ -249,7 +258,8 @@ module Admin
         if new_family_name.present?
           Family.create!(
             name: new_family_name,
-            moniker: user_params[:new_family_moniker].presence || "Family"
+            moniker: user_params[:new_family_moniker].presence || "Family",
+            chancen_country_code: user_params[:new_family_country_code].presence
           )
         elsif user_params[:family_id].present? && user_params[:family_id] != "new"
           Family.find(user_params[:family_id])
@@ -263,9 +273,10 @@ module Admin
       end
 
       def demoting_last_super_admin?
-        user_params[:role].present? &&
+        role = user_role_param
+        role.present? &&
           @user.super_admin? &&
-          user_params[:role] != "super_admin" &&
+          role != "super_admin" &&
           User.where(role: :super_admin).where.not(id: @user.id).none?
       end
 

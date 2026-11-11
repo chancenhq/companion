@@ -1,6 +1,7 @@
 require "test_helper"
 
 class EmailConfirmationMailerTest < ActionMailer::TestCase
+  include Rails.application.routes.url_helpers
   test "signup verification email uses the verify subject, body and CTA" do
     user = users(:unverified)
     assert_not user.pending_email_change?
