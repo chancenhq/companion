@@ -220,12 +220,18 @@ class User < ApplicationRecord
 
   # Saves the member's country and, when given, which privacy/terms version
   # they accepted for it (Story 1.1, D4).
-  def record_country!(code, consent_version: nil)
+  def record_country!(code, consent_version: nil, validate: true)
     attrs = { country_code: code }
     if consent_version.present?
       attrs.merge!(consent_version: consent_version, consent_country_code: code, consent_accepted_at: Time.current)
     end
-    update!(attrs)
+
+    if validate
+      update!(attrs)
+    else
+      assign_attributes(attrs)
+      save!(validate: false)
+    end
   end
 
   # User shape returned to the mobile app (auth responses, SSO exchange, /users/me).
