@@ -4806,6 +4806,28 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/ErrorResponse"
+  "/api/v1/app_config":
+    get:
+      summary: Retrieve public mobile app configuration
+      tags:
+      - App Config
+      description: Returns public, country-specific Contact Us links used by the mobile
+        app.
+      responses:
+        '200':
+          description: app configuration returned
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - whatsapp_group_urls
+                properties:
+                  whatsapp_group_urls:
+                    type: object
+                    additionalProperties:
+                      type: string
+                      format: uri
   "/api/v1/auth/signup":
     post:
       summary: Sign up a new user

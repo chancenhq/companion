@@ -127,9 +127,13 @@ class PreferencesService {
     final prefs = await _preferences;
     final raw = prefs.getString(_whatsappUrlsKey);
     if (raw == null) return {};
-    final decoded = jsonDecode(raw);
-    if (decoded is! Map) return {};
-    return Map<String, String>.from(decoded);
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return {};
+      return Map<String, String>.from(decoded);
+    } on FormatException {
+      return {};
+    }
   }
 
   Future<void> setWhatsappUrls(Map<String, String> urls) async {
