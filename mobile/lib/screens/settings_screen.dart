@@ -3,6 +3,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:upgrader/upgrader.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../providers/app_config_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/categories_provider.dart';
 import '../providers/merchants_provider.dart';
@@ -95,8 +96,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
 
       final available = _manualUpgrader.isUpdateAvailable();
-      final storeVersion = _manualUpgrader.versionInfo?.appStoreVersion
-          ?.toString();
+      final storeVersion =
+          _manualUpgrader.versionInfo?.appStoreVersion?.toString();
       final storeUrl = _manualUpgrader.versionInfo?.appStoreListingURL;
 
       if (available) {
@@ -323,7 +324,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _launchContactUrl(BuildContext context) async {
     final l = AppLocalizations.of(context);
-    final uri = Uri.parse('https://chat.whatsapp.com/IVBXS2QtJpqIFlZYoSPD1t');
+    final appConfig = Provider.of<AppConfigProvider>(context, listen: false);
+    final countryCode =
+        Provider.of<AuthProvider>(context, listen: false).user?.countryCode;
+    var uri = appConfig.whatsappUriForCode(countryCode);
+    if (uri == null) {
+      await appConfig.load();
+      uri = appConfig.whatsappUriForCode(countryCode);
+    }
+    if (uri == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(l.settingsContactOpenLinkError)));
+      }
+      return;
+    }
     final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!launched && context.mounted) {
       ScaffoldMessenger.of(
@@ -522,8 +538,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Text(
                     l.settingsProxyHeadersNote,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                   ),
                 ],
               ),
@@ -617,7 +633,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               Text(
                                 authProvider.user?.displayName ??
                                     l.settingsUserFallback,
-                                style: Theme.of(context).textTheme.titleLarge
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleLarge
                                     ?.copyWith(fontWeight: FontWeight.bold),
                               ),
                               const SizedBox(height: 4),
