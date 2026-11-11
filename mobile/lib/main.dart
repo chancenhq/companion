@@ -252,8 +252,9 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
       _markLockedIfEnabled();
-    } else if (state == AppLifecycleState.resumed && _isLocked) {
-      // Lock screen is already showing via build(); biometric auto-triggers there.
+    } else if (state == AppLifecycleState.resumed) {
+      if (_hasBackendUrl) _refreshAppConfig();
+      // If set, the lock screen is already showing and biometric auto-triggers there.
     }
   }
 
@@ -351,6 +352,7 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
         _hasBackendUrl = hasUrl;
         _isCheckingConfig = false;
       });
+      if (hasUrl) _refreshAppConfig();
     }
   }
 
@@ -371,7 +373,11 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
     setState(() {
       _hasBackendUrl = true;
     });
-    Provider.of<AppConfigProvider>(context, listen: false).load();
+    _refreshAppConfig();
+  }
+
+  void _refreshAppConfig() {
+    unawaited(Provider.of<AppConfigProvider>(context, listen: false).load());
   }
 
   void _trackScreenIfChanged(String name) {

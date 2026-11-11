@@ -3,6 +3,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:upgrader/upgrader.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../providers/app_config_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/categories_provider.dart';
 import '../providers/merchants_provider.dart';
@@ -323,7 +324,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _launchContactUrl(BuildContext context) async {
     final l = AppLocalizations.of(context);
-    final uri = Uri.parse('https://chat.whatsapp.com/IVBXS2QtJpqIFlZYoSPD1t');
+    final appConfig = Provider.of<AppConfigProvider>(context, listen: false);
+    final countryCode =
+        Provider.of<AuthProvider>(context, listen: false).user?.countryCode;
+    var uri = appConfig.whatsappUriForCode(countryCode);
+    if (uri == null) {
+      await appConfig.load();
+      uri = appConfig.whatsappUriForCode(countryCode);
+    }
+    if (uri == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(l.settingsContactOpenLinkError)));
+      }
+      return;
+    }
     final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!launched && context.mounted) {
       ScaffoldMessenger.of(

@@ -1,0 +1,35 @@
+<div class="space-y-4">
+  <div>
+    <h2 class="font-medium mb-1"><%= t(".title") %></h2>
+    <p class="text-secondary text-sm mb-4"><%= t(".description") %></p>
+  </div>
+
+  <% [
+    { field: :whatsapp_group_url_ke, env: "WHATSAPP_GROUP_URL_KE", country: t(".country_ke") },
+    { field: :whatsapp_group_url_rw, env: "WHATSAPP_GROUP_URL_RW", country: t(".country_rw") },
+    { field: :whatsapp_group_url_za, env: "WHATSAPP_GROUP_URL_ZA", country: t(".country_za") },
+    { field: :whatsapp_group_url_gh, env: "WHATSAPP_GROUP_URL_GH", country: t(".country_gh") }
+  ].each do |entry| %>
+    <%= styled_form_with model: Setting.new,
+                         url: settings_chancen_path,
+                         method: :patch,
+                         data: {
+                           controller: "auto-submit-form",
+                           "auto-submit-form-trigger-event-value": "blur"
+                         } do |form| %>
+      <%= form.text_field entry[:field],
+                          label: "#{entry[:country]} #{t(".url_label")}",
+                          placeholder: t(".url_placeholder"),
+                          value: ENV.fetch(entry[:env], Setting.public_send(entry[:field])),
+                          disabled: ENV[entry[:env]].present?,
+                          autocomplete: "off",
+                          autocapitalize: "none",
+                          spellcheck: "false",
+                          inputmode: "url",
+                          data: { "auto-submit-form-target": "auto" } %>
+      <% if ENV[entry[:env]].present? %>
+        <p class="text-sm text-secondary mt-1"><%= t(".env_configured_message") %></p>
+      <% end %>
+    <% end %>
+  <% end %>
+</div>
