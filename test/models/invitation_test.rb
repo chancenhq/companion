@@ -143,6 +143,21 @@ class InvitationTest < ActiveSupport::TestCase
     assert_not invitation.would_orphan_owned_accounts?(user)
   end
 
+  test "accept_for refuses to leave owned accounts in another family" do
+    user = users(:family_member)
+    original_family = user.family
+    account = accounts(:depository)
+    account.update!(owner: user)
+    destination = Family.create!(name: "Invited Family", chancen_country_code: "KE")
+    invitation = destination.invitations.create!(email: user.email, role: "member", inviter: @inviter)
+
+    assert invitation.would_orphan_owned_accounts?(user)
+    assert_not invitation.accept_for(user)
+    assert_equal original_family, user.reload.family
+    assert_equal user, account.reload.owner
+    assert_nil invitation.reload.accepted_at
+  end
+
   test "accept_for applies guest role defaults" do
     user = users(:family_member)
     user.update!(

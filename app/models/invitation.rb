@@ -64,21 +64,37 @@ class Invitation < ApplicationRecord
     true
   end
 
-  # A seat reserved for this email that was never emailed (e.g. bulk
-  # invite), so an email sign-up can claim it without a token.
-  # An emailed invitation needs its token: its address may belong to an
-  # existing household's invitee, and the email alone proves nothing.
-  def self.seat_for(email)
-    return if email.blank?
+  # would_orphan_owned_accounts? blocks the move when the user owns accounts
+  # that would be left behind, but a provider item can be owned without owning
+  # any account (it may have generated none yet, or its accounts belong to
+  # someone else). Such an item keeps its old family_id while its owner leaves,
+  # and the next save fails ProviderItemOwnable's same-family validation --
+  # which would leave the connection unsyncable. Release ownership instead: the
+  # item reverts to admin-managed, exactly as before ownership existed.
+  def release_provider_item_ownership(user)
+    return if user.family_id.blank? || user.family_id == family_id
 
-    pending.where(email_sent_at: nil).find_by(email: email.to_s.strip.downcase)
+    ProviderItemOwnable.owned_item_classes.each do |item_class|
+      item_class.where(owner_id: user.id)
+                .where.not(family_id: family_id)
+                .update_all(owner_id: nil, updated_at: Time.current)
+    end
+  end
+
+  def would_orphan_owned_accounts?(user)
+    return false if user.blank?
+    return false if user.family_id.blank?
+    return false if user.family_id == family_id
+
+    user.owned_accounts.where.not(family_id: family_id).exists?
   end
 
   # Marks the invitation used by a newly created account and gives that
   # account the invitation's country.
   def accept_signup!(user)
+    sync_family_country_with_invitation!
     update!(accepted_at: Time.current)
-    user.record_country!(country_code) if country_code.present?
+    user.record_country!(country_code, validate: false) if country_code.present?
     # A new account joining via invitation must honor the family's default
     # sharing policy. The method
     # is guarded by a same-family membership check, so it no-ops safely when the

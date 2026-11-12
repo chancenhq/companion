@@ -67,30 +67,40 @@ class MobileReleaseWorkflowTest < ActiveSupport::TestCase
     assert eligible?("workflow_dispatch", "refs/heads/main", "v2026.11.1-p202611011234")
   end
 
-  test "Android build numbers advance across days years and retries of the same tag" do
+  test "Android build numbers use UTC calendar hours across days and years" do
     timestamps = %w[2026-11-03T23:59:59Z 2026-11-04T00:00:00Z 2026-12-31T23:59:59Z 2027-01-01T00:00:00Z]
     codes = timestamps.map do |timestamp|
-      output, status, env = android_number(Time.iso8601(timestamp).to_i)
+      expected = Time.iso8601(timestamp).utc.strftime("%Y%m%d%H").to_i
+      output, status, env = android_number(expected)
       assert status.success?, output
-      code = env.delete_prefix("SURE_BUILD_NUMBER=").to_i
-      assert_operator code, :>, 20260402
-      assert_operator code, :<=, 2100000000
-      code
+      assert_equal "SURE_BUILD_NUMBER=#{expected}", env
+      expected
     end
+    assert_equal [ 2026110323, 2026110400, 2026123123, 2027010100 ], codes
     assert_equal codes.sort.uniq, codes
-    assert_equal 1, codes[1] - codes[0]
-    assert_equal 1, codes[3] - codes[2]
   end
 
-  test "Android rejects legacy or overflowing version codes" do
-    [ 1577836800, 1577836800 + 20260402, 1577836800 + 2100000001 ].each do |timestamp|
-      output, status, env = android_number(timestamp)
+  test "Android retries within the same UTC hour retain the same version code" do
+    codes = %w[2026-11-04T12:00:00Z 2026-11-04T12:59:59Z].map do |timestamp|
+      output, status, env = android_number(Time.iso8601(timestamp).utc.strftime("%Y%m%d%H").to_i)
+      assert status.success?, output
+      env
+    end
+    assert_equal [ "SURE_BUILD_NUMBER=2026110412" ] * 2, codes
+  end
+
+  test "Android rejects version codes outside the publishable range" do
+    [ 2026010099, 2100000001 ].each do |code|
+      output, status, env = android_number(code)
       assert_not status.success?, output
-      assert_includes output, "outside the supported range"
+      assert_includes output, "outside the publishable range"
       assert_empty env
     end
-    output, status, = android_number(1577836800 + 2100000000)
-    assert status.success?, output
+    [ 2026010100, 2100000000 ].each do |code|
+      output, status, env = android_number(code)
+      assert status.success?, output
+      assert_equal "SURE_BUILD_NUMBER=#{code}", env
+    end
   end
 
   test "Android APK and AAB commands receive the same dynamic build number" do
@@ -139,9 +149,9 @@ class MobileReleaseWorkflowTest < ActiveSupport::TestCase
   end
 
   private
-    def android_number(timestamp)
+    def android_number(build_number)
       Dir.mktmpdir do |dir|
-        File.write(File.join(dir, "date"), "#!/bin/bash\necho #{timestamp}\n")
+        File.write(File.join(dir, "date"), "#!/bin/bash\n[[ \"$*\" == \"-u +%Y%m%d%H\" ]] || exit 2\necho #{build_number}\n")
         FileUtils.chmod(0755, File.join(dir, "date"))
         env_path = File.join(dir, "env")
         script = workflow("flutter-build").fetch("jobs").fetch("build-android").fetch("steps")
