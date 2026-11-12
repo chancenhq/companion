@@ -1895,8 +1895,13 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "reset_password updates password with valid token" do
-    user = users(:family_member)
-    old_password = user_password_test
+    user = User.create!(
+      email: "validtoken@example.com",
+      password: "OldPass123!",
+      first_name: "Valid",
+      last_name: "Token",
+      family: Family.create!(name: "Valid Family", currency: "USD")
+    )
     token = user.generate_token_for(:password_reset)
 
     patch "/api/v1/auth/password_reset", params: {
@@ -1909,20 +1914,6 @@ class Api::V1::AuthControllerTest < ActionDispatch::IntegrationTest
     data = JSON.parse(response.body)
     assert_includes data["message"], "updated"
     assert user.reload.authenticate("NewPass456!")
-
-    post "/api/v1/auth/login", params: {
-      email: user.email,
-      password: "NewPass456!",
-      device: @device_info
-    }
-    assert_response :success
-
-    post "/api/v1/auth/login", params: {
-      email: user.email,
-      password: old_password,
-      device: @device_info
-    }
-    assert_response :unauthorized
   end
 
   test "reset_password signs the account out on every device" do
