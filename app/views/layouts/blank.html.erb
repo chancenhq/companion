@@ -1,5 +1,7 @@
 <%= render "layouts/shared/htmldoc" do %>
-  <div class="min-h-screen bg-surface text-primary font-medium flex flex-col">
+  <%# htmldoc locks html/body to the viewport height with overflow hidden, so
+      this wrapper has to be the scroll container (as in the auth layout). %>
+  <div class="h-full overflow-y-auto bg-surface text-primary font-medium flex flex-col">
     <div class="flex-1">
       <%= yield %>
     </div>
