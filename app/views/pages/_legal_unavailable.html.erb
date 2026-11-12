@@ -1,0 +1,7 @@
+<div class="max-w-3xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+  <div class="bg-container border border-primary rounded-xl p-6 sm:p-10 shadow-sm">
+    <h1 class="text-2xl sm:text-3xl font-bold text-primary mb-4"><%= t(".heading", document: document, country: @country.name) %></h1>
+    <p class="text-subdued mb-3"><%= t(".body", document: document.downcase, country: @country.name) %></p>
+    <p class="text-subdued"><%= t(".contact_html", email: mail_to(@country.escalation_contact, @country.escalation_contact, class: "text-accent hover:underline")) %></p>
+  </div>
+</div>
