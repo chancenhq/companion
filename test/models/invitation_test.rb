@@ -295,3 +295,4 @@ class InvitationTest < ActiveSupport::TestCase
     assert_equal old_family, item.family
     assert item.valid?, "the left-behind item must still be savable"
   end
+end
