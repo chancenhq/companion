@@ -121,14 +121,34 @@ class PagesController < ApplicationController
   end
 
   def privacy
-    render layout: "blank"
+    render_legal_document(:privacy)
   end
 
   def terms
-    render layout: "blank"
+    render_legal_document(:terms)
   end
 
   private
+    # Published legal documents, as app/views/pages/<document>_<country>.html.erb
+    # templates. A live country without one renders the "not yet published"
+    # notice instead of another country's policy.
+    LEGAL_DOCUMENT_COUNTRIES = {
+      privacy: %w[KE RW ZA],
+      terms: %w[KE RW ZA]
+    }.freeze
+    DEFAULT_LEGAL_COUNTRY = "KE"
+
+    def render_legal_document(document)
+      @country = ChancenCountry.find(params[:country].presence || DEFAULT_LEGAL_COUNTRY)
+      return head :not_found unless @country&.live?
+
+      if LEGAL_DOCUMENT_COUNTRIES.fetch(document).include?(@country.code)
+        @legal_template = "pages/#{document}_#{@country.code.downcase}"
+      end
+
+      render document, layout: "blank"
+    end
+
     def preferences_params
       prefs = params.require(:preferences)
       {}.tap do |permitted|

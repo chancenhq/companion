@@ -90,13 +90,15 @@ class Invitation < ApplicationRecord
   end
 
   # Marks the invitation used by a newly created account and gives that
-  # account the invitation's country.
+  # account the invitation's country. The signup flow has already placed the
+  # user in the invitation's family and role, so this only records acceptance,
+  # syncs the family country, and applies the default sharing policy.
   def accept_signup!(user)
     sync_family_country_with_invitation!
     update!(accepted_at: Time.current)
     user.record_country!(country_code, validate: false) if country_code.present?
     # A new account joining via invitation must honor the family's default
-    # sharing policy. The method
+    # sharing policy, exactly as accept_for does for existing users. The method
     # is guarded by a same-family membership check, so it no-ops safely when the
     # user is not (yet) a member of this invitation's family.
     family.auto_share_existing_accounts_with(user)

@@ -37,6 +37,10 @@ en:
       title: Terms of Service
       heading: Terms of Service
       placeholder: Terms of service content will be displayed here.
+    legal_unavailable:
+      heading: "%{document} for %{country}"
+      body: "The %{document} for %{country} has not been published yet."
+      contact_html: "For questions in the meantime, contact %{email}."
     dashboard:
       welcome: "Welcome back, %{name}"
       subtitle: "Here's what's happening with your finances"
