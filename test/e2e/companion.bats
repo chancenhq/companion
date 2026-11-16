@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-COMPOSE=(docker compose -f compose.e2e.yml)
+COMPOSE=(docker compose -p companion-e2e -f compose.e2e.yml)
 BASE_URL="http://127.0.0.1:13000"
 STATE_FILE="${BATS_FILE_TMPDIR}/companion-e2e-state"
 ARTIFACT_DIR="${E2E_ARTIFACT_DIR:-tmp/companion-e2e}"
