@@ -1,9 +1,16 @@
 #!/usr/bin/env bats
 
-COMPOSE=(docker compose -p companion-e2e -f compose.e2e.yml)
 BASE_URL="http://127.0.0.1:13000"
 STATE_FILE="${BATS_FILE_TMPDIR}/companion-e2e-state"
+PROJECT_FILE="${BATS_FILE_TMPDIR}/companion-e2e-project"
 ARTIFACT_DIR="${E2E_ARTIFACT_DIR:-tmp/companion-e2e}"
+
+# Run-specific Compose project so setup/teardown only ever touch this run's
+# stack. Without a unique name, `down --volumes --remove-orphans` could delete
+# a developer stack or a concurrent run that happened to share the name.
+compose() {
+  docker compose -p "$(cat "${PROJECT_FILE}")" -f compose.e2e.yml "$@"
+}
 
 wait_for_app() {
   for _ in $(seq 1 60); do
@@ -27,19 +34,21 @@ setup_file() {
   fi
   mkdir -p "${ARTIFACT_DIR}"
 
-  "${COMPOSE[@]}" up -d --build
+  printf 'companion-e2e-%s-%s\n' "$$" "${RANDOM}" > "${PROJECT_FILE}"
+
+  compose up -d --build
 
   wait_for_app
 
-  seed_json=$("${COMPOSE[@]}" exec -T app \
+  seed_json=$(compose exec -T app \
     bundle exec rails runner test/e2e/seed_invitation.rb | tail -n 1)
   [ -n "${seed_json}" ]
   printf '%s\n' "${seed_json}" | jq -e . > "${STATE_FILE}"
 }
 
 teardown_file() {
-  "${COMPOSE[@]}" logs --no-color > "${ARTIFACT_DIR}/docker-compose.log" 2>&1 || true
-  "${COMPOSE[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
+  compose logs --no-color > "${ARTIFACT_DIR}/docker-compose.log" 2>&1 || true
+  compose down --volumes --remove-orphans >/dev/null 2>&1 || true
 }
 
 @test "the production image exposes the Rails health endpoint" {
@@ -81,7 +90,7 @@ teardown_file() {
 
   status_code=$(printf '%s\n' "${response}" | tail -n 1)
   [ "${status_code}" -eq 200 ]
-  verified=$("${COMPOSE[@]}" exec -T app bundle exec rails runner \
+  verified=$(compose exec -T app bundle exec rails runner \
     'puts User.find_by!(email: "companion-e2e-verification@example.com").email_verified?' | tail -n 1)
   [ "${verified}" = "true" ]
 }
@@ -126,20 +135,20 @@ teardown_file() {
 
 @test "the application preserves storage across a container restart" {
   marker="companion-e2e-persisted"
-  "${COMPOSE[@]}" exec -T app sh -c "printf '%s' '${marker}' > /rails/storage/e2e-marker"
-  "${COMPOSE[@]}" up -d --force-recreate app
+  compose exec -T app sh -c "printf '%s' '${marker}' > /rails/storage/e2e-marker"
+  compose up -d --force-recreate app
   wait_for_app
 
-  run "${COMPOSE[@]}" exec -T app cat /rails/storage/e2e-marker
+  run compose exec -T app cat /rails/storage/e2e-marker
   [ "${status}" -eq 0 ]
   [ "${output}" = "${marker}" ]
 }
 
 @test "the application stops without a forced kill" {
   start_time=$(date +%s)
-  "${COMPOSE[@]}" stop -t 30 app
+  compose stop -t 30 app
   duration=$(( $(date +%s) - start_time ))
-  container_id=$("${COMPOSE[@]}" ps -aq app)
+  container_id=$(compose ps -aq app)
   exit_code=$(docker inspect -f '{{.State.ExitCode}}' "${container_id}")
 
   [ "${duration}" -lt 30 ]
