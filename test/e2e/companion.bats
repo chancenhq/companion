@@ -9,7 +9,13 @@ ARTIFACT_DIR="${E2E_ARTIFACT_DIR:-tmp/companion-e2e}"
 # stack. Without a unique name, `down --volumes --remove-orphans` could delete
 # a developer stack or a concurrent run that happened to share the name.
 compose() {
-  docker compose -p "$(cat "${PROJECT_FILE}")" -f compose.e2e.yml "$@"
+  local project
+  project="$(cat "${PROJECT_FILE}" 2>/dev/null)" || return 1
+  if [ -z "${project}" ]; then
+    echo "compose: missing or empty project name file: ${PROJECT_FILE}" >&2
+    return 1
+  fi
+  docker compose -p "${project}" -f compose.e2e.yml "$@"
 }
 
 wait_for_app() {
