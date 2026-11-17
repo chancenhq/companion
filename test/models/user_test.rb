@@ -66,6 +66,76 @@ class UserTest < ActiveSupport::TestCase
     assert @user.valid?, @user.errors.full_messages.to_sentence
   end
 
+  test "find_by_email_with_legacy_fallback matches encrypted and legacy plaintext email rows" do
+    assert_equal @user, User.find_by_email_with_legacy_fallback(" #{@user.email.upcase} ")
+
+    email = store_legacy_plaintext_email(@user)
+
+    assert_equal @user, User.find_by_email_with_legacy_fallback(email.upcase)
+    assert_nil User.find_by_email_with_legacy_fallback("")
+    assert_nil User.find_by_email_with_legacy_fallback("missing@example.com")
+  end
+
+  test "authenticate_by_email checks the password for legacy plaintext email rows" do
+    email = store_legacy_plaintext_email(@user)
+
+    assert_equal @user, User.authenticate_by_email(email: email, password: user_password_test)
+    assert_nil User.authenticate_by_email(email: email, password: "wrong")
+    assert_nil User.authenticate_by_email(email: "missing@example.com", password: user_password_test)
+  end
+
+  test "authenticate_by_email uses authenticate_by for encrypted rows and unknown emails" do
+    User.expects(:authenticate_by).with(email: @user.email, password: "wrong").returns(nil)
+    assert_nil User.authenticate_by_email(email: @user.email, password: "wrong")
+
+    User.expects(:authenticate_by).with(email: "missing@example.com", password: "x").returns(nil)
+    assert_nil User.authenticate_by_email(email: "missing@example.com", password: "x")
+  end
+
+  test "find_by_email_with_legacy_fallback does not match a row by its stored ciphertext" do
+    ciphertext = User.connection.select_value(
+      User.sanitize_sql([ "SELECT email FROM users WHERE id = ?", @user.id ])
+    )
+
+    assert_nil User.find_by_email_with_legacy_fallback(ciphertext)
+    assert_nil User.authenticate_by_email(email: ciphertext, password: user_password_test)
+  end
+
+  test "email uniqueness covers legacy plaintext email rows" do
+    email = store_legacy_plaintext_email(@user)
+
+    duplicate = User.new(
+      family: @user.family,
+      email: " #{email.upcase} ",
+      password: user_password_test,
+      password_confirmation: user_password_test
+    )
+
+    assert_not duplicate.valid?
+    assert duplicate.errors.of_kind?(:email, :taken)
+  end
+
+  test "a legacy plaintext email row stays valid on its own" do
+    store_legacy_plaintext_email(@user)
+
+    assert User.find(@user.id).valid?
+  end
+
+  test "authenticate_by_email rejects a blank password for legacy plaintext email rows" do
+    email = store_legacy_plaintext_email(@user)
+    @user.update_column(:password_digest, BCrypt::Password.create(""))
+
+    assert_nil User.authenticate_by_email(email: email, password: "")
+    assert_nil User.authenticate_by_email(email: email, password: nil)
+  end
+
+  test "authenticate_by_email accepts a whitespace-only password like authenticate_by" do
+    email = store_legacy_plaintext_email(@user)
+    @user.update_column(:password_digest, BCrypt::Password.create("        "))
+
+    assert_equal @user, User.authenticate_by_email(email: email, password: "        ")
+  end
+
   # email
   test "email must be present" do
     potential_user = User.new(
@@ -1257,6 +1327,37 @@ class UserTest < ActiveSupport::TestCase
     assert_not users(:family_admin).manages_instance_settings?
   end
 
+  test "generated demo families do not revoke the only real family's instance settings access" do
+    Rails.configuration.stubs(:app_mode).returns("self_hosted".inquiry)
+    real_family = families(:dylan_family)
+    Family.where.not(id: real_family.id).each do |demo_family|
+      demo_family.start_subscription!(Subscription::DEMO_STRIPE_ID)
+    end
+
+    assert users(:family_admin).manages_instance_settings?
+    assert_not users(:family_member).manages_instance_settings?
+    assert_not users(:empty).manages_instance_settings?, "demo admins must not manage instance settings"
+
+    # Even a demo-only installation must not grant its public demo login access.
+    Family.stubs(:count).returns(1)
+    assert_not users(:empty).manages_instance_settings?
+    Family.unstub(:count)
+
+    # An unmarked household still counts, even if it calls itself Demo Family.
+    Family.create!(name: "Demo Family")
+    assert_not users(:family_admin).manages_instance_settings?
+  end
+
+  test "demo exclusion does not grant family admins instance access in managed mode" do
+    Family.where.not(id: families(:dylan_family).id).each do |demo_family|
+      demo_family.start_subscription!(Subscription::DEMO_STRIPE_ID)
+    end
+    Rails.configuration.stubs(:app_mode).returns("managed".inquiry)
+
+    assert_not users(:family_admin).manages_instance_settings?
+    assert users(:sure_support_staff).manages_instance_settings?
+  end
+
   # First user role assignment tests
   test "role_for_new_family_creator returns super_admin when no users exist" do
     # Delete all users to simulate fresh instance
@@ -1622,5 +1723,27 @@ class UserTest < ActiveSupport::TestCase
   test "update_manual_account_order rejects unknown groups" do
     assert_not @user.update_manual_account_order("transactions", [ accounts(:depository).id ])
     assert_equal({}, @user.reload.manual_account_order)
+  end
+
+  test "reports biggest expenses limit defaults to 10 and only returns an offered choice" do
+    @user.update_columns(preferences: {})
+    assert_equal 10, @user.reports_biggest_expenses_limit
+
+    @user.update_columns(preferences: { "reports_biggest_expenses_limit" => 25 })
+    assert_equal 25, @user.reload.reports_biggest_expenses_limit
+
+    @user.update_columns(preferences: { "reports_biggest_expenses_limit" => 7 })
+    assert_equal 10, @user.reload.reports_biggest_expenses_limit
+  end
+
+  test "update_reports_preferences stores an offered biggest expenses limit alongside the section keys" do
+    @user.update_columns(preferences: { "reports_section_order" => %w[net_worth] })
+
+    assert @user.update_reports_preferences("reports_biggest_expenses_limit" => "5")
+    assert_equal 5, @user.reload.preferences["reports_biggest_expenses_limit"]
+    assert_equal %w[net_worth], @user.preferences["reports_section_order"]
+
+    assert @user.update_reports_preferences("reports_biggest_expenses_limit" => "1000")
+    assert_equal 5, @user.reload.preferences["reports_biggest_expenses_limit"]
   end
 end
