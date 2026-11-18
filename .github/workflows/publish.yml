@@ -38,9 +38,6 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  # Select the release channel and legacy alias through December; no date pin.
-  COMPATIBILITY_CHANNEL: 'alpha'
-  COMPATIBILITY_VERSION: '0.7.7-alpha.7'
 
 permissions:
   contents: write

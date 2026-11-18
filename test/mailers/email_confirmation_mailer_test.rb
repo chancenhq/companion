@@ -1,7 +1,6 @@
 require "test_helper"
 
 class EmailConfirmationMailerTest < ActionMailer::TestCase
-  include Rails.application.routes.url_helpers
   test "signup verification email uses the verify subject, body and CTA" do
     user = users(:unverified)
     assert_not user.pending_email_change?
@@ -24,7 +23,7 @@ class EmailConfirmationMailerTest < ActionMailer::TestCase
       assert_no_match(/translation missing/, body)
       assert_no_match(/#{Regexp.escape(change_body)}/, body)
       assert_match expiry, body
-      assert_match new_email_confirmation_path, body
+      assert_match confirmation_path, body
     end
   end
 
@@ -50,7 +49,14 @@ class EmailConfirmationMailerTest < ActionMailer::TestCase
       assert_no_match(/translation missing/, body)
       assert_no_match(/#{Regexp.escape(verify_body)}/, body)
       assert_match expiry, body
-      assert_match new_email_confirmation_path, body
+      assert_match confirmation_path, body
     end
   end
+
+  private
+    # Including the route helpers would make every `test_*` route helper
+    # (e.g. test_connection_admin_sso_provider_path) a Minitest test.
+    def confirmation_path
+      Rails.application.routes.url_helpers.new_email_confirmation_path
+    end
 end
