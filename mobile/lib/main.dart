@@ -18,6 +18,7 @@ import 'screens/login_screen.dart';
 import 'screens/biometric_lock_screen.dart';
 import 'screens/main_navigation_screen.dart';
 import 'screens/onboarding_screen.dart';
+import 'screens/reset_password_screen.dart';
 import 'screens/sso_onboarding_screen.dart';
 import 'services/api_config.dart';
 import 'services/connectivity_service.dart';
@@ -213,6 +214,9 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
   bool _isCheckingConfig = true;
   bool _hasBackendUrl = false;
   bool _isLocked = false;
+  // The initial-link and stream paths can both deliver the same reset URI;
+  // track the last token opened so the screen is only pushed once per token.
+  String? _handledResetToken;
   bool _onboardingComplete = true; // assume complete until checked (no flash)
   late final AppLinks _appLinks;
   StreamSubscription<Uri>? _linkSubscription;
@@ -276,7 +280,7 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
         TelemetryService.instance.addBreadcrumb(
           'deep_links',
           'initial_link_received',
-          data: {'recognized': _isSsoCallback(uri)},
+          data: {'recognized': _isSsoCallback(uri) || _isPasswordReset(uri)},
         );
         _handleDeepLink(uri);
       }
@@ -311,20 +315,43 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
 
   void _handleDeepLink(Uri uri) {
     final isSsoCallback = _isSsoCallback(uri);
+    final isPasswordReset = _isPasswordReset(uri);
     TelemetryService.instance.addBreadcrumb(
       'deep_links',
       'link_received',
-      data: {'recognized': isSsoCallback},
+      data: {'recognized': isSsoCallback || isPasswordReset},
     );
 
     if (isSsoCallback) {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       authProvider.handleSsoCallback(uri);
+      return;
+    }
+
+    if (isPasswordReset) {
+      _handlePasswordResetLink(uri);
     }
   }
 
   bool _isSsoCallback(Uri uri) =>
       uri.scheme == 'sureapp' && uri.host == 'oauth';
+
+  bool _isPasswordReset(Uri uri) =>
+      uri.scheme == 'sureapp' && uri.host == 'password-reset';
+
+  // Opens the reset form from a password-reset deep link. The token is never
+  // logged. ResetPasswordScreen pops back to the first route once the password
+  // is changed, returning the user to login/home.
+  void _handlePasswordResetLink(Uri uri) {
+    final token = uri.queryParameters['token']?.trim();
+    if (token == null || token.isEmpty) return;
+    if (_handledResetToken == token) return;
+    _handledResetToken = token;
+    if (!mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => ResetPasswordScreen(token: token)),
+    );
+  }
 
   Future<void> _checkBackendConfig() async {
     final hasUrl = await TelemetryService.instance.traceAsync(
