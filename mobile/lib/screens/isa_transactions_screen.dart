@@ -3,8 +3,8 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../models/isa_transaction.dart';
 import '../providers/auth_provider.dart';
-import '../services/isa_transactions_service.dart';
-import '../services/my_account_service.dart' show EmailVerificationRequiredException;
+import '../providers/isa_transactions_provider.dart';
+import '../widgets/data_error_cards.dart';
 import '../widgets/verify_email_card.dart';
 
 class IsaTransactionsScreen extends StatefulWidget {
@@ -15,13 +15,6 @@ class IsaTransactionsScreen extends StatefulWidget {
 }
 
 class _IsaTransactionsScreenState extends State<IsaTransactionsScreen> {
-  final _service = IsaTransactionsService();
-
-  List<IsaTransaction>? _transactions;
-  bool _loading = true;
-  String? _error;
-  bool _verificationRequired = false;
-
   @override
   void initState() {
     super.initState();
@@ -29,19 +22,10 @@ class _IsaTransactionsScreenState extends State<IsaTransactionsScreen> {
   }
 
   Future<void> _load() async {
-    setState(() { _loading = true; _error = null; _verificationRequired = false; });
-    try {
-      final token = await context.read<AuthProvider>().getValidAccessToken();
-      if (token == null) { if (mounted) setState(() { _loading = false; }); return; }
-      final result = await _service.fetchTransactions(token);
-      if (mounted) setState(() { _transactions = result; _loading = false; });
-    } on EmailVerificationRequiredException {
-      if (mounted) setState(() { _transactions = null; _verificationRequired = true; _loading = false; });
-    } on IsaTransactionsUnavailableException {
-      if (mounted) setState(() { _error = 'Transaction data is not configured yet.'; _loading = false; });
-    } catch (_) {
-      if (mounted) setState(() { _error = 'Unable to load transactions. Try again later.'; _loading = false; });
-    }
+    if (!mounted) return;
+    final token = await context.read<AuthProvider>().getValidAccessToken();
+    if (!mounted || token == null) return;
+    await context.read<IsaTransactionsProvider>().load(token);
   }
 
   @override
@@ -53,31 +37,96 @@ class _IsaTransactionsScreenState extends State<IsaTransactionsScreen> {
   }
 
   Widget _buildBody(BuildContext context) {
-    if (_loading) {
+    final provider = context.watch<IsaTransactionsProvider>();
+    final txns = provider.transactions;
+
+    // First load (or a retry with nothing cached): full-screen spinner. On a
+    // refresh with data already on screen, keep the list and let the
+    // RefreshIndicator show its own spinner instead of blanking the screen.
+    if (provider.isLoading && txns == null) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_verificationRequired) {
+    if (provider.verificationRequired) {
       return ListView(
         padding: const EdgeInsets.all(16),
         children: [VerifyEmailCard(onVerified: _load)],
       );
     }
 
-    if (_error != null) {
-      return _buildEmpty(context, message: _error!);
+    final hasData = txns != null && txns.isNotEmpty;
+    if (hasData) {
+      return _buildList(txns, provider);
     }
 
-    final txns = _transactions ?? [];
-    if (txns.isEmpty) {
-      return _buildEmpty(context, message: 'No transactions found.');
+    if (provider.networkError) {
+      return _scrollWrap(DataErrorCard(
+        icon: Icons.wifi_off_rounded,
+        iconColor: const Color(0xFFE53935),
+        title: 'No internet connection',
+        body: 'Your payment history will load once you\'re back online. '
+            'Pull down or tap Retry to try again.',
+        onRetry: _load,
+      ));
     }
+    if (provider.upstreamError) {
+      return _scrollWrap(DataErrorCard(
+        icon: Icons.error_outline_rounded,
+        iconColor: const Color(0xFFE53935),
+        title: 'Unable to load payments',
+        body: 'The data service returned an unexpected error. '
+            'This is usually temporary — pull down or tap Retry to try again.',
+        onRetry: _load,
+      ));
+    }
+    if (provider.unavailable) {
+      return _scrollWrap(const DataErrorCard(
+        icon: Icons.cloud_off_rounded,
+        iconColor: Color(0xFF986EF9),
+        title: 'Payment data temporarily unavailable',
+        body: 'We\'re having trouble reaching the Chancen data service right now. '
+            'Your payments will appear once the connection is restored. '
+            'Pull down to refresh and try again.',
+      ));
+    }
+
+    return _buildEmpty(context, message: 'No transactions found.');
+  }
+
+  Widget _buildList(List<IsaTransaction> txns, IsaTransactionsProvider provider) {
+    final showStale =
+        provider.networkError || provider.upstreamError || provider.unavailable;
+    final headerCount = showStale ? 1 : 0;
 
     return ListView.separated(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: txns.length,
-      separatorBuilder: (_, __) => const Divider(height: 1, indent: 72),
-      itemBuilder: (context, i) => _TransactionTile(transaction: txns[i]),
+      itemCount: txns.length + headerCount,
+      separatorBuilder: (_, i) {
+        if (showStale && i == 0) return const SizedBox.shrink();
+        return const Divider(height: 1, indent: 72);
+      },
+      itemBuilder: (context, i) {
+        if (showStale && i == 0) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: StaleDataBanner(
+              lastSyncedAt: provider.lastSyncedAt,
+              onRetry: _load,
+              isNetworkError: provider.networkError,
+            ),
+          );
+        }
+        return _TransactionTile(transaction: txns[i - headerCount]);
+      },
+    );
+  }
+
+  /// Wraps an error card in a scrollable list so pull-to-refresh still works
+  /// when there's nothing else on screen.
+  Widget _scrollWrap(Widget child) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+      children: [child],
     );
   }
 

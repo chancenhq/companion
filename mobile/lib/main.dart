@@ -10,6 +10,7 @@ import 'providers/tags_provider.dart';
 import 'providers/transactions_provider.dart';
 import 'providers/chat_provider.dart';
 import 'providers/my_account_provider.dart';
+import 'providers/isa_transactions_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/privacy_provider.dart';
 import 'screens/backend_config_screen.dart';
@@ -147,6 +148,7 @@ class SureApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => ChatProvider()),
         ChangeNotifierProvider(create: (_) => MyAccountProvider()),
+        ChangeNotifierProvider(create: (_) => IsaTransactionsProvider()),
         ChangeNotifierProvider(create: (_) => CategoriesProvider()),
         ChangeNotifierProvider(create: (_) => MerchantsProvider()),
         ChangeNotifierProvider(create: (_) => TagsProvider()),
