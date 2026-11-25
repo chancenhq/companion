@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/analytics_service.dart';
 import '../services/auth_service.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
@@ -39,11 +40,15 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     if (!mounted) return;
 
     if (result['success'] == true) {
+      AnalyticsService.instance.capture('password_reset_completed');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Password updated. Please sign in.')),
       );
       Navigator.of(context).popUntil((route) => route.isFirst);
     } else {
+      AnalyticsService.instance.capture('password_reset_failed', {
+        'reason': 'invalid_or_expired',
+      });
       setState(() {
         _isLoading = false;
         _errorMessage = result['error'] as String?;
