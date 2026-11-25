@@ -4,6 +4,13 @@ class Invitation < ApplicationRecord
   belongs_to :family
   belongs_to :inviter, class_name: "User"
 
+  # How long a new invitation stays valid. This is the one intentional
+  # divergence from upstream (3.days): Companion's invitees are a captive
+  # audience who should be able to join whenever they are ready, so the window
+  # is effectively open-ended. A large finite value (not nil) keeps every
+  # `expires_at > now` comparison working without nil guards.
+  EXPIRES_IN = 999.days
+
   # Encrypt sensitive fields if ActiveRecord encryption is configured
   if encryption_ready?
     encrypts :token, deterministic: true
@@ -115,7 +122,7 @@ class Invitation < ApplicationRecord
     end
 
     def set_expiration
-      self.expires_at = 3.days.from_now
+      self.expires_at = EXPIRES_IN.from_now
     end
 
     # An expired, never-accepted invitation still occupies the partial unique
