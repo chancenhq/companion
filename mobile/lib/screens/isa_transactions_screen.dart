@@ -1,10 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import '../l10n/app_localizations.dart';
 import '../models/isa_transaction.dart';
 import '../providers/auth_provider.dart';
 import '../providers/isa_transactions_provider.dart';
+import '../theme/sure_colors.dart';
+import '../theme/sure_spacing.dart';
+import '../theme/sure_tokens.dart';
 import '../widgets/data_error_cards.dart';
+import '../widgets/money_text.dart';
+import '../widgets/sure_button.dart';
+import '../widgets/sure_card.dart';
+import '../widgets/sure_icon.dart';
+import '../widgets/sure_list_group.dart';
 import '../widgets/verify_email_card.dart';
 
 class IsaTransactionsScreen extends StatefulWidget {
@@ -96,28 +105,16 @@ class _IsaTransactionsScreenState extends State<IsaTransactionsScreen> {
   Widget _buildList(List<IsaTransaction> txns, IsaTransactionsProvider provider) {
     final showStale =
         provider.networkError || provider.upstreamError || provider.unavailable;
-    final headerCount = showStale ? 1 : 0;
 
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: txns.length + headerCount,
-      separatorBuilder: (_, i) {
-        if (showStale && i == 0) return const SizedBox.shrink();
-        return const Divider(height: 1, indent: 72);
-      },
-      itemBuilder: (context, i) {
-        if (showStale && i == 0) {
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: StaleDataBanner(
+    return PaymentsList(
+      transactions: txns,
+      staleBanner: showStale
+          ? StaleDataBanner(
               lastSyncedAt: provider.lastSyncedAt,
               onRetry: _load,
               isNetworkError: provider.networkError,
-            ),
-          );
-        }
-        return _TransactionTile(transaction: txns[i - headerCount]);
-      },
+            )
+          : null,
     );
   }
 
@@ -151,63 +148,389 @@ class _IsaTransactionsScreenState extends State<IsaTransactionsScreen> {
   }
 }
 
-class _TransactionTile extends StatelessWidget {
-  const _TransactionTile({required this.transaction});
+/// The grouped-by-category payments list. Kept as a standalone widget so it can
+/// be rendered (and tested) from a plain list of transactions, independent of
+/// the provider-based loading in [IsaTransactionsScreen].
+class PaymentsList extends StatelessWidget {
+  const PaymentsList({
+    super.key,
+    required this.transactions,
+    this.staleBanner,
+  });
+
+  final List<IsaTransaction> transactions;
+
+  /// Optional banner shown above the list when cached payments are still on
+  /// screen after a failed refresh.
+  final Widget? staleBanner;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final palette = SureColors.of(context).palette;
+
+    final grouped = <IsaPaymentCategory, List<IsaTransaction>>{
+      for (final category in IsaPaymentCategory.values) category: [],
+    };
+    for (final transaction in transactions) {
+      grouped[transaction.category]!.add(transaction);
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        SureSpacing.xl,
+        SureSpacing.xl,
+        SureSpacing.xl,
+        SureSpacing.huge,
+      ),
+      children: [
+        if (staleBanner != null) ...[
+          staleBanner!,
+          const SizedBox(height: SureSpacing.xl),
+        ],
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Payments',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ),
+            IconButton(
+              tooltip: l.paymentsExplainerAction,
+              onPressed: () => _showPaymentsExplainer(context),
+              icon: SureIcon(
+                SureIcons.circleInfo,
+                size: SureIconSize.lg,
+                color: palette.info,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: SureSpacing.md),
+        for (final category in IsaPaymentCategory.values)
+          ..._section(
+            context,
+            category: category,
+            transactions: grouped[category]!,
+          ),
+      ],
+    );
+  }
+}
+
+List<Widget> _section(
+  BuildContext context, {
+  required IsaPaymentCategory category,
+  required List<IsaTransaction> transactions,
+}) {
+  if (transactions.isEmpty) return const [];
+
+  return [
+    SureListGroup(
+      header: _sectionTitle(context, category),
+      children: [
+        for (final transaction in transactions)
+          _PaymentRow(transaction: transaction),
+      ],
+    ),
+    const SizedBox(height: SureSpacing.xxxl),
+  ];
+}
+
+Future<void> _showPaymentsExplainer(BuildContext context) {
+  return showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    showDragHandle: true,
+    builder: (context) {
+      final l = AppLocalizations.of(context);
+      final palette = SureColors.of(context).palette;
+
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(
+          SureSpacing.xl,
+          0,
+          SureSpacing.xl,
+          SureSpacing.xl,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SureIcon(
+              SureIcons.circleInfo,
+              size: SureIconSize.xl,
+              color: palette.info,
+            ),
+            const SizedBox(height: SureSpacing.lg),
+            Text(
+              l.paymentsExplainerTitle,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: SureTokens.weightSemibold,
+                  ),
+            ),
+            const SizedBox(height: SureSpacing.sm),
+            Text(
+              l.paymentsExplainerBody,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: palette.textSecondary,
+                  ),
+            ),
+            const SizedBox(height: SureSpacing.xxl),
+            SureButton(
+              label: l.commonClose,
+              onPressed: () => Navigator.pop(context),
+              variant: SureButtonVariant.secondary,
+              size: SureButtonSize.lg,
+              fullWidth: true,
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+class _PaymentRow extends StatelessWidget {
+  const _PaymentRow({required this.transaction});
+
   final IsaTransaction transaction;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final formattedAmount = NumberFormat.currency(
-      symbol: transaction.currency,
-      decimalDigits: 0,
-    ).format(transaction.amount);
+    final palette = SureColors.of(context).palette;
 
-    final formattedDate = _formatDate(transaction.paymentDate);
-    final isRepayment = transaction.paymentType.toLowerCase().contains('repayment');
-
-    return ListTile(
-      leading: Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          color: isRepayment
-              ? colorScheme.primaryContainer
-              : colorScheme.secondaryContainer,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Icon(
-          isRepayment ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
-          color: isRepayment
-              ? colorScheme.onPrimaryContainer
-              : colorScheme.onSecondaryContainer,
-          size: 20,
-        ),
-      ),
-      title: Text(
-        transaction.paymentType,
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
-      ),
-      subtitle: formattedDate.isNotEmpty
-          ? Text(formattedDate, style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12))
-          : null,
-      trailing: Text(
-        formattedAmount,
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          fontWeight: FontWeight.w600,
-          color: isRepayment ? colorScheme.primary : colorScheme.onSurface,
-        ),
+    return SureListRow(
+      leading: _PaymentTypeIcon(category: transaction.category),
+      title: _paymentTitle(context, transaction),
+      onTap: () => _showPaymentDetails(context, transaction),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            _formatAmount(transaction),
+            style: SureMoney.tabular(
+              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: SureTokens.weightSemibold,
+                  ),
+            ),
+          ),
+          const SizedBox(width: SureSpacing.md),
+          SureIcon(
+            SureIcons.chevronRight,
+            size: SureIconSize.md,
+            color: palette.textSubdued,
+          ),
+        ],
       ),
     );
   }
+}
 
-  String _formatDate(String raw) {
-    if (raw.isEmpty) return '';
-    try {
-      final date = DateTime.parse(raw);
-      return DateFormat('dd MMM yyyy').format(date);
-    } catch (_) {
-      return raw;
-    }
+class _PaymentTypeIcon extends StatelessWidget {
+  const _PaymentTypeIcon({required this.category});
+
+  final IsaPaymentCategory category;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = SureColors.of(context).palette;
+    final (icon, foreground, background) = switch (category) {
+      IsaPaymentCategory.chancenFunding => (
+          SureIcons.handCoins,
+          palette.info,
+          palette.info.withValues(alpha: 0.1),
+        ),
+      IsaPaymentCategory.balanceReduction => (
+          SureIcons.trendingDown,
+          palette.success,
+          palette.success.withValues(alpha: 0.1),
+        ),
+      IsaPaymentCategory.noPrincipalEffect => (
+          SureIcons.receipt,
+          palette.textSecondary,
+          palette.surfaceInset,
+        ),
+      IsaPaymentCategory.other => (
+          SureIcons.receipt,
+          palette.textSecondary,
+          palette.surfaceInset,
+        ),
+    };
+
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(SureTokens.radiusLg),
+      ),
+      child: SureIcon(icon, size: SureIconSize.md, color: foreground),
+    );
   }
+}
+
+Future<void> _showPaymentDetails(
+  BuildContext context,
+  IsaTransaction transaction,
+) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    showDragHandle: true,
+    builder: (context) {
+      final l = AppLocalizations.of(context);
+      final palette = SureColors.of(context).palette;
+
+      return SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          SureSpacing.xl,
+          0,
+          SureSpacing.xl,
+          SureSpacing.xl + MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              l.paymentsDetailTitle,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: SureTokens.weightSemibold,
+                  ),
+            ),
+            const SizedBox(height: SureSpacing.xxl),
+            Center(
+              child: Column(
+                children: [
+                  _PaymentTypeIcon(category: transaction.category),
+                  const SizedBox(height: SureSpacing.lg),
+                  Text(
+                    _formatAmount(transaction),
+                    style: SureMoney.tabular(
+                      Theme.of(context).textTheme.headlineMedium?.copyWith(
+                            fontWeight: SureTokens.weightSemibold,
+                          ),
+                    ),
+                  ),
+                  const SizedBox(height: SureSpacing.xs),
+                  Text(
+                    _sectionTitle(context, transaction.category),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: palette.textSecondary,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: SureSpacing.xxxl),
+            SureCard(
+              elevated: false,
+              child: Text(
+                _categoryDescription(context, transaction.category),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: palette.textSecondary,
+                    ),
+              ),
+            ),
+            const SizedBox(height: SureSpacing.xxxl),
+            SureListGroup(
+              children: [
+                SureListRow(
+                  title: l.paymentsDetailRecordedType,
+                  trailing: Text(_paymentTitle(context, transaction)),
+                ),
+                SureListRow(
+                  title: l.paymentsDetailDate,
+                  trailing: Text(_formatDate(transaction.paymentDate)),
+                ),
+                SureListRow(
+                  title: l.paymentsDetailCurrency,
+                  trailing: Text(
+                    transaction.currency.trim().isEmpty
+                        ? l.paymentsUnknownValue
+                        : transaction.currency,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: SureSpacing.xxxl),
+            SureButton(
+              label: l.commonClose,
+              onPressed: () => Navigator.pop(context),
+              variant: SureButtonVariant.secondary,
+              size: SureButtonSize.lg,
+              fullWidth: true,
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+String _formatAmount(IsaTransaction transaction) {
+  return NumberFormat.currency(
+    symbol: transaction.currency.isEmpty ? '' : '${transaction.currency} ',
+    decimalDigits: transaction.amount % 1 == 0 ? 0 : 2,
+  ).format(transaction.amount);
+}
+
+String _formatDate(String raw) {
+  if (raw.isEmpty) return '—';
+  try {
+    final date = DateTime.parse(raw);
+    return DateFormat('dd MMM yyyy').format(date);
+  } catch (_) {
+    return raw;
+  }
+}
+
+String _sectionTitle(BuildContext context, IsaPaymentCategory category) {
+  final l = AppLocalizations.of(context);
+  return switch (category) {
+    IsaPaymentCategory.chancenFunding => l.paymentsChancenFundingSection,
+    IsaPaymentCategory.balanceReduction => l.paymentsBalanceReductionSection,
+    IsaPaymentCategory.noPrincipalEffect => l.paymentsNoPrincipalEffectSection,
+    IsaPaymentCategory.other => l.paymentsOtherSection,
+  };
+}
+
+String _paymentTitle(BuildContext context, IsaTransaction transaction) {
+  final l = AppLocalizations.of(context);
+  return switch (transaction.normalizedPaymentType) {
+    'admin fee' => l.paymentsItemAdministrationFee,
+    'application fee' || 'application fees' => l.paymentsItemApplicationFee,
+    'deposit' => l.paymentsItemDeposit,
+    'dropout penalty' || 'drop out penalty' => l.paymentsItemDropoutPenalty,
+    'penalty fee' => l.paymentsItemPenaltyFee,
+    'pei payment' => l.paymentsItemChancenFunding,
+    'cobooth monthly flat payment' => l.paymentsItemMonthlyPayment,
+    'cobooth payment' => l.paymentsItemBalancePayment,
+    'commitment fee' || 'commitment fees' => l.paymentsItemCommitmentPayment,
+    'commitment payment' => l.paymentsItemCommitmentPayment,
+    'contribution fee' => l.paymentsItemContributionPayment,
+    'drop out fee' => l.paymentsItemDropoutPayment,
+    'repayment' => l.paymentsItemRepayment,
+    'write off collection payment' => l.paymentsItemCollectionPayment,
+    _ => l.paymentsOtherItem,
+  };
+}
+
+String _categoryDescription(
+  BuildContext context,
+  IsaPaymentCategory category,
+) {
+  final l = AppLocalizations.of(context);
+  return switch (category) {
+    IsaPaymentCategory.chancenFunding => l.paymentsChancenFundingDescription,
+    IsaPaymentCategory.balanceReduction =>
+      l.paymentsBalanceReductionDescription,
+    IsaPaymentCategory.noPrincipalEffect =>
+      l.paymentsNoPrincipalEffectDescription,
+    IsaPaymentCategory.other => l.paymentsOtherDescription,
+  };
 }

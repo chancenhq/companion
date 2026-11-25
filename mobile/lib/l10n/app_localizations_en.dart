@@ -1243,4 +1243,122 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get cashFlowTransactionsLoadFailed => 'Couldn\'t load transactions';
+
+  @override
+  String get paymentsExplainerTitle => 'How payments are grouped';
+
+  @override
+  String get paymentsExplainerAction => 'How payment groups work';
+
+  @override
+  String get paymentsExplainerBody =>
+      'Payments are grouped by how they affect your financed balance. Repayments reduce it, Chancen funding increases it, while fees and penalties do not change the principal.';
+
+  @override
+  String get paymentsBalanceReductionSection => 'Reduces your balance';
+
+  @override
+  String get paymentsChancenFundingSection => 'Paid by Chancen';
+
+  @override
+  String get paymentsFeesSection => 'Fees';
+
+  @override
+  String get paymentsPenaltiesSection => 'Penalties';
+
+  @override
+  String get paymentsOtherSection => 'Other payments';
+
+  @override
+  String get paymentsItemAdministrationFee => 'Administration fee';
+
+  @override
+  String get paymentsItemApplicationFee => 'Application fee';
+
+  @override
+  String get paymentsItemDeposit => 'Deposit';
+
+  @override
+  String get paymentsItemDropoutPenalty => 'Dropout penalty';
+
+  @override
+  String get paymentsItemPenaltyFee => 'Penalty fee';
+
+  @override
+  String get paymentsItemChancenFunding => 'Chancen Financed';
+
+  @override
+  String get paymentsItemMonthlyPayment => 'Monthly payment';
+
+  @override
+  String get paymentsItemBalancePayment => 'Payment toward your balance';
+
+  @override
+  String get paymentsItemCommitmentPayment => 'Commitment payment';
+
+  @override
+  String get paymentsItemContributionPayment => 'Contribution payment';
+
+  @override
+  String get paymentsItemDropoutPayment => 'Dropout payment';
+
+  @override
+  String get paymentsItemRepayment => 'Repayment';
+
+  @override
+  String get paymentsItemCollectionPayment => 'Collection payment';
+
+  @override
+  String get paymentsOtherItem => 'Other payment';
+
+  @override
+  String get paymentsBalanceReductionDescription =>
+      'This payment reduces your financed balance.';
+
+  @override
+  String get paymentsChancenFundingDescription =>
+      'This is what Chancen paid that adds to your ISA balance.';
+
+  @override
+  String get paymentsFeesDescription =>
+      'This fee does not change your principal balance.';
+
+  @override
+  String get paymentsPenaltiesDescription =>
+      'This penalty does not change your principal balance.';
+
+  @override
+  String get paymentsOtherDescription =>
+      'This payment has not yet been assigned to a primary category.';
+
+  @override
+  String get paymentsDetailTitle => 'Payment details';
+
+  @override
+  String get paymentsDetailRecordedType => 'Payment type';
+
+  @override
+  String get paymentsDetailDate => 'Payment date';
+
+  @override
+  String get paymentsDetailCurrency => 'Currency';
+
+  @override
+  String get paymentsUnknownValue => 'Not available';
+
+  @override
+  String get paymentsEmpty => 'No payments found.';
+
+  @override
+  String get paymentsUnavailable => 'Payment data is not configured yet.';
+
+  @override
+  String get paymentsLoadError => 'Unable to load payments. Try again later.';
+
+  @override
+  String get paymentsNoPrincipalEffectSection => 'Does not reduce your balance';
+
+  @override
+  String get paymentsNoPrincipalEffectDescription =>
+      'This payment does not change your principal balance.';
 }

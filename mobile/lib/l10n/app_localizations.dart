@@ -2275,6 +2275,228 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t load transactions'**
   String get cashFlowTransactionsLoadFailed;
+
+  /// Heading above the mobile payments category explanation.
+  ///
+  /// In en, this message translates to:
+  /// **'How payments are grouped'**
+  String get paymentsExplainerTitle;
+
+  /// Tooltip and accessibility label for opening the payment grouping explanation.
+  ///
+  /// In en, this message translates to:
+  /// **'How payment groups work'**
+  String get paymentsExplainerAction;
+
+  /// Explanation of the four primary ISA payment categories.
+  ///
+  /// In en, this message translates to:
+  /// **'Payments are grouped by how they affect your financed balance. Repayments reduce it, Chancen funding increases it, while fees and penalties do not change the principal.'**
+  String get paymentsExplainerBody;
+
+  /// Section heading for payments that reduce a member's financed balance.
+  ///
+  /// In en, this message translates to:
+  /// **'Reduces your balance'**
+  String get paymentsBalanceReductionSection;
+
+  /// Section heading for funding paid by Chancen for a member.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid by Chancen'**
+  String get paymentsChancenFundingSection;
+
+  /// Section heading for fees that do not change principal.
+  ///
+  /// In en, this message translates to:
+  /// **'Fees'**
+  String get paymentsFeesSection;
+
+  /// Section heading for penalties that do not change principal.
+  ///
+  /// In en, this message translates to:
+  /// **'Penalties'**
+  String get paymentsPenaltiesSection;
+
+  /// Section heading for payment types that are not yet classified.
+  ///
+  /// In en, this message translates to:
+  /// **'Other payments'**
+  String get paymentsOtherSection;
+
+  /// Friendly label for an administration fee.
+  ///
+  /// In en, this message translates to:
+  /// **'Administration fee'**
+  String get paymentsItemAdministrationFee;
+
+  /// Friendly label for an application fee.
+  ///
+  /// In en, this message translates to:
+  /// **'Application fee'**
+  String get paymentsItemApplicationFee;
+
+  /// Friendly label for a deposit.
+  ///
+  /// In en, this message translates to:
+  /// **'Deposit'**
+  String get paymentsItemDeposit;
+
+  /// Friendly label for a dropout penalty.
+  ///
+  /// In en, this message translates to:
+  /// **'Dropout penalty'**
+  String get paymentsItemDropoutPenalty;
+
+  /// Friendly label for a penalty fee.
+  ///
+  /// In en, this message translates to:
+  /// **'Penalty fee'**
+  String get paymentsItemPenaltyFee;
+
+  /// Friendly label replacing the internal PEI Payment type.
+  ///
+  /// In en, this message translates to:
+  /// **'Chancen Financed'**
+  String get paymentsItemChancenFunding;
+
+  /// Friendly label replacing the internal CoBooth monthly flat payment type.
+  ///
+  /// In en, this message translates to:
+  /// **'Monthly payment'**
+  String get paymentsItemMonthlyPayment;
+
+  /// Friendly label for a payment that reduces the financed balance.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment toward your balance'**
+  String get paymentsItemBalancePayment;
+
+  /// Friendly label for a commitment payment.
+  ///
+  /// In en, this message translates to:
+  /// **'Commitment payment'**
+  String get paymentsItemCommitmentPayment;
+
+  /// Friendly label replacing the internal contribution fee type.
+  ///
+  /// In en, this message translates to:
+  /// **'Contribution payment'**
+  String get paymentsItemContributionPayment;
+
+  /// Friendly label replacing the internal drop-out fee type.
+  ///
+  /// In en, this message translates to:
+  /// **'Dropout payment'**
+  String get paymentsItemDropoutPayment;
+
+  /// Friendly label for a repayment.
+  ///
+  /// In en, this message translates to:
+  /// **'Repayment'**
+  String get paymentsItemRepayment;
+
+  /// Friendly label replacing the internal write-off collection payment type.
+  ///
+  /// In en, this message translates to:
+  /// **'Collection payment'**
+  String get paymentsItemCollectionPayment;
+
+  /// Fallback row label for an unclassified payment.
+  ///
+  /// In en, this message translates to:
+  /// **'Other payment'**
+  String get paymentsOtherItem;
+
+  /// Detail explanation for a balance-reducing payment.
+  ///
+  /// In en, this message translates to:
+  /// **'This payment reduces your financed balance.'**
+  String get paymentsBalanceReductionDescription;
+
+  /// Detail explanation for funding paid by Chancen.
+  ///
+  /// In en, this message translates to:
+  /// **'This is what Chancen paid that adds to your ISA balance.'**
+  String get paymentsChancenFundingDescription;
+
+  /// Detail explanation for a fee that does not affect principal.
+  ///
+  /// In en, this message translates to:
+  /// **'This fee does not change your principal balance.'**
+  String get paymentsFeesDescription;
+
+  /// Detail explanation for a penalty that does not affect principal.
+  ///
+  /// In en, this message translates to:
+  /// **'This penalty does not change your principal balance.'**
+  String get paymentsPenaltiesDescription;
+
+  /// Detail explanation for an unclassified payment.
+  ///
+  /// In en, this message translates to:
+  /// **'This payment has not yet been assigned to a primary category.'**
+  String get paymentsOtherDescription;
+
+  /// Title of the payment detail bottom sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment details'**
+  String get paymentsDetailTitle;
+
+  /// Label for the friendly payment type in payment details.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment type'**
+  String get paymentsDetailRecordedType;
+
+  /// Label for the date in payment details.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment date'**
+  String get paymentsDetailDate;
+
+  /// Label for the currency in payment details.
+  ///
+  /// In en, this message translates to:
+  /// **'Currency'**
+  String get paymentsDetailCurrency;
+
+  /// Fallback when a payment detail value is missing.
+  ///
+  /// In en, this message translates to:
+  /// **'Not available'**
+  String get paymentsUnknownValue;
+
+  /// Empty state for the mobile payments screen.
+  ///
+  /// In en, this message translates to:
+  /// **'No payments found.'**
+  String get paymentsEmpty;
+
+  /// Shown when the payments data provider is unavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment data is not configured yet.'**
+  String get paymentsUnavailable;
+
+  /// Shown when mobile payments cannot be loaded.
+  ///
+  /// In en, this message translates to:
+  /// **'Unable to load payments. Try again later.'**
+  String get paymentsLoadError;
+
+  /// No description provided for @paymentsNoPrincipalEffectSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Does not reduce your balance'**
+  String get paymentsNoPrincipalEffectSection;
+
+  /// No description provided for @paymentsNoPrincipalEffectDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'This payment does not change your principal balance.'**
+  String get paymentsNoPrincipalEffectDescription;
 }
 
 class _AppLocalizationsDelegate
