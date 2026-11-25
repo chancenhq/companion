@@ -1257,4 +1257,123 @@ class AppLocalizationsSv extends AppLocalizations {
   @override
   String get cashFlowTransactionsLoadFailed =>
       'Kunde inte läsa in transaktioner';
+
+  @override
+  String get paymentsExplainerTitle => 'Så grupperas betalningar';
+
+  @override
+  String get paymentsExplainerAction => 'Så fungerar betalningsgrupperna';
+
+  @override
+  String get paymentsExplainerBody =>
+      'Betalningar grupperas efter hur de påverkar ditt finansierade saldo. Återbetalningar minskar det, finansiering från Chancen ökar det, medan avgifter och påföljder inte ändrar kapitalbeloppet.';
+
+  @override
+  String get paymentsBalanceReductionSection => 'Minskar ditt saldo';
+
+  @override
+  String get paymentsChancenFundingSection => 'Betalat av Chancen';
+
+  @override
+  String get paymentsFeesSection => 'Avgifter';
+
+  @override
+  String get paymentsPenaltiesSection => 'Påföljder';
+
+  @override
+  String get paymentsOtherSection => 'Övriga betalningar';
+
+  @override
+  String get paymentsItemAdministrationFee => 'Administrationsavgift';
+
+  @override
+  String get paymentsItemApplicationFee => 'Ansökningsavgift';
+
+  @override
+  String get paymentsItemDeposit => 'Deposition';
+
+  @override
+  String get paymentsItemDropoutPenalty => 'Påföljd vid avhopp';
+
+  @override
+  String get paymentsItemPenaltyFee => 'Straffavgift';
+
+  @override
+  String get paymentsItemChancenFunding => 'Chancen finansierad';
+
+  @override
+  String get paymentsItemMonthlyPayment => 'Månadsbetalning';
+
+  @override
+  String get paymentsItemBalancePayment => 'Betalning mot ditt saldo';
+
+  @override
+  String get paymentsItemCommitmentPayment => 'Åtagandebetalning';
+
+  @override
+  String get paymentsItemContributionPayment => 'Bidragsbetalning';
+
+  @override
+  String get paymentsItemDropoutPayment => 'Betalning vid avhopp';
+
+  @override
+  String get paymentsItemRepayment => 'Återbetalning';
+
+  @override
+  String get paymentsItemCollectionPayment => 'Inkassobetalning';
+
+  @override
+  String get paymentsOtherItem => 'Övrig betalning';
+
+  @override
+  String get paymentsBalanceReductionDescription =>
+      'Den här betalningen minskar ditt finansierade saldo.';
+
+  @override
+  String get paymentsChancenFundingDescription =>
+      'Det här är vad Chancen har betalat som läggs till ditt ISA-saldo.';
+
+  @override
+  String get paymentsFeesDescription =>
+      'Den här avgiften ändrar inte ditt kapitalbelopp.';
+
+  @override
+  String get paymentsPenaltiesDescription =>
+      'Den här påföljden ändrar inte ditt kapitalbelopp.';
+
+  @override
+  String get paymentsOtherDescription =>
+      'Den här betalningen har ännu inte tilldelats en huvudkategori.';
+
+  @override
+  String get paymentsDetailTitle => 'Betalningsdetaljer';
+
+  @override
+  String get paymentsDetailRecordedType => 'Betalningstyp';
+
+  @override
+  String get paymentsDetailDate => 'Betalningsdatum';
+
+  @override
+  String get paymentsDetailCurrency => 'Valuta';
+
+  @override
+  String get paymentsUnknownValue => 'Inte tillgängligt';
+
+  @override
+  String get paymentsEmpty => 'Inga betalningar hittades.';
+
+  @override
+  String get paymentsUnavailable => 'Betalningsdata är inte konfigurerad ännu.';
+
+  @override
+  String get paymentsLoadError =>
+      'Det gick inte att läsa in betalningar. Försök igen senare.';
+
+  @override
+  String get paymentsNoPrincipalEffectSection => 'Minskar inte ditt saldo';
+
+  @override
+  String get paymentsNoPrincipalEffectDescription =>
+      'Den här betalningen ändrar inte ditt kapitalbelopp.';
 }
