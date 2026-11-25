@@ -336,6 +336,19 @@ class AuthProvider with ChangeNotifier {
             'otp_submitted': otpCode != null,
           },
         );
+        // The first MFA challenge is a normal step, not a failure. Only emit
+        // the analytics event for genuine rejections.
+        final initialMfaPrompt = result['mfa_required'] == true &&
+            (otpCode == null || otpCode.isEmpty);
+        if (!initialMfaPrompt) {
+          AnalyticsService.instance.capture('login_failed', {
+            'method': 'email',
+            'mfa_required': _mfaRequired,
+            'reason': otpCode != null && otpCode.isNotEmpty
+                ? 'invalid_mfa_code'
+                : 'invalid_credentials',
+          });
+        }
         _isLoading = false;
         notifyListeners();
         return false;
@@ -616,6 +629,10 @@ class AuthProvider with ChangeNotifier {
           'auth',
           'sso_callback_failed',
         );
+        AnalyticsService.instance.capture('sso_login_failed', {
+          'method': 'sso',
+          'reason': 'callback_error',
+        });
         _errorMessage = result['error'] as String?;
         _isLoading = false;
         notifyListeners();
@@ -628,6 +645,10 @@ class AuthProvider with ChangeNotifier {
         stackTrace,
         operation: 'auth.sso_callback',
       );
+      AnalyticsService.instance.capture('sso_login_failed', {
+        'method': 'sso',
+        'reason': 'exception',
+      });
       _errorMessage = 'Sign-in failed. Please try again.';
       _isLoading = false;
       notifyListeners();
