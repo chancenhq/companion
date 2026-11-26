@@ -95,6 +95,7 @@ abstract final class SureIcons {
   static const String handCoins = 'hand-coins';
   static const String wallet = 'wallet';
   static const String circleAlert = 'circle-alert';
+  static const String circleInfo = 'circle-info';
   static const String circleCheck = 'circle-check';
   static const String cloudCheck = 'cloud-check';
   static const String refresh = 'refresh-cw';
