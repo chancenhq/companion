@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/analytics_service.dart';
 import '../services/auth_service.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
@@ -24,6 +25,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
     await AuthService().requestPasswordReset(email: _emailController.text.trim());
+    AnalyticsService.instance.capture('password_reset_requested');
     if (mounted) setState(() { _isLoading = false; _submitted = true; });
   }
 
